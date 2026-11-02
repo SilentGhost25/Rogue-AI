@@ -144,6 +144,20 @@ public class RogueAgentOrchestratorTests : IDisposable
         // Wait for imminent countdown to land
         await Task.Delay(1200);
         Assert.Equal(DispatchState.ArenaLanded.ToString(), _db.GetDispatchState(1));
+
+        // 5. Trying to fire again while ArenaLanded must throw InvalidOperationException (409 Conflict)
+        await Assert.ThrowsAsync<InvalidOperationException>(() => orch.ConfirmAndFireArenaAsync(1));
+    }
+
+    [Fact]
+    public async Task Firing_to_arena_without_canary_confirmation_throws_InvalidOperationException()
+    {
+        CreateTestAttack(1, "Unconfirmed Attack");
+        var orch = CreateOrchestrator();
+
+        // Currently in Pending state
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => orch.ConfirmAndFireArenaAsync(1));
+        Assert.Contains("expected 'CanaryConfirmed'", ex.Message);
     }
 
     [Fact]

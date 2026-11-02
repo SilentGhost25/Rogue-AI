@@ -6,15 +6,16 @@ namespace ControlPlane.Hubs;
 /// <summary>Kiosks join their own group; admin pages join "admins"; projectors join "projectors".</summary>
 public sealed class BreachHub(IConfiguration config, Database db) : Hub
 {
-    public Task RegisterKiosk(string participantId, string token)
+    public async Task RegisterKiosk(string participantId, string token)
     {
         if (string.IsNullOrWhiteSpace(token) || !db.ValidateDeskToken(token, participantId))
         {
             Context.Abort();
-            return Task.CompletedTask;
+            return;
         }
         Context.Items["participantId"] = participantId;
-        return Groups.AddToGroupAsync(Context.ConnectionId, $"p:{participantId}");
+        await Groups.AddToGroupAsync(Context.ConnectionId, $"p:{participantId}");
+        await Groups.AddToGroupAsync(Context.ConnectionId, "arena");
     }
 
     public Task JoinAdmin(string adminKey)
@@ -51,7 +52,11 @@ public sealed class BreachHub(IConfiguration config, Database db) : Hub
         return Groups.AddToGroupAsync(Context.ConnectionId, "admins");
     }
 
-    public Task JoinProjector() => Groups.AddToGroupAsync(Context.ConnectionId, "projectors");
+    public async Task JoinProjector()
+    {
+        await Groups.AddToGroupAsync(Context.ConnectionId, "projectors");
+        await Groups.AddToGroupAsync(Context.ConnectionId, "arena");
+    }
 
     /// <summary>Kiosk confirms it flushed a final snapshot after BREACH_IMMINENT.</summary>
     public Task AckImminent(int attackId)

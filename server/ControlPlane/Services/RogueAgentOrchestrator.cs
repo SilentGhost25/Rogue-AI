@@ -204,19 +204,46 @@ public class RogueAgentOrchestrator : BackgroundService
         var attack = _attacks.SingleOrDefault(a => a.Id == attackId);
         if (attack == null) throw new ArgumentException($"Attack #{attackId} not found");
 
+        var cur = _db.GetDispatchState(attackId);
+        if (cur != DispatchState.CanaryConfirmed.ToString())
+        {
+            throw new InvalidOperationException($"Cannot fire attack #{attackId} to arena: current state is '{cur}', expected '{DispatchState.CanaryConfirmed}'.");
+        }
+
         _db.SetDispatchState(attackId, DispatchState.ArenaImminent.ToString());
 
         var imminentAt = DateTime.UtcNow;
         var landAt = imminentAt.AddSeconds(attack.Dispatch.ImminentSeconds);
 
-        // 1. Lightweight broadcast FIRST (no payload bytes)
-        await _hub.Clients.Group("arena").SendAsync("BREACH_IMMINENT", new
+        // Pre-register attack deliveries for participants so they can pre-fetch payload during countdown
+        using (var c = _db.Open())
         {
-            attackId = attack.Id,
-            landAtUtc = landAt.ToString("O"),
-            imminentSeconds = attack.Dispatch.ImminentSeconds,
-            title = !string.IsNullOrWhiteSpace(attack.Narrative.BroadcastTitle) ? attack.Narrative.BroadcastTitle : $"BREACH IMMINENT: {attack.Title}"
-        });
+            using var pCmd = c.CreateCommand();
+            pCmd.CommandText = "SELECT id FROM participants WHERE status != 'disqualified'";
+            using var rd = pCmd.ExecuteReader();
+            var pids = new List<string>();
+            while (rd.Read()) pids.Add(rd.GetString(0));
+            rd.Close();
+
+            using var tx = c.BeginTransaction();
+            foreach (var pid in pids)
+            {
+                using var ins = c.CreateCommand();
+                ins.Transaction = tx;
+                ins.CommandText = """
+                    INSERT INTO attack_deliveries (attack_id, participant_id, landed_at)
+                    VALUES ($a, $p, NULL)
+                    ON CONFLICT(attack_id, participant_id) DO NOTHING;
+                    """;
+                ins.Parameters.AddWithValue("$a", attackId);
+                ins.Parameters.AddWithValue("$p", pid);
+                ins.ExecuteNonQuery();
+            }
+            tx.Commit();
+        }
+
+        // 1. Lightweight broadcast FIRST with landAtUtc timestamp
+        await _hub.Clients.Group("arena").SendAsync("BREACH_IMMINENT", attack.Id, attack.Dispatch.ImminentSeconds, landAt.ToString("O"));
 
         _db.Log("BREACH_IMMINENT", attackId: attack.Id, payloadJson: JsonSerializer.Serialize(new { landAtUtc = landAt }));
         _db.SetAttackDispatchedAt(attackId, imminentAt);
@@ -230,44 +257,20 @@ public class RogueAgentOrchestrator : BackgroundService
                 await Task.Delay(delay);
             }
 
-            // Unlock payload delivery gating for all currently enrolled participants
+            var landedTimeStr = DateTime.UtcNow.ToString("O");
             using (var c = _db.Open())
+            using (var upd = c.CreateCommand())
             {
-                using var pCmd = c.CreateCommand();
-                pCmd.CommandText = "SELECT id FROM participants WHERE status != 'disqualified'";
-                using var rd = pCmd.ExecuteReader();
-                var pids = new List<string>();
-                while (rd.Read()) pids.Add(rd.GetString(0));
-                rd.Close();
-
-                using var tx = c.BeginTransaction();
-                foreach (var pid in pids)
-                {
-                    using var ins = c.CreateCommand();
-                    ins.Transaction = tx;
-                    ins.CommandText = """
-                        INSERT INTO attack_deliveries (attack_id, participant_id, landed_at)
-                        VALUES ($a, $p, $t)
-                        ON CONFLICT(attack_id, participant_id) DO UPDATE SET landed_at = $t WHERE landed_at IS NULL;
-                        """;
-                    ins.Parameters.AddWithValue("$a", attackId);
-                    ins.Parameters.AddWithValue("$p", pid);
-                    ins.Parameters.AddWithValue("$t", DateTime.UtcNow.ToString("O"));
-                    ins.ExecuteNonQuery();
-                }
-                tx.Commit();
+                upd.CommandText = "UPDATE attack_deliveries SET landed_at = $t WHERE attack_id = $a AND landed_at IS NULL";
+                upd.Parameters.AddWithValue("$t", landedTimeStr);
+                upd.Parameters.AddWithValue("$a", attackId);
+                upd.ExecuteNonQuery();
             }
 
             _db.SetDispatchState(attackId, DispatchState.ArenaLanded.ToString());
             _db.Log("ATTACK_LANDED", attackId: attack.Id);
 
-            await _hub.Clients.Group("arena").SendAsync("ATTACK_LANDED", new
-            {
-                attackId = attack.Id,
-                title = attack.Title,
-                narrative = attack.Narrative.Landed,
-                landedAtUtc = DateTime.UtcNow.ToString("O")
-            });
+            await _hub.Clients.Group("arena").SendAsync("ATTACK_LANDED", attack.Id);
 
             _logger.LogInformation("Attack #{Id} officially landed across arena.", attack.Id);
         });

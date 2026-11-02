@@ -206,6 +206,46 @@ app.MapPost("/api/kiosk/{id}/snapshot", async (string id, SnapshotRequest req, H
     return Results.Ok(new { written, rejected });
 });
 
+app.MapGet("/api/time", () => Results.Ok(new { serverTimeUtc = DateTime.UtcNow.ToString("O") }));
+
+app.MapGet("/api/kiosk/{id}/active-breach", (string id, HttpRequest httpReq, Database db, RogueAgentOrchestrator orch) =>
+{
+    var token = httpReq.Headers["X-Kiosk-Token"].ToString();
+    if (string.IsNullOrWhiteSpace(token) || !db.ValidateDeskToken(token, id))
+    {
+        return Results.StatusCode(403);
+    }
+
+    foreach (var attack in orch.Attacks)
+    {
+        var state = db.GetDispatchState(attack.Id);
+        if (state == "ArenaImminent" || state == "ArenaLanded")
+        {
+            var dispatchedAt = db.GetAttackDispatchedAt(attack.Id);
+            var landAt = dispatchedAt.HasValue
+                ? dispatchedAt.Value.AddSeconds(attack.Dispatch.ImminentSeconds)
+                : DateTime.UtcNow;
+
+            return Results.Ok(new
+            {
+                activeAttackId = (int?)attack.Id,
+                title = attack.Title,
+                state = state,
+                imminentSeconds = attack.Dispatch.ImminentSeconds,
+                landAtUtc = landAt.ToString("O"),
+                landed = state == "ArenaLanded" || DateTime.UtcNow >= landAt
+            });
+        }
+    }
+
+    return Results.Ok(new
+    {
+        activeAttackId = (int?)null,
+        state = "Idle",
+        landed = false
+    });
+});
+
 app.MapGet("/api/kiosk/{id}/attack-payload/{attackId:int}", async (string id, int attackId, HttpRequest httpReq, Database db, IHttpClientFactory http) =>
 {
     // 1. Authenticate Desk Token
@@ -215,21 +255,28 @@ app.MapGet("/api/kiosk/{id}/attack-payload/{attackId:int}", async (string id, in
         return Results.StatusCode(403);
     }
 
-    // 2. Gate by Attack Delivery (Must have officially landed)
-    using (var c = db.Open())
-    using (var cmd = c.CreateCommand())
+    // 2. Gate by Attack State (Allowed if ArenaImminent or ArenaLanded, or CanaryFired/CanaryConfirmed)
+    var dispatchState = db.GetDispatchState(attackId);
+    var isDispatched = dispatchState == "ArenaImminent" || dispatchState == "ArenaLanded" ||
+                       dispatchState == "CanaryFired" || dispatchState == "CanaryConfirmed";
+
+    if (!isDispatched)
     {
-        cmd.CommandText = "SELECT landed_at FROM attack_deliveries WHERE participant_id = $p AND attack_id = $a";
-        cmd.Parameters.AddWithValue("$p", id);
-        cmd.Parameters.AddWithValue("$a", attackId);
-        var landedAt = cmd.ExecuteScalar();
-        if (landedAt == null || landedAt is DBNull || string.IsNullOrEmpty(landedAt.ToString()))
+        // Fallback: check attack_deliveries table
+        using (var c = db.Open())
+        using (var cmd = c.CreateCommand())
         {
-            return Results.StatusCode(403); // Forbidden: attack has not landed yet
+            cmd.CommandText = "SELECT 1 FROM attack_deliveries WHERE participant_id = $p AND attack_id = $a";
+            cmd.Parameters.AddWithValue("$p", id);
+            cmd.Parameters.AddWithValue("$a", attackId);
+            if (cmd.ExecuteScalar() == null)
+            {
+                return Results.StatusCode(403); // Forbidden: attack is not dispatched
+            }
         }
     }
 
-    // 3. Attack has landed and token is valid: proxy from engine
+    // 3. Attack is imminent or landed and token is valid: proxy from engine
     var client = http.CreateClient("engine");
     var res = await client.GetAsync($"/attacks/{attackId}/payload");
     if (!res.IsSuccessStatusCode) return Results.NotFound();
@@ -667,7 +714,15 @@ app.MapPost("/admin/attacks/{id:int}/confirm-and-fire", async (int id, HttpReque
     try
     {
         await orch.ConfirmAndFireArenaAsync(id);
-        return Results.Ok(new { success = true, attackId = id });
+        return Results.Ok(new { success = true, attackId = id, state = "ArenaImminent" });
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.Conflict(new { error = ex.Message });
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.NotFound(new { error = ex.Message });
     }
     catch (Exception ex)
     {

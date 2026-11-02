@@ -12,7 +12,12 @@ public partial class MainWindow : Window
     private readonly BudgetState _budget = new();
     private HubClient? _hub;
     private SnapshotSync? _sync;
+    private ClockSync? _clock;
     private string? _participantId;
+    private int? _lastAppliedAttackId;
+    private AttackPayloadDto? _bufferedPayload;
+    private int? _bufferedAttackId;
+    private CancellationTokenSource? _landingTimerCts;
 
     public MainWindow()
     {
@@ -21,8 +26,10 @@ public partial class MainWindow : Window
         Loaded += async (_, _) => await StartAsync();
         Closed += (_, _) =>
         {
+            _landingTimerCts?.Cancel();
             _sync?.Dispose();
             CodeView?.Dispose();
+            _ = _clock?.DisposeAsync();
             _ = _hub?.DisposeAsync();
         };
 
@@ -67,30 +74,27 @@ public partial class MainWindow : Window
             // 4. Register with the event server
             _participantId = await _api.RegisterAsync(_settings.DisplayName, _settings.KioskId);
 
-            // 5. Start continuous snapshot sync (every 15s)
+            // 5. Start continuous snapshot sync (every 15s) and clock sync
+            _clock = new ClockSync(_api);
             _sync = new SnapshotSync(_api, _participantId, _settings.WorkspacePath);
             _sync.Start(TimeSpan.FromSeconds(15));
 
             // 6. Connect to SignalR Hub
             _hub = new HubClient(_settings.ServerUrl, _participantId, _api.Token ?? "");
 
-            _hub.Imminent += async (attackId, seconds) =>
+            _hub.Imminent += async (attackId, seconds, landAtUtcStr) =>
             {
                 await Dispatcher.InvokeAsync(() =>
                 {
-                    StatusText.Text = $"⚠ IMMINENT BREACH #{attackId} in {seconds}s! Saving workspace...";
+                    StatusText.Text = $"⚠ IMMINENT BREACH #{attackId} in {seconds}s! Saving workspace & pre-buffering payload...";
                     StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Alert");
                 });
+
+                // Auto-save local workspace before landing
                 await _sync.FlushAsync();
                 await _hub.AckImminentAsync(attackId);
-            };
 
-            _hub.Landed += attackId => Dispatcher.InvokeAsync(async () =>
-            {
-                StatusText.Text = $"🔴 Attack #{attackId} has LANDED! Applying attack payload...";
-                StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Alert");
-                VerdictBadge.Visibility = Visibility.Collapsed;
-
+                // Pre-fetch attack payload into memory during the countdown window
                 if (_participantId is not null)
                 {
                     try
@@ -98,36 +102,53 @@ public partial class MainWindow : Window
                         var payload = await _api.GetAttackPayloadAsync(_participantId, attackId);
                         if (payload?.Files != null && payload.Files.Count > 0)
                         {
-                            var backupDir = Path.Combine(_settings.WorkspacePath, ".breach-backup", attackId.ToString());
-                            Directory.CreateDirectory(backupDir);
-                            foreach (var file in payload.Files)
-                            {
-                                var targetPath = Path.Combine(_settings.WorkspacePath, file.Path);
-                                if (File.Exists(targetPath))
-                                {
-                                    var bkp = Path.Combine(backupDir, file.Path);
-                                    Directory.CreateDirectory(Path.GetDirectoryName(bkp)!);
-                                    File.Copy(targetPath, bkp, overwrite: true);
-                                }
-                                var bytes = Convert.FromBase64String(file.ContentBase64);
-                                Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);
-                                File.WriteAllBytes(targetPath, bytes);
-                            }
+                            _bufferedPayload = payload;
+                            _bufferedAttackId = attackId;
                         }
                     }
                     catch (Exception ex)
                     {
-                        StatusText.Text = $"Payload download warning: {ex.Message}";
+                        await Dispatcher.InvokeAsync(() => StatusText.Text = $"Payload pre-fetch warning: {ex.Message}");
                     }
                 }
 
-                StatusText.Text = $"🔴 Attack #{attackId} has LANDED! Inspect code in viewer and neutralize the exploit.";
+                // Compute exact local delay until server landAtUtc
+                var landAt = DateTime.UtcNow.AddSeconds(seconds);
+                if (!string.IsNullOrEmpty(landAtUtcStr) && DateTime.TryParse(landAtUtcStr, out var parsedLandAt))
+                {
+                    landAt = parsedLandAt.ToUniversalTime();
+                }
 
-                // Refresh website and code viewer to show the corruption
-                Site.Reload();
-                CodeView.RefreshFileList();
-                CodeView.ReloadCurrentFile();
+                var now = _clock?.SyncedUtcNow ?? DateTime.UtcNow;
+                var delay = landAt - now;
+
+                _landingTimerCts?.Cancel();
+                _landingTimerCts = new CancellationTokenSource();
+                var ct = _landingTimerCts.Token;
+
+                _ = Task.Run(async () =>
+                {
+                    if (delay > TimeSpan.Zero)
+                    {
+                        try { await Task.Delay(delay, ct); } catch (OperationCanceledException) { return; }
+                    }
+                    await Dispatcher.InvokeAsync(() => ApplyAttack(attackId));
+                }, ct);
+            };
+
+            _hub.Landed += attackId => Dispatcher.InvokeAsync(() =>
+            {
+                // Instant write or fallback if timer hasn't fired yet
+                ApplyAttack(attackId);
             });
+
+            _hub.Reconnected += async () =>
+            {
+                await ReconcileActiveBreachAsync();
+            };
+
+            // Initial recovery check in case kiosk booted while breach was active/imminent
+            _ = Task.Run(async () => await ReconcileActiveBreachAsync());
 
             _hub.Verdict += (attackId, status, reason, score) => Dispatcher.InvokeAsync(() =>
             {
@@ -143,8 +164,8 @@ public partial class MainWindow : Window
                 {
                     VerdictBadge.Visibility = Visibility.Visible;
                     VerdictBadge.Background = (System.Windows.Media.SolidColorBrush)FindResource("Alert");
-                    VerdictBadgeText.Text = "FAILED";
-                    StatusText.Text = $"Fix rejected for Attack #{attackId}: {reason} (-3 pts penalty)";
+                    VerdictBadgeText.Text = status;
+                    StatusText.Text = $"Submission rejected ({status}): {reason}";
                     StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Alert");
                 }
                 Site.Reload();
@@ -168,6 +189,101 @@ public partial class MainWindow : Window
             StatusText.Text = $"Server offline or unreachable: {ex.Message}";
             StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Alert");
         }
+    }
+
+    private void ApplyAttack(int attackId)
+    {
+        if (_lastAppliedAttackId == attackId) return; // Prevent duplicate writes
+        _lastAppliedAttackId = attackId;
+        _landingTimerCts?.Cancel();
+
+        StatusText.Text = $"🔴 Attack #{attackId} has LANDED! Applying attack payload...";
+        StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Alert");
+        VerdictBadge.Visibility = Visibility.Collapsed;
+
+        var payload = (_bufferedAttackId == attackId) ? _bufferedPayload : null;
+        if (payload == null && _participantId != null)
+        {
+            try
+            {
+                payload = _api.GetAttackPayloadAsync(_participantId, attackId).GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                StatusText.Text = $"Payload download warning: {ex.Message}";
+            }
+        }
+
+        if (payload?.Files != null && payload.Files.Count > 0)
+        {
+            var backupDir = Path.Combine(_settings.WorkspacePath, ".breach-backup", attackId.ToString());
+            Directory.CreateDirectory(backupDir);
+            foreach (var file in payload.Files)
+            {
+                var targetPath = Path.Combine(_settings.WorkspacePath, file.Path);
+                if (File.Exists(targetPath))
+                {
+                    var bkp = Path.Combine(backupDir, file.Path);
+                    Directory.CreateDirectory(Path.GetDirectoryName(bkp)!);
+                    File.Copy(targetPath, bkp, overwrite: true);
+                }
+                var bytes = Convert.FromBase64String(file.ContentBase64);
+                Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);
+                File.WriteAllBytes(targetPath, bytes);
+            }
+        }
+
+        StatusText.Text = $"🔴 Attack #{attackId} has LANDED! Inspect code in viewer and neutralize the exploit.";
+
+        // Refresh website and code viewer to show the corruption
+        Site.Reload();
+        CodeView.RefreshFileList();
+        CodeView.ReloadCurrentFile();
+    }
+
+    private async Task ReconcileActiveBreachAsync()
+    {
+        if (_participantId == null) return;
+        try
+        {
+            var breach = await _api.GetActiveBreachAsync(_participantId);
+            if (breach?.ActiveAttackId != null)
+            {
+                var attackId = breach.ActiveAttackId.Value;
+                if (_lastAppliedAttackId != attackId)
+                {
+                    if (breach.Landed)
+                    {
+                        await Dispatcher.InvokeAsync(() => ApplyAttack(attackId));
+                    }
+                    else if (DateTime.TryParse(breach.LandAtUtc, out var landAt))
+                    {
+                        var now = _clock?.SyncedUtcNow ?? DateTime.UtcNow;
+                        var delay = landAt.ToUniversalTime() - now;
+                        if (delay <= TimeSpan.Zero)
+                        {
+                            await Dispatcher.InvokeAsync(() => ApplyAttack(attackId));
+                        }
+                        else
+                        {
+                            var payload = await _api.GetAttackPayloadAsync(_participantId, attackId);
+                            _bufferedPayload = payload;
+                            _bufferedAttackId = attackId;
+
+                            _landingTimerCts?.Cancel();
+                            _landingTimerCts = new CancellationTokenSource();
+                            var ct = _landingTimerCts.Token;
+                            _ = Task.Run(async () =>
+                            {
+                                try { await Task.Delay(delay, ct); } catch (OperationCanceledException) { return; }
+                                await Dispatcher.InvokeAsync(() => ApplyAttack(attackId));
+                            }, ct);
+                        }
+                    }
+                }
+            }
+        }
+        catch { }
     }
 
     private void InitializeTerminals()

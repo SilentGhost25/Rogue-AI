@@ -8,24 +8,30 @@ public sealed class HubClient : IAsyncDisposable
     private readonly string _participantId;
     private readonly string _token;
 
-    public event Func<int, int, Task>? Imminent;
+    public event Func<int, int, string?, Task>? Imminent;
     public event Action<int>? Landed;
     public event Action<string>? Message;
     public event Action? Paused;
     public event Action<int, string, string, double>? Verdict;
+    public event Func<Task>? Reconnected;
 
     public HubClient(string serverUrl, string participantId, string token = "")
     {
         _participantId = participantId;
         _token = token;
         _conn = new HubConnectionBuilder().WithUrl($"{serverUrl.TrimEnd('/')}/hub").WithAutomaticReconnect().Build();
-        _conn.On<int, int>("BREACH_IMMINENT", async (id, secs) => { if (Imminent is not null) await Imminent(id, secs); });
+        _conn.On<int, int, string>("BREACH_IMMINENT", async (id, secs, landAt) => { if (Imminent is not null) await Imminent(id, secs, landAt); });
+        _conn.On<int, int>("BREACH_IMMINENT", async (id, secs) => { if (Imminent is not null) await Imminent(id, secs, null); });
         _conn.On<int>("ATTACK_LANDED", id => Landed?.Invoke(id));
         _conn.On<string>("BROADCAST", text => Message?.Invoke(text));
         _conn.On("PAUSED", () => Paused?.Invoke());
         _conn.On<int, string, string, double>("VERDICT", (id, status, reason, score) => Verdict?.Invoke(id, status, reason, score));
-        // Re-join the participant group after every reconnect so no attack is missed.
-        _conn.Reconnected += async _ => await _conn.InvokeAsync("RegisterKiosk", _participantId, _token);
+        // Re-join the participant and arena groups after every reconnect so no attack is missed.
+        _conn.Reconnected += async _ =>
+        {
+            await _conn.InvokeAsync("RegisterKiosk", _participantId, _token);
+            if (Reconnected is not null) await Reconnected();
+        };
     }
 
     public async Task StartAsync()

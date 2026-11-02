@@ -58,9 +58,45 @@ public sealed class ApiClient
         return await res.Content.ReadFromJsonAsync<AttackPayloadDto>();
     }
 
+    public async Task<DateTime?> GetServerTimeAsync()
+    {
+        try
+        {
+            var res = await _http.GetAsync("/api/time");
+            if (!res.IsSuccessStatusCode) return null;
+            var body = await res.Content.ReadFromJsonAsync<ServerTimeResponse>();
+            if (body != null && DateTime.TryParse(body.ServerTimeUtc, out var dt))
+            {
+                return dt.ToUniversalTime();
+            }
+        }
+        catch
+        {
+            // Fall back to local clock on network error
+        }
+        return null;
+    }
+
+    public async Task<ActiveBreachDto?> GetActiveBreachAsync(string participantId)
+    {
+        try
+        {
+            var res = await _http.GetAsync($"/api/kiosk/{participantId}/active-breach");
+            if (!res.IsSuccessStatusCode) return null;
+            return await res.Content.ReadFromJsonAsync<ActiveBreachDto>();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private sealed record ServerTimeResponse(string ServerTimeUtc);
     private sealed record RegisterResponse(string ParticipantId);
     private sealed record EnrollResponse(string ParticipantId, string DeskId);
 }
 
 public sealed record SnapshotFileDto(string Path, string Sha256, string ContentBase64);
 public sealed record AttackPayloadDto(int Attack_Id, List<SnapshotFileDto> Files);
+public sealed record ActiveBreachDto(int? ActiveAttackId, string? Title, string State, int ImminentSeconds, string? LandAtUtc, bool Landed);
+
