@@ -21,7 +21,7 @@ scoring:
   late_solve_multiplier: 0.70
 payload:
   path: "payload/"
-  format: full
+  format: patch
   conflict_files: ["server.js"]
 tests:
   path: "tests/"

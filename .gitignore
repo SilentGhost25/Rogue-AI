@@ -6,7 +6,9 @@ obj/
 *.db
 *.db-wal
 *.db-shm
-data/
+/data/
+server/ControlPlane/Data/backups/
+server/ControlPlane/Data/workspaces/
 infra/repos/
 infra/.env
 .vs/

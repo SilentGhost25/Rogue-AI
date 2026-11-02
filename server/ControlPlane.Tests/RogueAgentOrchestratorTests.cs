@@ -303,6 +303,14 @@ public class RogueAgentOrchestratorTests : IDisposable
             Assert.True(bytes < 2 * 1024 * 1024, $"Attack #{i} payload exceeds 2MB budget: {bytes} bytes");
         }
     }
+
+    [Fact]
+    public void Attack_deliveries_has_unique_index()
+    {
+        var isUnique = _db.QueryScalar<int>(
+            "SELECT \"unique\" FROM pragma_index_list('attack_deliveries') WHERE name = 'ux_attack_deliveries_attack_participant'");
+        Assert.Equal(1, isUnique);
+    }
 }
 
 public class RecordingHubContext : IHubContext<BreachHub>

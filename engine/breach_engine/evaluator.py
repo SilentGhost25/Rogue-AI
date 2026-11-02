@@ -366,7 +366,9 @@ def call_check_fn(fn, base_url: str, context: dict | None = None):
 
 
 def evaluate_attack(attack_id: int, attack_dir: Path, workspace: Path, timeout_seconds: float = 15.0) -> Verdict:
-    check_file = attack_dir / "checks" / "check.py"
+    check_file = attack_dir / "tests" / "check.py"
+    if not check_file.exists():
+        check_file = attack_dir / "checks" / "check.py"
     if not check_file.exists():
         return Verdict(attack_id, FAILED, "Evaluator check file missing.")
 
