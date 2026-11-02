@@ -1,14 +1,14 @@
 # ROGUE AI: The Breach Protocol — Session Context & Architectural Memory
 
 **Event Target Date:** 13 November 2026  
-**Document Status:** **FINAL & FROZEN** (Revision 5.0)  
+**Document Status:** **FINAL & FROZEN** (Revision 6.0 — Orchestrator & Attack Tree Complete)  
 **System Target:** 50 Concurrent Campus Participants | Air-Gapped Campus LAN with AI Whitelist | Dual-Role Desktop Studio
 
 ---
 
 ## 1. Executive Architecture Overview
 
-ROGUE AI: The Breach Protocol is a live cybersecurity competition platform where 50 participants defend an active Node.js web application (`harbour-notes`) against 7 scheduled multi-vector intrusions using AI coding agents (`agy` and `opencode`) and built-in manual code repair, monitored by an ASP.NET Core Control Plane and graded by a Python FastAPI multi-tier evaluator.
+ROGUE AI: The Breach Protocol is a live cybersecurity competition platform where 50 participants defend an active Node.js web application (`harbour-notes`) against 8 scheduled multi-vector intrusions (00-warmup + 01–07 attacks) using AI coding agents (`agy` and `opencode`) and built-in manual code repair, monitored by an ASP.NET Core Control Plane and graded by a Python FastAPI multi-tier evaluator.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
@@ -18,8 +18,9 @@ ROGUE AI: The Breach Protocol is a live cybersecurity competition platform where
 │   │               CENTRAL CONTROL PLANE (Port 5080)                  │   │
 │   │  • ASP.NET Core Minimal APIs + SQLite Append-Only Ledger         │   │
 │   │  • Canonical Centipoint Hashing & Ed25519 Signing                │   │
-│   │  • Desk Token Auth, Gated Payloads & Submission Anti-Spam        │   │
-│   │  • SignalR BreachHub (Admins, Projector, Participant Groups)     │   │
+│   │  • RogueAgentOrchestrator: Manual & Scheduled Attack Dispatch    │   │
+│   │  • SignalR BreachHub (Admins, Projector, Arena, Canary, p:desks) │   │
+│   │  • Desk Token Auth, Gated Payloads & Active Breach Reconcile     │   │
 │   │  • Workspace Store (Encrypted snapshot storage)                  │   │
 │   │  • Rotated Backups (20 rolling + hourly permanent snapshots)     │   │
 │   └────────────────────────────────┬─────────────────────────────────┘   │
@@ -27,6 +28,7 @@ ROGUE AI: The Breach Protocol is a live cybersecurity competition platform where
 │   ┌────────────────────────────────▼─────────────────────────────────┐   │
 │   │               BREACH EVALUATION ENGINE (Port 8000)               │   │
 │   │  • Python FastAPI + Positive ACL Sandbox (.\BreachRunner)        │   │
+│   │  • Multi-tier weighted grading (tier_checks) + ternary fallback  │   │
 │   │  • Child-process CPU accounting (<300ms limit + JIT warm-up)     │   │
 │   │  • Concurrency queue (Semaphore(4)) + Port squatting guard       │   │
 │   │  • Safe degraded mode (no auto-execution unsandboxed on host)    │   │
@@ -38,6 +40,8 @@ ROGUE AI: The Breach Protocol is a live cybersecurity competition platform where
 │   │  • Embedded WebView2 live site view (`http://127.0.0.1:3000`)    │   │
 │   │  • AvalonEdit In-App Code Editor (with auto-save on breach)      │   │
 │   │  • Token-bucket SnapshotSync + Pre-landing local hash guard      │   │
+│   │  • Pre-buffered Payload Download on BREACH_IMMINENT countdown    │   │
+│   │  • Active breach reconciliation on launch / restart              │   │
 │   │  • Top-bar Submission (F5), Local Test (F6), Queue Display       │   │
 │   └──────────────────────────────────────────────────────────────────┘   │
 └──────────────────────────────────────────────────────────────────────────┘
@@ -45,11 +49,14 @@ ROGUE AI: The Breach Protocol is a live cybersecurity competition platform where
 
 ---
 
-## 2. Frozen Specifications (v5.0 Decisions)
+## 2. Frozen Specifications (v6.0 Decisions)
 
 1. **Evaluator Sandboxing:** Positive least-privilege explicit ACLs on `.\BreachRunner` (read/execute on `node.exe`, write access strictly inside assigned ephemeral folder). Loopback defense via `X-Internal-Token`. Safe degraded mode halts auto-eval instead of running untrusted code unsandboxed on host.
 2. **Child Process CPU Measurement (Attack 6):** Measured via `psutil.Process(child_pid).cpu_times()`, with 3 warm-up requests and a `<300ms` user CPU threshold.
-3. **Collision-Proof Attack Landing:** Pre-landing hash verification on kiosk. Auto-save in-memory editor buffers at `BREACH_IMMINENT`. Retry loop with local backup on persistent conflict.
+3. **Collision-Proof Attack Landing & Pre-Buffering:**
+   - Pre-landing hash verification on kiosk. Auto-save in-memory editor buffers at `BREACH_IMMINENT`.
+   - Server broadcasts authoritative `landAtUtc` with 10-second imminent countdown window.
+   - Kiosks pre-buffer payload archive over `/api/kiosk/{id}/attack-payload/{attackId}` during the countdown window and land simultaneously at `landAtUtc` ($\Delta < 200\text{ms}$).
 4. **Token-Bucket Snapshot Limiter:** Burst capacity of 3 tokens, refill 1 per 5 seconds. System flushes bypass rate limiter.
 5. **Centipoint Canonical Ledger Hashing:**
    - Pre-allocated sequence inside `BEGIN IMMEDIATE` transaction.
@@ -64,6 +71,7 @@ ROGUE AI: The Breach Protocol is a live cybersecurity competition platform where
 9. **Contingency Strategy:** No local GPU on host machine. Manual editing in AvalonEdit is the official competition contingency. Scoring is 100% neutral to AI vs. manual edits.
 10. **Day 10 Go/No-Go Checklist:** Defined with 7 objective gates; if any fail, predetermined degraded paths are executed.
 11. **Ephemeral Testing Protocol:** Standalone verification scripts created to test code during development must be deleted immediately after execution to keep the repository clean. Official test suites remain in `server/ControlPlane.Tests`, `engine/tests`, and `site/test`.
+12. **Multi-Tier Partial Credit Support:** Evaluator inspects test script exports for `tier_checks()`. If present, applies tier weights proportionally against base points; otherwise falls back to binary ternary logic.
 
 ---
 
@@ -79,3 +87,32 @@ ROGUE AI: The Breach Protocol is a live cybersecurity competition platform where
 | **Full Token Gating Across API & Hub** | ✅ VERIFIED | Live HTTP `curl` & SignalR `BreachHub` | Gated snapshot, submit, telemetry, attack payload, and hub registration. Replay blocked (403). |
 | **Live Attack Payload Gating** | ✅ VERIFIED | Live HTTP `curl` against port 5080 | 403 on pre-landing; 403 on token mismatch; 403 on missing token; 200 OK after landing. |
 | **Live Backup Under Load + Mirroring** | ✅ VERIFIED | Live runtime logs | Periodic SQLite `VACUUM INTO` verified while server answering requests; USB mirror path added. |
+
+---
+
+## 4. Day 2 Completed Deliverables: Rogue Agent Orchestrator & Attack Tree
+
+| Component | Status | Implementation Details | Acceptance Command |
+|---|---|---|---|
+| **Models (`AttackManifest`, `AttackDispatchState`)** | ✅ VERIFIED | [AttackManifest.cs](file:///c:/Users/Tarun%20J/Downloads/Rogue%20AI%20Round%202%20v2/server/ControlPlane/Models/AttackManifest.cs) with YAML deserializer, strict 0..N sequential IDs, tier weights summing to 100, and `< 2 MB` payload directory budget assertion. Enum `DispatchState` (`Pending`, `CanaryFired`, `CanaryConfirmed`, `ArenaImminent`, `ArenaLanded`, `Failed`). | `dotnet test server/ControlPlane.Tests` |
+| **Database Schema & Methods** | ✅ VERIFIED | [Database.Orchestrator.cs](file:///c:/Users/Tarun%20J/Downloads/Rogue%20AI%20Round%202%20v2/server/ControlPlane/Data/Database.Orchestrator.cs) with `attack_dispatch` and `attack_dispatch_runtime` tables. Atomic methods: `GetDispatchState`, `EnsureDispatchRow`, `TransitionDispatch`, `PreregisterAttackDeliveries`, `MarkAttackLanded`, `IsAttackDeliveryPreRegistered`, `AllParticipantIds`, and `GetActiveAttackForReconcile`. | `dotnet test server/ControlPlane.Tests` |
+| **Orchestrator BackgroundService** | ✅ VERIFIED | [RogueAgentOrchestrator.cs](file:///c:/Users/Tarun%20J/Downloads/Rogue%20AI%20Round%202%20v2/server/ControlPlane/Services/RogueAgentOrchestrator.cs) with `IClock` abstraction (`_clock.UtcNow`). Implements `FireToCanaryAsync`, `ConfirmCanary`, `FireToArenaAsync` (generating server-authoritative `landAtUtc`), `LandAtAsync`, and state validation. | `dotnet test server/ControlPlane.Tests` |
+| **Host Admin Control Endpoints** | ✅ VERIFIED | [Program.cs](file:///c:/Users/Tarun%20J/Downloads/Rogue%20AI%20Round%202%20v2/server/ControlPlane/Program.cs):<br>• `GET /api/admin/attacks`<br>• `GET /api/admin/attacks/{id}/state`<br>• `POST /api/admin/attacks/{id}/canary`<br>• `POST /api/admin/attacks/{id}/confirm-canary`<br>• `POST /api/admin/attacks/{id}/fire-arena` (returns `landAtUtc`, enforces 409 conflict on duplicate/invalid state). | `dotnet test server/ControlPlane.Tests` |
+| **Kiosk Gated Payload Delivery** | ✅ VERIFIED | `/api/kiosk/{id}/attack-payload/{attackId}`: Canonical gating allows downloads during `ArenaImminent` and `ArenaLanded` for pre-registered kiosks, and during `CanaryFired` strictly for the canary desk. | `dotnet test server/ControlPlane.Tests` |
+| **Active Breach Reconciliation** | ✅ VERIFIED | `GET /api/kiosk/{id}/active-breach`: Queries `GetActiveAttackForReconcile()` returning current active breach, countdown timestamp, and landing state to recover late or rebooted kiosks. | `dotnet test server/ControlPlane.Tests` |
+| **SignalR BreachHub Group Wiring** | ✅ VERIFIED | [BreachHub.cs](file:///c:/Users/Tarun%20J/Downloads/Rogue%20AI%20Round%202%20v2/server/ControlPlane/Hubs/BreachHub.cs): Kiosks join `arena` + `p:{deskId}`, canary desk joins `canary`, projector joins `arena`. Broadcasts support dual typed object and 3-primitive overloads. | `dotnet test server/ControlPlane.Tests` |
+| **Attack Content Tree (`attacks/00-07`)** | ✅ VERIFIED | 8 full packages: `00-warmup`, `01-reflected-xss`, `02-stored-xss`, `03-sqli`, `04-csrf`, `05-idor`, `06-cpu-sabotage`, `07-supply-chain`. All include `manifest.yaml`, `hints.yaml`, `payload/`, and `tests/check.py` / `checks/check.py` with multi-tier checks. Dual Python-C# schema compatibility preserved. | `python -m unittest discover -s tests -t .` |
+| **Evaluator Multi-Tier Execution** | ✅ VERIFIED | [evaluator.py](file:///c:/Users/Tarun%20J/Downloads/Rogue%20AI%20Round%202%20v2/engine/breach_engine/evaluator.py): Weighted tier execution via `tier_checks()` fallback to binary grading. | `python -m unittest discover -s tests -t .` |
+| **Adversarial Sandbox Isolation** | ✅ VERIFIED | [test_sandbox_escape.py](file:///c:/Users/Tarun%20J/Downloads/Rogue%20AI%20Round%202%20v2/tests/security/test_sandbox_escape.py): Path traversal, token leak, environment scrubbing, fork bomb containment, and network outbound restrictions. | `python tests/security/test_sandbox_escape.py` |
+
+---
+
+## 5. Current Test & Build Status Summary
+
+| Test Suite / Target | Command | Result |
+|---|---|---|
+| **ControlPlane Tests** | `$env:DOTNET_ROOT = "$env:LOCALAPPDATA\dotnet"; $env:Path = "$env:DOTNET_ROOT;$env:Path"; dotnet test server/ControlPlane.Tests` | **22 Passed, 0 Failed, 0 Skipped** (100% green) |
+| **LabKiosk Build** | `$env:DOTNET_ROOT = "$env:LOCALAPPDATA\dotnet"; $env:Path = "$env:DOTNET_ROOT;$env:Path"; dotnet build kiosk/LabKiosk` | **0 Warnings, 0 Errors** |
+| **Engine Tests** | `cd engine && python -m unittest discover -s tests -t .` | **10 Passed, 0 Failed** |
+| **Sandbox Security Tests** | `python tests/security/test_sandbox_escape.py` | **5 Passed, 0 Failed** |
+| **Harbour Notes Site** | `cd site && npm test` | **6 Passed, 0 Failed** |
