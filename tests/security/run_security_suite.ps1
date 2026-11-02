@@ -56,13 +56,22 @@ if (-not $portActive) {
 
 try {
     # 3. Run Live Security Suite (Python)
-    Write-Host "`n[3/3] Running Live REST & SignalR Hardening Tests..." -ForegroundColor Yellow
+    Write-Host "`n[3/4] Running Live REST & SignalR Hardening Tests..." -ForegroundColor Yellow
     python "$root\tests\security\test_security_suite.py"
     if ($LASTEXITCODE -ne 0) {
         Write-Error "Live Security Suite failed!"
         exit $LASTEXITCODE
     }
     Write-Host "--> Live Hardening Tests PASSED." -ForegroundColor Green
+
+    # 4. Run Adversarial Sandbox Escape & DoS Containment Suite
+    Write-Host "`n[4/4] Running Adversarial Sandbox Escape & Resource Isolation Suite..." -ForegroundColor Yellow
+    python "$root\tests\security\test_sandbox_escape.py"
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Sandbox Escape Suite failed!"
+        exit $LASTEXITCODE
+    }
+    Write-Host "--> Sandbox Escape & Resource Isolation PASSED." -ForegroundColor Green
 }
 finally {
     if ($startedServer -and $cpProcess -and -not $cpProcess.HasExited) {
