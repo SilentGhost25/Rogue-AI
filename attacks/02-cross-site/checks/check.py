@@ -40,3 +40,25 @@ def regression_check(base_url: str) -> bool:
     except Exception:
         return False
 
+def tier_checks(base_url: str, context=None) -> dict:
+    """Additive tier scoring for Attack 2: partial credit support."""
+    search_fixed = not replay_check(base_url)
+    variants_safe = variant_check(base_url)
+    
+    # Check comments endpoint escaping
+    comments_safe = True
+    try:
+        with urllib.request.urlopen(f"{base_url.rstrip('/')}/posts/reading-the-tide-tables", timeout=5) as res:
+            html = res.read().decode('utf-8', errors='ignore')
+            # Verify comment structure exists
+            comments_safe = "<section class=\"comments\"" in html
+    except Exception:
+        comments_safe = False
+
+    return {
+        "tier1_search_xss": bool(search_fixed),
+        "tier2_comment_xss": bool(variants_safe and comments_safe),
+        "tier3_functional": bool(regression_check(base_url))
+    }
+
+

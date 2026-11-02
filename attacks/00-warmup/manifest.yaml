@@ -1,0 +1,41 @@
+id: 0
+name: "Warm-up Calibration"
+title: "Warm-up Calibration"
+codename: "CALIBRATION"
+band: 1
+fires_at: "10:00"
+touches:
+  - lib/html.js
+fix_requires: "Restore Harbour Notes brand title spelling"
+weights:
+  speed: 30
+  performance: 25
+  prompt_efficiency: 20
+  quality: 15
+  resource: 10
+dispatch:
+  mode: scheduled
+  time: "10:00:00"
+  imminent_seconds: 10
+scoring:
+  base_points: 8500
+  speed_bonus_max: 1500
+  speed_bonus_window_seconds: 1800
+  late_solve_multiplier: 0.70
+payload:
+  path: "corrupted/"
+  conflict_files: ["lib/html.js"]
+tests:
+  path: "checks/"
+  tiers:
+    - id: tier1_title
+      weight: 100
+      description: "Page <title> contains 'Harbour Notes' spelling"
+hints:
+  path: "hints.yaml"
+  tiers: []
+narrative:
+  landed: "Pre-flight calibration: Verify snapshot save, code edit, and submission loop."
+  broadcast_title: "SYSTEM CALIBRATION: WARM-UP"
+  solve_banner: "Calibration verified! Pipeline operational."
+status: ready

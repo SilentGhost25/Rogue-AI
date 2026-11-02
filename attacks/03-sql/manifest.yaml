@@ -1,5 +1,8 @@
 id: 3
 name: "SQL injection in login and search"
+title: "SQL Injection in Search Query"
+codename: "DEEP_EXFIL"
+band: 1
 fires_at: "12:15"
 touches:
   - routes/search.js
@@ -10,7 +13,37 @@ weights:
   prompt_efficiency: 20
   quality: 15
   resource: 10
-reference_prompts: 3
+dispatch:
+  mode: scheduled
+  time: "12:15:00"
+  imminent_seconds: 10
+scoring:
+  base_points: 8500
+  speed_bonus_max: 1500
+  speed_bonus_window_seconds: 1800
+  late_solve_multiplier: 0.70
+payload:
+  path: "corrupted/"
+  conflict_files: ["routes/search.js"]
+tests:
+  path: "checks/"
+  tiers:
+    - id: tier1_union_blocked
+      weight: 50
+      description: "Union-based injection data leak blocked"
+    - id: tier2_blind_blocked
+      weight: 30
+      description: "Boolean/tautology injection neutralized"
+    - id: tier3_functional
+      weight: 20
+      description: "Normal keyword search functions with apostrophes/quotes"
+hints:
+  path: "hints.yaml"
+  tiers: []
+narrative:
+  landed: "An adversarial probe has broken through search queries. Unauthorized SQL syntax is directly manipulating backend database execution."
+  broadcast_title: "⚠ ATTACK 3: SQL INJECTION IN SEARCH"
+  solve_banner: "Query parameterization enforced! Database injection neutralized."
 replay_checks: ["checks/check.py:replay_check"]
 hidden_variant_checks: ["checks/check.py:variant_check"]
 status: ready

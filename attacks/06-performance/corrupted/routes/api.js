@@ -8,7 +8,7 @@ module.exports = (db) => {
     res.json(db.prepare('SELECT slug, title, summary, created_at FROM posts ORDER BY created_at DESC').all()));
   // SABOTAGED: Injected CPU-exhaustion loop blocking the Node event loop
   r.get('/api/stats', (_req, res) => {
-    for (let i = 0; i < 200000; i++) {
+    for (let i = 0; i < 500000; i++) {
       crypto.createHash('sha256').update(String(i)).digest('hex');
     }
     const posts = db.prepare('SELECT COUNT(*) AS n FROM posts').get().n;

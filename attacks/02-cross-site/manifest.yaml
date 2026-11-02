@@ -1,5 +1,8 @@
 id: 2
 name: "Cross-site scripting in search and comments"
+title: "Cross-site Scripting Vulnerability"
+codename: "PHANTOM_SCRIPT"
+band: 1
 fires_at: "11:30"
 touches:
   - routes/search.js
@@ -11,7 +14,37 @@ weights:
   prompt_efficiency: 20
   quality: 15
   resource: 10
-reference_prompts: 3
+dispatch:
+  mode: scheduled
+  time: "11:30:00"
+  imminent_seconds: 10
+scoring:
+  base_points: 8500
+  speed_bonus_max: 1500
+  speed_bonus_window_seconds: 1800
+  late_solve_multiplier: 0.70
+payload:
+  path: "corrupted/"
+  conflict_files: ["routes/search.js", "routes/posts.js"]
+tests:
+  path: "checks/"
+  tiers:
+    - id: tier1_search_xss
+      weight: 40
+      description: "Reflected XSS in search query escaped"
+    - id: tier2_comment_xss
+      weight: 30
+      description: "Stored XSS in comments and variant payloads neutralized"
+    - id: tier3_functional
+      weight: 30
+      description: "Legitimate search and post comments functional"
+hints:
+  path: "hints.yaml"
+  tiers: []
+narrative:
+  landed: "Malicious payloads have penetrated user input handling. Search queries and post comments are executing arbitrary browser scripts."
+  broadcast_title: "⚠ ATTACK 2: CROSS-SITE SCRIPTING IN SEARCH & COMMENTS"
+  solve_banner: "Search and comment sanitation active! Cross-site scripting neutralized."
 replay_checks: ["checks/check.py:replay_check"]
 hidden_variant_checks: ["checks/check.py:variant_check"]
 status: ready

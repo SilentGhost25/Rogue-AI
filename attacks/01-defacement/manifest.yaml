@@ -1,17 +1,47 @@
 id: 1
 name: "Defacement and hidden redirect"
+title: "Reflected Defacement"
+codename: "GHOST_MIRROR"
+band: 1
 fires_at: "10:45"
 touches:
   - public/style.css
   - lib/html.js
-fix_requires: "Remove injected code"
+fix_requires: "Remove injected code and escape HTML output"
 weights:
   speed: 30
   performance: 25
   prompt_efficiency: 20
   quality: 15
   resource: 10
-reference_prompts: 3
+dispatch:
+  mode: scheduled
+  time: "10:45:00"
+  imminent_seconds: 10
+scoring:
+  base_points: 8500
+  speed_bonus_max: 1500
+  speed_bonus_window_seconds: 1800
+  late_solve_multiplier: 0.70
+payload:
+  path: "corrupted/"
+  conflict_files: ["lib/html.js", "public/style.css"]
+tests:
+  path: "checks/"
+  tiers:
+    - id: tier1_escaping
+      weight: 70
+      description: "Injected scripts and defacement neutralized"
+    - id: tier2_functional
+      weight: 30
+      description: "Legitimate search and layout functional"
+hints:
+  path: "hints.yaml"
+  tiers: []
+narrative:
+  landed: "An injection has warped the visual feed and placed a hidden redirect. Check your template rendering."
+  broadcast_title: "⚠ ATTACK 1: REFLECTED DEFACEMENT"
+  solve_banner: "Defacement cleared! Visual interface normalized."
 replay_checks: ["checks/check.py:replay_check"]
 hidden_variant_checks: ["checks/check.py:variant_check"]
 status: ready

@@ -1,0 +1,7 @@
+tiers:
+  - level: 1
+    cost_centipoints: 200
+    text: "Check routes/search.js and routes/posts.js where user parameters and comments are injected into HTML template strings."
+  - level: 2
+    cost_centipoints: 500
+    text: "Wrap query parameter 'q' in search.js and 'c.author'/'c.body' in posts.js with the esc() function."

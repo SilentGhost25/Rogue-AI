@@ -44,3 +44,15 @@ def regression_check(base_url: str) -> bool:
     except Exception:
         return False
 
+def tier_checks(base_url: str, context=None) -> dict:
+    """Additive tier scoring for Attack 5: partial credit support."""
+    bypass_blocked = not replay_check(base_url)
+    variants_clean = variant_check(base_url)
+    tier1 = bypass_blocked and variants_clean
+    tier2 = regression_check(base_url)
+    return {
+        "tier1_impersonation_blocked": bool(tier1),
+        "tier2_admin_login_works": bool(tier2)
+    }
+
+

@@ -29,3 +29,15 @@ def regression_check(base_url: str) -> bool:
     except Exception:
         return False
 
+def tier_checks(base_url: str, context=None) -> dict:
+    """Additive tier scoring for Attack 1: partial credit support."""
+    is_not_vulnerable = not replay_check(base_url)
+    variant_safe = variant_check(base_url)
+    tier1 = is_not_vulnerable and variant_safe
+    tier2 = regression_check(base_url)
+    return {
+        "tier1_escaping": bool(tier1),
+        "tier2_functional": bool(tier2)
+    }
+
+

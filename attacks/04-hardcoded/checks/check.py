@@ -35,3 +35,15 @@ def regression_check(base_url: str) -> bool:
     except Exception:
         return False
 
+def tier_checks(base_url: str, context=None) -> dict:
+    """Additive tier scoring for Attack 4: partial credit support."""
+    backdoor_closed = not replay_check(base_url)
+    variants_clean = variant_check(base_url)
+    tier1 = backdoor_closed and variants_clean
+    tier2 = regression_check(base_url)
+    return {
+        "tier1_backdoor_closed": bool(tier1),
+        "tier2_legit_api_works": bool(tier2)
+    }
+
+

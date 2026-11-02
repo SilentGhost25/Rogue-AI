@@ -13,6 +13,8 @@ builder.Services.AddSingleton<Database>();
 builder.Services.AddSingleton<EventState>();
 builder.Services.AddSingleton<WorkspaceStore>();
 builder.Services.AddSingleton<AttackDispatcher>();
+builder.Services.AddSingleton<RogueAgentOrchestrator>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<RogueAgentOrchestrator>());
 builder.Services.AddHostedService<BackupService>();
 builder.Services.AddHttpClient("engine", (sp, c) =>
     c.BaseAddress = new Uri(sp.GetRequiredService<IConfiguration>()["Breach:EngineUrl"] ?? "http://127.0.0.1:8000"));
@@ -618,6 +620,75 @@ app.MapGet("/admin/backup/status", (HttpRequest r, Database db, IConfiguration c
     var mirrorDir = config["Breach:BackupMirrorPath"];
     var status = BackupService.GetBackupStatus(backupDir, mirrorDir);
     return Results.Ok(status);
+});
+
+// RogueAgentOrchestrator Admin and Hint endpoints
+app.MapGet("/admin/attacks/dispatch-status", (HttpRequest r, Database db, RogueAgentOrchestrator orch) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+    return Results.Ok(orch.GetDispatchOverview());
+});
+
+app.MapPost("/admin/attacks/{id:int}/fire-canary", async (int id, HttpRequest r, Database db, RogueAgentOrchestrator orch) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+    try
+    {
+        await orch.FireToCanaryAsync(id);
+        return Results.Ok(new { success = true, attackId = id });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
+app.MapPost("/admin/attacks/{id:int}/confirm-canary", async (int id, HttpRequest r, Database db, RogueAgentOrchestrator orch) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+    try
+    {
+        await orch.ConfirmCanaryAsync(id);
+        return Results.Ok(new { success = true, attackId = id });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
+app.MapPost("/admin/attacks/{id:int}/confirm-and-fire", async (int id, HttpRequest r, Database db, RogueAgentOrchestrator orch) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+    try
+    {
+        await orch.ConfirmAndFireArenaAsync(id);
+        return Results.Ok(new { success = true, attackId = id });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
+app.MapPost("/api/kiosk/{id}/hint/{attackId:int}/{level:int}", (string id, int attackId, int level, HttpRequest httpReq, Database db, RogueAgentOrchestrator orch) =>
+{
+    var token = httpReq.Headers["X-Kiosk-Token"].ToString();
+    if (string.IsNullOrWhiteSpace(token) || !db.ValidateDeskToken(token, id))
+    {
+        return Results.StatusCode(403);
+    }
+
+    var (success, msg, text, cost) = orch.RequestHint(id, attackId, level);
+    if (!success)
+    {
+        return Results.BadRequest(new { error = msg });
+    }
+    return Results.Ok(new { text, cost, level, attackId });
 });
 
 app.Run();

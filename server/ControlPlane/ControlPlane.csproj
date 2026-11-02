@@ -7,5 +7,6 @@
   <ItemGroup>
     <!-- Pin and verify on nuget.org before first restore (AGENTS.md rule). -->
     <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.2" />
+    <PackageReference Include="YamlDotNet" Version="16.3.0" />
   </ItemGroup>
 </Project>

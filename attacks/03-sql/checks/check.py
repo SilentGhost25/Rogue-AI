@@ -34,3 +34,15 @@ def regression_check(base_url: str) -> bool:
     except Exception:
         return False
 
+def tier_checks(base_url: str, context=None) -> dict:
+    """Additive tier scoring for Attack 3: partial credit support."""
+    union_safe = not replay_check(base_url)
+    blind_safe = variant_check(base_url)
+    functional = regression_check(base_url)
+    return {
+        "tier1_union_blocked": bool(union_safe),
+        "tier2_blind_blocked": bool(blind_safe),
+        "tier3_functional": bool(functional)
+    }
+
+

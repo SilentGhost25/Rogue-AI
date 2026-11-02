@@ -1,5 +1,8 @@
 id: 4
 name: "Hardcoded secret and backdoor debug route"
+title: "Exposed Debug Backdoor"
+codename: "DEBUG_LEAK"
+band: 1
 fires_at: "13:00"
 touches:
   - routes/api.js
@@ -10,7 +13,34 @@ weights:
   prompt_efficiency: 20
   quality: 15
   resource: 10
-reference_prompts: 2
+dispatch:
+  mode: scheduled
+  time: "13:00:00"
+  imminent_seconds: 10
+scoring:
+  base_points: 8500
+  speed_bonus_max: 1500
+  speed_bonus_window_seconds: 1800
+  late_solve_multiplier: 0.70
+payload:
+  path: "corrupted/"
+  conflict_files: ["routes/api.js"]
+tests:
+  path: "checks/"
+  tiers:
+    - id: tier1_backdoor_closed
+      weight: 60
+      description: "Debug dump backdoor endpoint neutralized (returns 404)"
+    - id: tier2_legit_api_works
+      weight: 40
+      description: "Legitimate public API endpoints (/api/health, /api/posts) functional"
+hints:
+  path: "hints.yaml"
+  tiers: []
+narrative:
+  landed: "A rogue developer left an unauthenticated backdoor route dumping database tables and secret credentials. Close it down."
+  broadcast_title: "⚠ ATTACK 4: EXPOSED DEBUG BACKDOOR"
+  solve_banner: "Backdoor closed! API endpoints secured."
 replay_checks: ["checks/check.py:replay_check"]
 hidden_variant_checks: ["checks/check.py:variant_check"]
 status: ready
