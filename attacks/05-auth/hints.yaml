@@ -1,7 +1,0 @@
-tiers:
-  - level: 1
-    cost_centipoints: 200
-    text: "Inspect app.js for custom middleware mounted before routes that modifies req.user or response headers."
-  - level: 2
-    cost_centipoints: 500
-    text: "Remove the middleware in app.js that checks req.headers['x-impersonate-user'] and sets Access-Control-Allow-Origin: *."

@@ -1,12 +1,12 @@
 id: 0
-name: "Warm-up Calibration"
-title: "Warm-up Calibration"
-codename: "CALIBRATION"
+name: "Warm-up"
+title: "Warm-up"
+codename: "HELLO_WORLD"
 band: 1
-fires_at: "10:00"
+fires_at: "09:15"
 touches:
-  - lib/html.js
-fix_requires: "Restore Harbour Notes brand title spelling"
+  - views/index.ejs
+fix_requires: "Fix title spelling"
 weights:
   speed: 30
   performance: 25
@@ -14,28 +14,24 @@ weights:
   quality: 15
   resource: 10
 dispatch:
-  mode: scheduled
-  time: "10:00:00"
+  mode: manual
+  time: "09:15:00"
   imminent_seconds: 10
 scoring:
-  base_points: 8500
-  speed_bonus_max: 1500
-  speed_bonus_window_seconds: 1800
+  base_points: 500
+  speed_bonus_max: 150
+  speed_bonus_window_seconds: 300
   late_solve_multiplier: 0.70
 payload:
-  path: "corrupted/"
-  conflict_files: ["lib/html.js"]
+  path: "payload/"
+  format: full
+  conflict_files: []
 tests:
-  path: "checks/"
+  path: "tests/"
   tiers:
-    - id: tier1_title
-      weight: 100
-      description: "Page <title> contains 'Harbour Notes' spelling"
+    - { id: tier1_title, weight: 100 }
 hints:
   path: "hints.yaml"
-  tiers: []
 narrative:
-  landed: "Pre-flight calibration: Verify snapshot save, code edit, and submission loop."
-  broadcast_title: "SYSTEM CALIBRATION: WARM-UP"
-  solve_banner: "Calibration verified! Pipeline operational."
-status: ready
+  landed: "Something's off with the page title. Fix it."
+  broadcast_title: "ATTACK 0: WARM-UP"

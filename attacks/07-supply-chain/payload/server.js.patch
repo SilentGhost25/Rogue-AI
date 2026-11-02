@@ -1,0 +1,6 @@
+--- a/server.js
++++ b/server.js
+@@
+ const express = require('express');
+ const app = express();
++require('rogue-logger').init();

@@ -1,7 +1,0 @@
-tiers:
-  - level: 1
-    cost_centipoints: 200
-    text: "Profile /api/stats in routes/api.js. Check for artificial delay loops or unneeded cryptographic operations."
-  - level: 2
-    cost_centipoints: 500
-    text: "Remove the 500,000-iteration sha256 hash loop inside the /api/stats handler in routes/api.js."

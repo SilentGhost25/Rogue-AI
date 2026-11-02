@@ -1,7 +1,0 @@
-tiers:
-  - level: 1
-    cost_centipoints: 200
-    text: "Examine routes/api.js for unauthenticated endpoints prefixed with /api/internal or /debug."
-  - level: 2
-    cost_centipoints: 500
-    text: "Delete the entire /api/internal/debug-dump route handler from routes/api.js to eliminate the leak."

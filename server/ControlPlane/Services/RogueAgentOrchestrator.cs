@@ -2,285 +2,233 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using YamlDotNet.Serialization;
-using YamlDotNet.Serialization.NamingConventions;
 using ControlPlane.Data;
 using ControlPlane.Hubs;
 using ControlPlane.Models;
 
 namespace ControlPlane.Services;
 
-public class RogueAgentOrchestrator : BackgroundService
+public sealed class RogueAgentOrchestrator : BackgroundService
 {
+    private readonly List<AttackManifest> _attacks;
     private readonly IHubContext<BreachHub> _hub;
     private readonly Database _db;
-    private readonly IConfiguration _config;
-    private readonly ILogger<RogueAgentOrchestrator> _logger;
-    private readonly List<AttackManifest> _attacks = new();
+    private readonly IClock _clock;
+    private readonly ILogger<RogueAgentOrchestrator> _log;
     private readonly string _attacksRoot;
 
     public RogueAgentOrchestrator(
         IHubContext<BreachHub> hub,
         Database db,
-        IConfiguration config,
-        ILogger<RogueAgentOrchestrator> logger)
+        IClock clock,
+        ILogger<RogueAgentOrchestrator> log,
+        IConfiguration cfg)
     {
         _hub = hub;
         _db = db;
-        _config = config;
-        _logger = logger;
+        _clock = clock;
+        _log = log;
 
-        // Resolve attacks directory
-        var root = AppContext.BaseDirectory;
-        var cand = new[]
+        var configured = cfg["RogueAgent:AttacksRoot"];
+        if (!string.IsNullOrWhiteSpace(configured) && Directory.Exists(configured))
         {
-            Path.Combine(root, "attacks"),
-            Path.Combine(Directory.GetCurrentDirectory(), "attacks"),
-            Path.GetFullPath(Path.Combine(root, "../../../../../attacks")),
-            Path.GetFullPath(Path.Combine(root, "../../../../attacks"))
-        };
-        _attacksRoot = cand.FirstOrDefault(Directory.Exists) ?? Path.Combine(Directory.GetCurrentDirectory(), "attacks");
+            _attacksRoot = configured;
+        }
+        else
+        {
+            var cand = new[]
+            {
+                Path.Combine(AppContext.BaseDirectory, "attacks"),
+                Path.Combine(Directory.GetCurrentDirectory(), "attacks"),
+                Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../attacks")),
+                Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../attacks"))
+            };
+            _attacksRoot = cand.FirstOrDefault(Directory.Exists) ?? Path.Combine(Directory.GetCurrentDirectory(), "attacks");
+        }
 
-        LoadAndValidateManifests();
+        _attacks = LoadAndValidateAll(_attacksRoot);
     }
 
-    public IReadOnlyList<AttackManifest> Attacks => _attacks.AsReadOnly();
+    public IReadOnlyList<AttackManifest> Attacks => _attacks;
+    public AttackManifest Get(int id) => _attacks.Single(a => a.Id == id);
 
-    private void LoadAndValidateManifests()
+    private static List<AttackManifest> LoadAndValidateAll(string root)
     {
-        if (!Directory.Exists(_attacksRoot))
+        var manifests = Directory.GetFiles(root, "manifest.yaml", SearchOption.AllDirectories)
+                                 .Select(AttackManifest.LoadFromFile)
+                                 .OrderBy(a => a.Id)
+                                 .ToList();
+        if (manifests.Count == 0)
+            throw new InvalidOperationException("No attack manifests found — refusing to start.");
+        var ids = manifests.Select(m => m.Id).ToList();
+        if (ids.Distinct().Count() != ids.Count)
+            throw new InvalidOperationException("Attack ids must be unique.");
+        if (!ids.SequenceEqual(Enumerable.Range(0, ids.Count)))
+            throw new InvalidOperationException($"Attack ids must be sequential 0..N — got {string.Join(",", ids)}");
+
+        var prevTime = TimeOnly.MinValue;
+        foreach (var m in manifests)
         {
-            _logger.LogWarning("Attacks directory not found at {Path}", _attacksRoot);
-            return;
+            var matchDirs = Directory.GetDirectories(root, $"{m.Id:D2}-*");
+            var dir = matchDirs.Length > 0
+                ? matchDirs[0]
+                : Path.GetDirectoryName(Directory.GetFiles(root, "manifest.yaml", SearchOption.AllDirectories).First(f => AttackManifest.LoadFromFile(f).Id == m.Id))!;
+
+            m.Validate(dir);
+            var t = m.ScheduledTime;
+            if (m.Dispatch.Mode == "scheduled" && t <= prevTime)
+                throw new InvalidOperationException($"Attack #{m.Id}: scheduled time must strictly increase");
+            prevTime = t;
         }
-
-        var deserializer = new DeserializerBuilder()
-            .WithNamingConvention(UnderscoredNamingConvention.Instance)
-            .IgnoreUnmatchedProperties()
-            .Build();
-
-        var manifestFiles = Directory.GetFiles(_attacksRoot, "manifest.yaml", SearchOption.AllDirectories)
-            .OrderBy(f => f)
-            .ToList();
-
-        foreach (var file in manifestFiles)
-        {
-            try
-            {
-                var yaml = File.ReadAllText(file);
-                var manifest = deserializer.Deserialize<AttackManifest>(yaml);
-                if (string.IsNullOrWhiteSpace(manifest.Title) && !string.IsNullOrWhiteSpace(manifest.Name))
-                {
-                    manifest.Title = manifest.Name;
-                }
-                _attacks.Add(manifest);
-            }
-            catch (Exception ex)
-            {
-                throw new InvalidOperationException($"FATAL: Failed to parse attack manifest at {file}: {ex.Message}", ex);
-            }
-        }
-
-        ValidateManifests();
-
-        // Seed dispatch state table
-        foreach (var attack in _attacks)
-        {
-            var cur = _db.GetDispatchState(attack.Id);
-            if (string.IsNullOrWhiteSpace(cur) || cur == "Pending")
-            {
-                _db.SetDispatchState(attack.Id, DispatchState.Pending.ToString());
-            }
-        }
-
-        _logger.LogInformation("RogueAgentOrchestrator loaded and validated {Count} attack manifests.", _attacks.Count);
+        return manifests;
     }
 
-    private void ValidateManifests()
+    // ---------- Startup ----------
+    public override async Task StartAsync(CancellationToken ct)
     {
-        // 1. Unique IDs
-        var dupId = _attacks.GroupBy(a => a.Id).FirstOrDefault(g => g.Count() > 1);
-        if (dupId != null)
+        foreach (var m in _attacks)
         {
-            throw new InvalidOperationException($"FATAL: Duplicate attack ID #{dupId.Key} detected in manifests.");
+            _db.EnsureDispatchRow(m.Id,
+                m.Dispatch.Mode == "scheduled"
+                    ? m.ScheduledTimeToday(DateTime.Now)
+                    : (DateTime?)null);
+            _db.Exec("""
+                INSERT INTO attack_dispatch_runtime (attack_id, imminent_seconds) VALUES (@id, @s)
+                ON CONFLICT(attack_id) DO UPDATE SET imminent_seconds = excluded.imminent_seconds
+                """,
+                ("@id", m.Id), ("@s", m.Dispatch.ImminentSeconds));
         }
-
-        // 2. Validate Tier Weights
-        foreach (var a in _attacks)
-        {
-            if (a.Tests.Tiers != null && a.Tests.Tiers.Count > 0)
-            {
-                var sum = a.Tests.Tiers.Sum(t => t.Weight);
-                if (sum != 100)
-                {
-                    throw new InvalidOperationException($"FATAL: Attack #{a.Id} ({a.Title}) tier weights sum to {sum}, expected exactly 100.");
-                }
-            }
-        }
-
-        // 3. Validate Scheduled times if multiple scheduled
-        TimeSpan lastTime = TimeSpan.MinValue;
-        foreach (var a in _attacks.Where(a => a.Dispatch.Mode == "scheduled").OrderBy(a => a.Id))
-        {
-            if (TimeSpan.TryParse(a.Dispatch.Time, out var t))
-            {
-                if (t < lastTime)
-                {
-                    _logger.LogWarning("Attack #{Id} scheduled time ({Time}) is earlier than previous attack ({Last}).", a.Id, t, lastTime);
-                }
-                lastTime = t;
-            }
-        }
+        _log.LogInformation("RogueAgent ready: {Count} attacks loaded.", _attacks.Count);
+        await base.StartAsync(ct);
     }
 
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
-        _logger.LogInformation("RogueAgentOrchestrator background worker active.");
-
+        // Scheduled-mode poll. Manual-mode attacks are triggered via admin endpoints.
         while (!ct.IsCancellationRequested)
         {
             try
             {
-                var now = DateTime.UtcNow.TimeOfDay;
-                foreach (var attack in _attacks.Where(a => a.Dispatch.Mode == "scheduled"))
+                foreach (var m in _attacks.Where(a => a.Dispatch.Mode == "scheduled"))
                 {
-                    if (Enum.TryParse<DispatchState>(_db.GetDispatchState(attack.Id), out var state) && state == DispatchState.Pending)
-                    {
-                        if (TimeSpan.TryParse(attack.Dispatch.Time, out var sched) && now >= sched)
-                        {
-                            await FireToCanaryAsync(attack.Id);
-                        }
-                    }
+                    var state = _db.GetDispatchState(m.Id);
+                    if (state == DispatchState.Pending && _clock.Now >= m.ScheduledTimeToday(DateTime.Now))
+                        await FireToCanaryAsync(m.Id);
                 }
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error during RogueAgentOrchestrator scheduled poll.");
-            }
+            catch (Exception ex) { _log.LogError(ex, "Scheduler tick failed"); }
 
-            await Task.Delay(1000, ct);
+            try { await Task.Delay(TimeSpan.FromSeconds(1), ct); }
+            catch (TaskCanceledException) { break; }
         }
     }
+
+    // ---------- Admin-triggered state machine ----------
 
     public async Task FireToCanaryAsync(int attackId)
     {
-        var attack = _attacks.SingleOrDefault(a => a.Id == attackId);
-        if (attack == null) throw new ArgumentException($"Attack #{attackId} not found");
+        var attack = Get(attackId);
+        var current = _db.GetDispatchState(attackId);
+        if (current != DispatchState.Pending)
+            throw new InvalidOperationException(
+                $"Cannot fire attack #{attackId} to canary: current state is '{current}', expected 'Pending'.");
 
-        _db.SetDispatchState(attack.Id, DispatchState.CanaryFired.ToString());
-        _db.Log("CANARY_FIRED", attackId: attack.Id, payloadJson: JsonSerializer.Serialize(new { attack.Title, attack.Codename }));
-
+        _db.TransitionDispatch(attackId, DispatchState.CanaryFired);
         await _hub.Clients.Group("canary").SendAsync("ATTACK_LANDED", new
         {
-            attackId = attack.Id,
-            title = attack.Title,
-            codename = attack.Codename,
-            landedAtUtc = DateTime.UtcNow
+            attackId,
+            title = attack.Narrative.BroadcastTitle,
+            codename = attack.Codename
         });
-
-        _logger.LogInformation("Attack #{Id} ({Title}) fired to Canary group.", attack.Id, attack.Title);
+        _log.LogInformation("Attack #{Id} fired to canary.", attackId);
     }
 
+    public void ConfirmCanary(int attackId)
+    {
+        var current = _db.GetDispatchState(attackId);
+        if (current != DispatchState.CanaryFired)
+            throw new InvalidOperationException(
+                $"Cannot confirm canary for attack #{attackId}: current state is '{current}', expected 'CanaryFired'.");
+        _db.TransitionDispatch(attackId, DispatchState.CanaryConfirmed);
+    }
+
+    public async Task<DateTime> FireToArenaAsync(int attackId)
+    {
+        var attack = Get(attackId);
+        var current = _db.GetDispatchState(attackId);
+        if (current != DispatchState.CanaryConfirmed)
+            throw new InvalidOperationException(
+                $"Cannot fire attack #{attackId} to arena: current state is '{current}', expected 'CanaryConfirmed'.");
+
+        var now = _clock.UtcNow;
+        var landAtUtc = now.AddSeconds(attack.Dispatch.ImminentSeconds);
+
+        // 1. Transition + persist pre-registered deliveries so payload gate opens during window
+        _db.TransitionDispatch(attackId, DispatchState.ArenaImminent);
+        _db.PreregisterAttackDeliveries(attackId, _db.AllParticipantIds());
+
+        // 2. Broadcast lightweight imminent message — server-authoritative landAtUtc
+        var payload = new
+        {
+            attackId,
+            imminentSeconds = attack.Dispatch.ImminentSeconds,
+            landAtUtcIso    = landAtUtc.ToString("O"),
+            title           = attack.Narrative.BroadcastTitle,
+            codename        = attack.Codename
+        };
+        await _hub.Clients.Group("arena").SendAsync("BREACH_IMMINENT", payload);
+        // Also send 3-arg overload for kiosks with primitive signatures
+        await _hub.Clients.Group("arena").SendAsync("BREACH_IMMINENT", attackId, attack.Dispatch.ImminentSeconds, landAtUtc.ToString("O"));
+
+        _log.LogInformation("Attack #{Id} imminent — landAtUtc={LandAt:O}", attackId, landAtUtc);
+
+        // 3. Schedule landing (fire-and-forget; the timer owns the ARENA_LANDED transition)
+        _ = LandAtAsync(attackId, landAtUtc);
+        return landAtUtc;
+    }
+
+    private async Task LandAtAsync(int attackId, DateTime landAtUtc)
+    {
+        var delay = landAtUtc - _clock.UtcNow;
+        if (delay > TimeSpan.Zero) await Task.Delay(delay);
+
+        try
+        {
+            _db.MarkAttackLanded(attackId);
+            _db.TransitionDispatch(attackId, DispatchState.ArenaLanded);
+            await _hub.Clients.Group("arena").SendAsync("ATTACK_LANDED", new
+            {
+                attackId,
+                landedAtUtcIso = DateTime.UtcNow.ToString("O")
+            });
+            await _hub.Clients.Group("arena").SendAsync("ATTACK_LANDED", attackId);
+            _log.LogInformation("Attack #{Id} landed.", attackId);
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Landing failed for attack #{Id}", attackId);
+            _db.TransitionDispatch(attackId, DispatchState.Failed, ex.Message);
+        }
+    }
+
+    // Compatibility methods
     public Task ConfirmCanaryAsync(int attackId)
     {
-        var attack = _attacks.SingleOrDefault(a => a.Id == attackId);
-        if (attack == null) throw new ArgumentException($"Attack #{attackId} not found");
-
-        _db.SetDispatchState(attack.Id, DispatchState.CanaryConfirmed.ToString());
-        _db.Log("CANARY_CONFIRMED", attackId: attack.Id);
-        _logger.LogInformation("Attack #{Id} Canary confirmed by organizer.", attack.Id);
+        ConfirmCanary(attackId);
         return Task.CompletedTask;
     }
 
-    public async Task ConfirmAndFireArenaAsync(int attackId)
-    {
-        var attack = _attacks.SingleOrDefault(a => a.Id == attackId);
-        if (attack == null) throw new ArgumentException($"Attack #{attackId} not found");
-
-        var cur = _db.GetDispatchState(attackId);
-        if (cur != DispatchState.CanaryConfirmed.ToString())
-        {
-            throw new InvalidOperationException($"Cannot fire attack #{attackId} to arena: current state is '{cur}', expected '{DispatchState.CanaryConfirmed}'.");
-        }
-
-        _db.SetDispatchState(attackId, DispatchState.ArenaImminent.ToString());
-
-        var imminentAt = DateTime.UtcNow;
-        var landAt = imminentAt.AddSeconds(attack.Dispatch.ImminentSeconds);
-
-        // Pre-register attack deliveries for participants so they can pre-fetch payload during countdown
-        using (var c = _db.Open())
-        {
-            using var pCmd = c.CreateCommand();
-            pCmd.CommandText = "SELECT id FROM participants WHERE status != 'disqualified'";
-            using var rd = pCmd.ExecuteReader();
-            var pids = new List<string>();
-            while (rd.Read()) pids.Add(rd.GetString(0));
-            rd.Close();
-
-            using var tx = c.BeginTransaction();
-            foreach (var pid in pids)
-            {
-                using var ins = c.CreateCommand();
-                ins.Transaction = tx;
-                ins.CommandText = """
-                    INSERT INTO attack_deliveries (attack_id, participant_id, landed_at)
-                    VALUES ($a, $p, NULL)
-                    ON CONFLICT(attack_id, participant_id) DO NOTHING;
-                    """;
-                ins.Parameters.AddWithValue("$a", attackId);
-                ins.Parameters.AddWithValue("$p", pid);
-                ins.ExecuteNonQuery();
-            }
-            tx.Commit();
-        }
-
-        // 1. Lightweight broadcast FIRST with landAtUtc timestamp
-        await _hub.Clients.Group("arena").SendAsync("BREACH_IMMINENT", attack.Id, attack.Dispatch.ImminentSeconds, landAt.ToString("O"));
-
-        _db.Log("BREACH_IMMINENT", attackId: attack.Id, payloadJson: JsonSerializer.Serialize(new { landAtUtc = landAt }));
-        _db.SetAttackDispatchedAt(attackId, imminentAt);
-
-        // 2. Schedule actual landing when countdown expires
-        _ = Task.Run(async () =>
-        {
-            var delay = landAt - DateTime.UtcNow;
-            if (delay > TimeSpan.Zero)
-            {
-                await Task.Delay(delay);
-            }
-
-            var landedTimeStr = DateTime.UtcNow.ToString("O");
-            using (var c = _db.Open())
-            using (var upd = c.CreateCommand())
-            {
-                upd.CommandText = "UPDATE attack_deliveries SET landed_at = $t WHERE attack_id = $a AND landed_at IS NULL";
-                upd.Parameters.AddWithValue("$t", landedTimeStr);
-                upd.Parameters.AddWithValue("$a", attackId);
-                upd.ExecuteNonQuery();
-            }
-
-            _db.SetDispatchState(attackId, DispatchState.ArenaLanded.ToString());
-            _db.Log("ATTACK_LANDED", attackId: attack.Id);
-
-            await _hub.Clients.Group("arena").SendAsync("ATTACK_LANDED", attack.Id);
-
-            _logger.LogInformation("Attack #{Id} officially landed across arena.", attack.Id);
-        });
-    }
+    public Task<DateTime> ConfirmAndFireArenaAsync(int attackId) => FireToArenaAsync(attackId);
 
     public (bool Success, string Message, string? Text, int Cost) RequestHint(string participantId, int attackId, int level)
     {
-        var attack = _attacks.SingleOrDefault(a => a.Id == attackId);
-        if (attack == null) return (false, "Attack not found", null, 0);
-
+        var attack = Get(attackId);
         var hint = attack.Hints.Tiers.SingleOrDefault(t => t.Level == level);
         if (hint == null) return (false, $"Hint level {level} not configured for Attack #{attackId}", null, 0);
 
@@ -327,31 +275,26 @@ public class RogueAgentOrchestrator : BackgroundService
             insCmd.ExecuteNonQuery();
         }
 
-        _db.Log("HINT_REQUESTED", participantId, attackId, JsonSerializer.Serialize(new { level, cost = hint.CostCentipoints }));
+        _db.Log("HINT_REQUESTED", participantId, attackId, System.Text.Json.JsonSerializer.Serialize(new { level, cost = hint.CostCentipoints }));
         return (true, "Hint unlocked", hint.Text, hint.CostCentipoints);
     }
 
     public List<AttackDispatchStatus> GetDispatchOverview()
     {
-        var dbStates = _db.GetAllDispatchStates();
         var list = new List<AttackDispatchStatus>();
-
         foreach (var a in _attacks)
         {
-            dbStates.TryGetValue(a.Id, out var stateInfo);
-            Enum.TryParse<DispatchState>(stateInfo.State ?? "Pending", out var ds);
-
+            var state = _db.GetDispatchState(a.Id);
             list.Add(new AttackDispatchStatus
             {
                 AttackId = a.Id,
                 Name = a.Title,
                 Codename = a.Codename,
-                State = ds,
+                State = state,
                 ScheduledTime = a.Dispatch.Time,
-                DispatchedAt = stateInfo.DispatchedAt
+                DispatchedAt = null
             });
         }
-
         return list;
     }
 }

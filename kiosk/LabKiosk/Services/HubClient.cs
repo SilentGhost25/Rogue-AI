@@ -20,8 +20,10 @@ public sealed class HubClient : IAsyncDisposable
         _participantId = participantId;
         _token = token;
         _conn = new HubConnectionBuilder().WithUrl($"{serverUrl.TrimEnd('/')}/hub").WithAutomaticReconnect().Build();
+        _conn.On<BreachImminentPayload>("BREACH_IMMINENT", async p => { if (Imminent is not null) await Imminent(p.AttackId, p.ImminentSeconds, p.LandAtUtcIso); });
         _conn.On<int, int, string>("BREACH_IMMINENT", async (id, secs, landAt) => { if (Imminent is not null) await Imminent(id, secs, landAt); });
         _conn.On<int, int>("BREACH_IMMINENT", async (id, secs) => { if (Imminent is not null) await Imminent(id, secs, null); });
+        _conn.On<AttackLandedPayload>("ATTACK_LANDED", p => Landed?.Invoke(p.AttackId));
         _conn.On<int>("ATTACK_LANDED", id => Landed?.Invoke(id));
         _conn.On<string>("BROADCAST", text => Message?.Invoke(text));
         _conn.On("PAUSED", () => Paused?.Invoke());
@@ -44,3 +46,6 @@ public sealed class HubClient : IAsyncDisposable
 
     public ValueTask DisposeAsync() => _conn.DisposeAsync();
 }
+
+public sealed record BreachImminentPayload(int AttackId, int ImminentSeconds, string? LandAtUtcIso, string? Title, string? Codename);
+public sealed record AttackLandedPayload(int AttackId, string? LandedAtUtcIso);

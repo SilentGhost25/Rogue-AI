@@ -1,0 +1,4 @@
+tiers:
+  - { level: 1, cost_centipoints: 200,  text: "Check what your dependency tree pulled in that you didn't ask for." }
+  - { level: 2, cost_centipoints: 500,  text: "Run `npm ls` and diff against package-lock.json." }
+  - { level: 3, cost_centipoints: 1000, text: "The package 'rogue-logger' was never in your original package.json." }

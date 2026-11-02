@@ -1,7 +1,0 @@
-tiers:
-  - level: 1
-    cost_centipoints: 200
-    text: "Review routes/search.js where db.prepare() is called. Notice how query string 'q' is being interpolated directly."
-  - level: 2
-    cost_centipoints: 500
-    text: "Replace `${q}` string template formatting with parameterized SQLite placeholders '?' and pass `%${q}%` as query arguments."

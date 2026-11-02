@@ -49,6 +49,12 @@ public class RogueAgentOrchestratorTests : IDisposable
     {
         var dir = Path.Combine(_attacksDir, $"{id:D2}-test");
         Directory.CreateDirectory(dir);
+        var payloadDir = Path.Combine(dir, "payload");
+        Directory.CreateDirectory(payloadDir);
+        var testsDir = Path.Combine(dir, "tests");
+        Directory.CreateDirectory(testsDir);
+        File.WriteAllText(Path.Combine(payloadDir, "payload.txt"), "test payload");
+
         var yaml = $"""
             id: {id}
             title: "{title}"
@@ -57,16 +63,21 @@ public class RogueAgentOrchestratorTests : IDisposable
             dispatch:
               mode: {mode}
               time: "{time}"
-              imminent_seconds: 1
+              imminent_seconds: 3
+            payload:
+              path: "payload/"
+              format: full
             scoring:
               base_points: 8500
             tests:
+              path: "tests/"
               tiers:
                 - id: tier1
                   weight: 50
                 - id: tier2
                   weight: 50
             hints:
+              path: "hints.yaml"
               tiers:
                 - level: 1
                   cost_centipoints: 200
@@ -86,33 +97,21 @@ public class RogueAgentOrchestratorTests : IDisposable
         var config = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                {"Breach:DatabasePath", _testDbPath}
+                {"Breach:DatabasePath", _testDbPath},
+                {"RogueAgent:AttacksRoot", _attacksDir}
             })
             .Build();
 
-        // Switch CurrentDirectory to include temp attacks folder
-        var prevDir = Directory.GetCurrentDirectory();
-        Directory.SetCurrentDirectory(Path.GetDirectoryName(_attacksDir)!);
-        // Rename or link to attacks
-        var symAttacks = Path.Combine(Directory.GetCurrentDirectory(), "attacks");
-        if (Directory.Exists(symAttacks)) Directory.Delete(symAttacks, true);
-        Directory.Move(_attacksDir, symAttacks);
-
         var hub = new DummyHubContext();
-        var orch = new RogueAgentOrchestrator(hub, _db, config, NullLogger<RogueAgentOrchestrator>.Instance);
-
-        // Restore
-        Directory.Move(symAttacks, _attacksDir);
-        Directory.SetCurrentDirectory(prevDir);
-
+        var orch = new RogueAgentOrchestrator(hub, _db, new SystemClock(), NullLogger<RogueAgentOrchestrator>.Instance, config);
         return orch;
     }
 
     [Fact]
     public void Manifest_loads_and_validates_successfully()
     {
-        CreateTestAttack(1, "Reflected XSS");
-        CreateTestAttack(2, "Stored XSS");
+        CreateTestAttack(0, "Reflected XSS", time: "09:00:00");
+        CreateTestAttack(1, "Stored XSS", time: "10:00:00");
 
         var orch = CreateOrchestrator();
         Assert.Equal(2, orch.Attacks.Count);
@@ -121,60 +120,89 @@ public class RogueAgentOrchestratorTests : IDisposable
     }
 
     [Fact]
+    public void Real_attacks_manifests_all_load_and_validate()
+    {
+        var cand = new[]
+        {
+            Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../attacks")),
+            Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../attacks")),
+            Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "attacks"))
+        };
+        var root = cand.FirstOrDefault(Directory.Exists);
+        Assert.NotNull(root);
+
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                {"Breach:DatabasePath", _testDbPath},
+                {"RogueAgent:AttacksRoot", root}
+            })
+            .Build();
+
+        var hub = new DummyHubContext();
+        var orch = new RogueAgentOrchestrator(hub, _db, new SystemClock(), NullLogger<RogueAgentOrchestrator>.Instance, config);
+        Assert.Equal(8, orch.Attacks.Count);
+        for (int i = 0; i < 8; i++)
+        {
+            Assert.Equal(i, orch.Attacks[i].Id);
+        }
+    }
+
+    [Fact]
     public async Task Canary_dispatch_lifecycle_transitions_correctly()
     {
-        CreateTestAttack(1, "Canary Test Attack");
+        CreateTestAttack(0, "Canary Test Attack");
         var orch = CreateOrchestrator();
 
         // 1. Initial State -> Pending
-        Assert.Equal(DispatchState.Pending.ToString(), _db.GetDispatchState(1));
+        Assert.Equal(DispatchState.Pending, _db.GetDispatchState(0));
 
         // 2. Fire Canary
-        await orch.FireToCanaryAsync(1);
-        Assert.Equal(DispatchState.CanaryFired.ToString(), _db.GetDispatchState(1));
+        await orch.FireToCanaryAsync(0);
+        Assert.Equal(DispatchState.CanaryFired, _db.GetDispatchState(0));
 
         // 3. Confirm Canary
-        await orch.ConfirmCanaryAsync(1);
-        Assert.Equal(DispatchState.CanaryConfirmed.ToString(), _db.GetDispatchState(1));
+        orch.ConfirmCanary(0);
+        Assert.Equal(DispatchState.CanaryConfirmed, _db.GetDispatchState(0));
 
         // 4. Fire to Arena
-        await orch.ConfirmAndFireArenaAsync(1);
-        Assert.Equal(DispatchState.ArenaImminent.ToString(), _db.GetDispatchState(1));
+        await orch.FireToArenaAsync(0);
+        Assert.Equal(DispatchState.ArenaImminent, _db.GetDispatchState(0));
 
-        // Wait for imminent countdown to land
-        await Task.Delay(1200);
-        Assert.Equal(DispatchState.ArenaLanded.ToString(), _db.GetDispatchState(1));
+        // Wait for imminent countdown to land (imminent_seconds = 3)
+        await Task.Delay(3200);
+        Assert.Equal(DispatchState.ArenaLanded, _db.GetDispatchState(0));
 
         // 5. Trying to fire again while ArenaLanded must throw InvalidOperationException (409 Conflict)
-        await Assert.ThrowsAsync<InvalidOperationException>(() => orch.ConfirmAndFireArenaAsync(1));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => orch.FireToArenaAsync(0));
     }
 
     [Fact]
     public async Task Firing_to_arena_without_canary_confirmation_throws_InvalidOperationException()
     {
-        CreateTestAttack(1, "Unconfirmed Attack");
+        CreateTestAttack(0, "Unconfirmed Attack");
         var orch = CreateOrchestrator();
 
         // Currently in Pending state
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => orch.ConfirmAndFireArenaAsync(1));
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => orch.FireToArenaAsync(0));
         Assert.Contains("expected 'CanaryConfirmed'", ex.Message);
     }
 
     [Fact]
     public void Hint_ladder_enforces_ordering_and_deducts_centipoints()
     {
-        CreateTestAttack(1, "Hint Test Attack");
+        CreateTestAttack(0, "Hint Test Attack");
         var orch = CreateOrchestrator();
 
         var pid = "p_test_defender_01";
 
         // 1. Trying to request Level 2 first must fail
-        var (s2_fail, msg2, _, _) = orch.RequestHint(pid, 1, 2);
+        var (s2_fail, msg2, _, _) = orch.RequestHint(pid, 0, 2);
         Assert.False(s2_fail);
         Assert.Contains("Must request Hint Level 1", msg2);
 
         // 2. Request Level 1 succeeds
-        var (s1, _, text1, cost1) = orch.RequestHint(pid, 1, 1);
+        var (s1, _, text1, cost1) = orch.RequestHint(pid, 0, 1);
         Assert.True(s1);
         Assert.Equal("First hint text", text1);
         Assert.Equal(200, cost1);
@@ -192,16 +220,126 @@ public class RogueAgentOrchestratorTests : IDisposable
         }
 
         // 3. Duplicate Level 1 request does not double-charge
-        var (s1_dup, msg_dup, _, cost_dup) = orch.RequestHint(pid, 1, 1);
+        var (s1_dup, msg_dup, _, cost_dup) = orch.RequestHint(pid, 0, 1);
         Assert.True(s1_dup);
         Assert.Equal(0, cost_dup);
         Assert.Contains("already unlocked", msg_dup);
 
         // 4. Now Level 2 can be unlocked
-        var (s2, _, text2, cost2) = orch.RequestHint(pid, 1, 2);
+        var (s2, _, text2, cost2) = orch.RequestHint(pid, 0, 2);
         Assert.True(s2);
         Assert.Equal("Second hint text", text2);
         Assert.Equal(500, cost2);
+    }
+    [Fact]
+    public async Task Wiring_checklist_canary_and_arena_isolation_and_idempotency()
+    {
+        CreateTestAttack(0, "Attack 0", mode: "manual");
+        var hub = new RecordingHubContext();
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                {"Breach:DatabasePath", _testDbPath},
+                {"RogueAgent:AttacksRoot", _attacksDir}
+            })
+            .Build();
+
+        var orch = new RogueAgentOrchestrator(hub, _db, new SystemClock(), NullLogger<RogueAgentOrchestrator>.Instance, config);
+        await orch.StartAsync(CancellationToken.None);
+
+        var pid = "p_participant_42";
+        _db.Exec("INSERT INTO participants (id, name, kiosk_id, created_at) VALUES (@p, 'Defender', 'k42', @t)",
+            ("@p", pid), ("@t", DateTime.UtcNow.ToString("O")));
+
+        // Checklist #4: Canary Isolation
+        await orch.FireToCanaryAsync(0);
+        Assert.Contains(hub.SentMessages, m => m.Group == "canary" && m.Method == "ATTACK_LANDED");
+        Assert.DoesNotContain(hub.SentMessages, m => m.Group == "arena");
+
+        // Checklist #5: Delivery not preregistered before arena fire
+        Assert.False(_db.IsAttackDeliveryPreRegistered(0, pid));
+
+        // Canary confirm
+        orch.ConfirmCanary(0);
+        Assert.Equal(DispatchState.CanaryConfirmed, _db.GetDispatchState(0));
+
+        // Checklist #3 & #6: Fire to Arena -> Broadcast to Arena and pre-register delivery
+        var landAt = await orch.FireToArenaAsync(0);
+        Assert.True(landAt > DateTime.UtcNow);
+        Assert.Contains(hub.SentMessages, m => m.Group == "arena" && m.Method == "BREACH_IMMINENT");
+        Assert.True(_db.IsAttackDeliveryPreRegistered(0, pid));
+
+        // Checklist #7: Idempotency (calling fire-arena second time throws InvalidOperationException -> 409 Conflict)
+        await Assert.ThrowsAsync<InvalidOperationException>(() => orch.FireToArenaAsync(0));
+
+        // Checklist #9: Reconcile active breach
+        var reconcile = _db.GetActiveAttackForReconcile();
+        Assert.NotNull(reconcile);
+        Assert.Equal(0, reconcile.Value.AttackId);
+        Assert.Equal(DispatchState.ArenaImminent, reconcile.Value.State);
+    }
+
+    [Fact]
+    public void Wiring_checklist_payload_budget_under_2mb_all_attacks()
+    {
+        var cand = new[]
+        {
+            Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../attacks")),
+            Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../attacks")),
+            Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "attacks"))
+        };
+        var root = cand.FirstOrDefault(Directory.Exists);
+        Assert.NotNull(root);
+
+        for (int i = 0; i < 8; i++)
+        {
+            var attackDir = Directory.GetDirectories(root, $"{i:D2}-*").Single();
+            var payloadDir = Path.Combine(attackDir, "payload");
+            Assert.True(Directory.Exists(payloadDir));
+
+            var bytes = new DirectoryInfo(payloadDir)
+                .EnumerateFiles("*", SearchOption.AllDirectories)
+                .Sum(f => f.Length);
+            Assert.True(bytes < 2 * 1024 * 1024, $"Attack #{i} payload exceeds 2MB budget: {bytes} bytes");
+        }
+    }
+}
+
+public class RecordingHubContext : IHubContext<BreachHub>
+{
+    public RecordingHubClients RecordingClients { get; } = new();
+    public IHubClients Clients => RecordingClients;
+    public IGroupManager Groups { get; } = null!;
+    public List<(string? Group, string Method, object?[] Args)> SentMessages => RecordingClients.SentMessages;
+}
+
+public class RecordingHubClients : IHubClients
+{
+    public List<(string? Group, string Method, object?[] Args)> SentMessages { get; } = new();
+    public IClientProxy All => new RecordingClientProxy(null, SentMessages);
+    public IClientProxy AllExcept(IReadOnlyList<string> excludedConnectionIds) => new RecordingClientProxy(null, SentMessages);
+    public IClientProxy Client(string connectionId) => new RecordingClientProxy(null, SentMessages);
+    public IClientProxy Clients(IReadOnlyList<string> connectionIds) => new RecordingClientProxy(null, SentMessages);
+    public IClientProxy Group(string groupName) => new RecordingClientProxy(groupName, SentMessages);
+    public IClientProxy Groups(IReadOnlyList<string> groupNames) => new RecordingClientProxy(string.Join(",", groupNames), SentMessages);
+    public IClientProxy GroupExcept(string groupName, IReadOnlyList<string> excludedConnectionIds) => new RecordingClientProxy(groupName, SentMessages);
+    public IClientProxy User(string userId) => new RecordingClientProxy(null, SentMessages);
+    public IClientProxy Users(IReadOnlyList<string> userIds) => new RecordingClientProxy(null, SentMessages);
+}
+
+public class RecordingClientProxy : IClientProxy
+{
+    private readonly string? _group;
+    private readonly List<(string? Group, string Method, object?[] Args)> _sink;
+    public RecordingClientProxy(string? group, List<(string? Group, string Method, object?[] Args)> sink)
+    {
+        _group = group;
+        _sink = sink;
+    }
+    public Task SendCoreAsync(string method, object?[] args, CancellationToken cancellationToken = default)
+    {
+        _sink.Add((_group, method, args));
+        return Task.CompletedTask;
     }
 }
 

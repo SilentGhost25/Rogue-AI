@@ -4,11 +4,13 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using ControlPlane.Data;
 using ControlPlane.Hubs;
+using ControlPlane.Models;
 using ControlPlane.Services;
 using Microsoft.AspNetCore.SignalR;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSignalR();
+builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddSingleton<Database>();
 builder.Services.AddSingleton<EventState>();
 builder.Services.AddSingleton<WorkspaceStore>();
@@ -208,6 +210,14 @@ app.MapPost("/api/kiosk/{id}/snapshot", async (string id, SnapshotRequest req, H
 
 app.MapGet("/api/time", () => Results.Ok(new { serverTimeUtc = DateTime.UtcNow.ToString("O") }));
 
+bool IsCanaryDesk(string id, Database db)
+{
+    var canaryDeskId = app.Configuration["RogueAgent:CanaryDeskId"] ?? "DESK-01";
+    if (string.Equals(id, canaryDeskId, StringComparison.OrdinalIgnoreCase)) return true;
+    var participantDesk = db.QueryScalar<string>("SELECT desk_id FROM desk_tokens WHERE participant_id = @p", ("@p", id));
+    return string.Equals(participantDesk, canaryDeskId, StringComparison.OrdinalIgnoreCase);
+}
+
 app.MapGet("/api/kiosk/{id}/active-breach", (string id, HttpRequest httpReq, Database db, RogueAgentOrchestrator orch) =>
 {
     var token = httpReq.Headers["X-Kiosk-Token"].ToString();
@@ -216,33 +226,30 @@ app.MapGet("/api/kiosk/{id}/active-breach", (string id, HttpRequest httpReq, Dat
         return Results.StatusCode(403);
     }
 
-    foreach (var attack in orch.Attacks)
+    var active = db.GetActiveAttackForReconcile();
+    if (active is null)
     {
-        var state = db.GetDispatchState(attack.Id);
-        if (state == "ArenaImminent" || state == "ArenaLanded")
+        return Results.Ok(new
         {
-            var dispatchedAt = db.GetAttackDispatchedAt(attack.Id);
-            var landAt = dispatchedAt.HasValue
-                ? dispatchedAt.Value.AddSeconds(attack.Dispatch.ImminentSeconds)
-                : DateTime.UtcNow;
-
-            return Results.Ok(new
-            {
-                activeAttackId = (int?)attack.Id,
-                title = attack.Title,
-                state = state,
-                imminentSeconds = attack.Dispatch.ImminentSeconds,
-                landAtUtc = landAt.ToString("O"),
-                landed = state == "ArenaLanded" || DateTime.UtcNow >= landAt
-            });
-        }
+            active = false,
+            activeAttackId = (int?)null,
+            state = "Idle",
+            landed = false
+        });
     }
 
+    var attack = orch.Get(active.Value.AttackId);
     return Results.Ok(new
     {
-        activeAttackId = (int?)null,
-        state = "Idle",
-        landed = false
+        active = true,
+        activeAttackId = (int?)active.Value.AttackId,
+        attackId = active.Value.AttackId,
+        title = attack.Title,
+        state = active.Value.State.ToString(),
+        imminentSeconds = attack.Dispatch.ImminentSeconds,
+        landAtUtc = active.Value.LandAtUtc?.ToString("O"),
+        landAtUtcIso = active.Value.LandAtUtc?.ToString("O"),
+        landed = active.Value.State == DispatchState.ArenaLanded
     });
 });
 
@@ -255,28 +262,20 @@ app.MapGet("/api/kiosk/{id}/attack-payload/{attackId:int}", async (string id, in
         return Results.StatusCode(403);
     }
 
-    // 2. Gate by Attack State (Allowed if ArenaImminent or ArenaLanded, or CanaryFired/CanaryConfirmed)
-    var dispatchState = db.GetDispatchState(attackId);
-    var isDispatched = dispatchState == "ArenaImminent" || dispatchState == "ArenaLanded" ||
-                       dispatchState == "CanaryFired" || dispatchState == "CanaryConfirmed";
+    // 2. Canonical gate per Section D:
+    //    ArenaImminent / ArenaLanded -> any kiosk may fetch (pre-buffer + late pull)
+    //    CanaryFired -> ONLY the canary desk (prevents leak during canary validation)
+    //    Pending / CanaryConfirmed -> blocked
+    var state = db.GetDispatchState(attackId);
+    var allowed =
+        state == DispatchState.ArenaImminent ||
+        state == DispatchState.ArenaLanded ||
+        (state == DispatchState.CanaryFired && IsCanaryDesk(id, db));
 
-    if (!isDispatched)
-    {
-        // Fallback: check attack_deliveries table
-        using (var c = db.Open())
-        using (var cmd = c.CreateCommand())
-        {
-            cmd.CommandText = "SELECT 1 FROM attack_deliveries WHERE participant_id = $p AND attack_id = $a";
-            cmd.Parameters.AddWithValue("$p", id);
-            cmd.Parameters.AddWithValue("$a", attackId);
-            if (cmd.ExecuteScalar() == null)
-            {
-                return Results.StatusCode(403); // Forbidden: attack is not dispatched
-            }
-        }
-    }
+    if (!allowed) return Results.StatusCode(403);
+    if (!db.IsAttackDeliveryPreRegistered(attackId, id)) return Results.StatusCode(403);
 
-    // 3. Attack is imminent or landed and token is valid: proxy from engine
+    // 3. Attack is imminent or landed and delivery pre-registered: proxy from engine
     var client = http.CreateClient("engine");
     var res = await client.GetAsync($"/attacks/{attackId}/payload");
     if (!res.IsSuccessStatusCode) return Results.NotFound();
@@ -670,6 +669,74 @@ app.MapGet("/admin/backup/status", (HttpRequest r, Database db, IConfiguration c
 });
 
 // RogueAgentOrchestrator Admin and Hint endpoints
+app.MapGet("/api/admin/attacks", (HttpRequest r, Database db, RogueAgentOrchestrator orch) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+    var list = orch.Attacks.Select(a => new
+    {
+        id        = a.Id,
+        title     = a.Title,
+        codename  = a.Codename,
+        band      = a.Band,
+        mode      = a.Dispatch.Mode,
+        scheduled = a.Dispatch.Time,
+        state     = db.GetDispatchState(a.Id).ToString()
+    });
+    return Results.Ok(list);
+});
+
+app.MapGet("/api/admin/attacks/{id:int}/state", (int id, HttpRequest r, Database db, RogueAgentOrchestrator orch) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+    var a = orch.Get(id);
+    return Results.Ok(new
+    {
+        id       = a.Id,
+        title    = a.Title,
+        state    = db.GetDispatchState(id).ToString(),
+        imminent = a.Dispatch.ImminentSeconds,
+        scheduled = a.Dispatch.Time
+    });
+});
+
+app.MapPost("/api/admin/attacks/{id:int}/canary", async (int id, HttpRequest r, Database db, RogueAgentOrchestrator orch) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+    try
+    {
+        await orch.FireToCanaryAsync(id);
+        return Results.Ok(new { fired = true });
+    }
+    catch (InvalidOperationException ex) { return Results.Conflict(new { error = ex.Message }); }
+});
+
+app.MapPost("/api/admin/attacks/{id:int}/confirm-canary", (int id, HttpRequest r, Database db, RogueAgentOrchestrator orch) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+    try
+    {
+        orch.ConfirmCanary(id);
+        return Results.Ok(new { confirmed = true });
+    }
+    catch (InvalidOperationException ex) { return Results.Conflict(new { error = ex.Message }); }
+});
+
+app.MapPost("/api/admin/attacks/{id:int}/fire-arena", async (int id, HttpRequest r, Database db, RogueAgentOrchestrator orch) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+    try
+    {
+        var landAt = await orch.FireToArenaAsync(id);
+        return Results.Ok(new { firedToArena = true, landAtUtc = landAt.ToString("O") });
+    }
+    catch (InvalidOperationException ex) { return Results.Conflict(new { error = ex.Message }); }
+});
+
 app.MapGet("/admin/attacks/dispatch-status", (HttpRequest r, Database db, RogueAgentOrchestrator orch) =>
 {
     var authErr = AuthorizeAdmin(r, db);

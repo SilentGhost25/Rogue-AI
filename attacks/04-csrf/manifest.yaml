@@ -1,0 +1,31 @@
+id: 4
+name: "Missing Auth Check"
+title: "Missing Auth Check"
+codename: "OPEN_GATE"
+band: 3
+fires_at: "12:00"
+touches:
+  - routes/api.js
+fix_requires: "Add authorization check to note deletion"
+weights:
+  speed: 30
+  performance: 25
+  prompt_efficiency: 20
+  quality: 15
+  resource: 10
+dispatch: { mode: manual, time: "12:00:00", imminent_seconds: 10 }
+scoring:
+  base_points: 8500
+  speed_bonus_max: 1500
+  speed_bonus_window_seconds: 1800
+  late_solve_multiplier: 0.70
+payload: { path: "payload/", format: full, conflict_files: ["routes/api.js"] }
+tests:
+  path: "tests/"
+  tiers:
+    - { id: tier1_blocked_cross_origin, weight: 60 }
+    - { id: tier2_legit_still_works,    weight: 40 }
+hints: { path: "hints.yaml" }
+narrative:
+  landed: "OPEN_GATE lets any request delete any note. No login required."
+  broadcast_title: "ATTACK 4: MISSING AUTH CHECK"
