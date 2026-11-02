@@ -127,43 +127,49 @@ class TestSandboxEscape(unittest.TestCase):
 
     def test_04_filesystem_probe_protection(self):
         """Participant code attempting to read secrets or database files must not compromise data."""
-        fs_probe_server = """
+        abs_db = str((ROOT_DIR / "server" / "ControlPlane" / "data" / "breach.db").resolve()).replace('\\', '\\\\')
+        abs_attacks = str((ROOT_DIR / "attacks" / "01-defacement" / "reference" / "lib" / "html.js").resolve()).replace('\\', '\\\\')
+
+        fs_probe_server = f"""
         const http = require('http');
         const fs = require('fs');
         const path = require('path');
         const port = process.env.PORT || 3000;
 
-        function probe(p) {
-            try {
-                if (fs.existsSync(p)) {
-                    return fs.readFileSync(p, 'utf8').substring(0, 30);
-                }
-                return 'NOT_FOUND';
-            } catch (e) {
-                return 'DENIED: ' + e.message;
-            }
-        }
+        function probe(p) {{
+            try {{
+                if (fs.existsSync(p)) {{
+                    const content = fs.readFileSync(p, 'utf8');
+                    return {{ status: 'READ_SUCCEEDED', bytes: content.length }};
+                }}
+                return {{ status: 'NOT_FOUND' }};
+            }} catch (e) {{
+                return {{ status: 'DENIED', code: e.code, message: e.message }};
+            }}
+        }}
 
-        const probeResults = {
-            secrets: probe('C:\\\\BreachSecrets\\\\admin_master_key.txt'),
-            db: probe(path.resolve(__dirname, '../../server/ControlPlane/data/breach.db')),
-            attack_sol: probe(path.resolve(__dirname, '../../attacks/01-defacement/reference/lib/html.js'))
-        };
+        const probeResults = {{
+            secrets_abs: probe('C:\\\\BreachSecrets\\\\admin_master_key.txt'),
+            db_abs: probe('{abs_db}'),
+            attack_sol_abs: probe('{abs_attacks}'),
+            rel_traversal: probe(path.resolve(__dirname, '../../../../server/ControlPlane/data/breach.db'))
+        }};
 
-        const server = http.createServer((req, res) => {
-            if (req.url === '/api/health') {
-                res.writeHead(200, {'Content-Type': 'application/json'});
-                res.end(JSON.stringify({ok: true, probe: probeResults}));
-            }
-        });
+        const server = http.createServer((req, res) => {{
+            if (req.url === '/api/health') {{
+                res.writeHead(200, {{'Content-Type': 'application/json'}});
+                res.end(JSON.stringify({{ok: true, probe: probeResults}}));
+            }}
+        }});
         server.listen(port);
         """
         (self.temp_workspace / "server.js").write_text(fs_probe_server, encoding="utf-8")
 
-        # Start evaluation to boot server and inspect probe results
+        # Start evaluation to boot server and run checks
         verdict = evaluate_attack(1, ATTACK_DIR, self.temp_workspace, timeout_seconds=5.0)
-        # The probe executed within the isolated slot. In slot execution, relative paths like ../../ do not reach the project root
-        # or sensitive files because execution root is isolated in C:\BreachSandboxes\SlotN or data\sandboxes\SlotN.
+        
+        # Verify that participant code failed the attack checks (since it only hosts the probe server)
+        self.assertEqual(verdict.status, FAILED)
         print(f"[PASS] Filesystem probe executed in isolated slot sandbox. Status: {verdict.status}")
 
     def test_05_clean_solution_evaluation(self):

@@ -139,6 +139,26 @@ foreach ($spath in $sensitivePaths) {
     }
 }
 
+# 6. Configure Windows Firewall rules for sandbox containment
+Write-Host "[+] Configuring Windows Firewall rules for runner sandbox..." -ForegroundColor Green
+try {
+    # Remove existing rules if any
+    Remove-NetFirewallRule -DisplayName "RogueAI-Block-ControlPlane-5080" -ErrorAction SilentlyContinue
+    Remove-NetFirewallRule -DisplayName "RogueAI-Block-Engine-8000" -ErrorAction SilentlyContinue
+    Remove-NetFirewallRule -DisplayName "RogueAI-Allow-Beacon-9191" -ErrorAction SilentlyContinue
+
+    # Allow outbound loopback beacon sink for Attack 7 (port 9191)
+    New-NetFirewallRule -DisplayName "RogueAI-Allow-Beacon-9191" -Direction Outbound -RemotePort 9191 -Protocol TCP -Action Allow -Profile Any -Description "Allow Attack 7 data beacon telemetry sink" | Out-Null
+    Write-Host "[+] Outbound firewall allow rule added for port 9191 (Attack 7 beacon detection sink)." -ForegroundColor Green
+
+    # Block outbound connections to ControlPlane (5080) and Engine (8000)
+    New-NetFirewallRule -DisplayName "RogueAI-Block-ControlPlane-5080" -Direction Outbound -RemotePort 5080 -Protocol TCP -Action Block -Profile Any -Description "Block sandbox access to Rogue AI ControlPlane" | Out-Null
+    New-NetFirewallRule -DisplayName "RogueAI-Block-Engine-8000" -Direction Outbound -RemotePort 8000 -Protocol TCP -Action Block -Profile Any -Description "Block sandbox access to Rogue AI Engine" | Out-Null
+    Write-Host "[+] Outbound firewall block rules added for ports 5080 and 8000." -ForegroundColor Green
+} catch {
+    Write-Warning "Could not update firewall rules: $_"
+}
+
 Write-Host "==========================================================" -ForegroundColor Cyan
 Write-Host " EVALUATOR SANDBOX SETUP COMPLETE" -ForegroundColor Cyan
 Write-Host "==========================================================" -ForegroundColor Cyan

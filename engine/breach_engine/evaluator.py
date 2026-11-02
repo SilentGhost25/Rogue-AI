@@ -4,6 +4,8 @@ import ctypes
 from ctypes import wintypes
 import hashlib
 import importlib.util
+import inspect
+import json
 import os
 import queue
 import shutil
@@ -17,6 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import psutil
+import yaml
 
 SOLVED, FAILED, PARTIAL = "SOLVED", "FAILED", "PARTIAL"
 ROOT_DIR = Path(__file__).resolve().parents[2]
@@ -29,6 +32,78 @@ class Verdict:
     reason: str
     cpu_time_ms: float = 0.0
     peak_memory_mb: float = 0.0
+    tier_results: dict[str, bool] | None = None
+    score_percentage: float = 1.0
+
+
+# ---------------------------------------------------------------------------
+# Win32 Process Wrapper & Structures
+# ---------------------------------------------------------------------------
+class STARTUPINFOW(ctypes.Structure):
+    _fields_ = [
+        ('cb', wintypes.DWORD),
+        ('lpReserved', wintypes.LPWSTR),
+        ('lpDesktop', wintypes.LPWSTR),
+        ('lpTitle', wintypes.LPWSTR),
+        ('dwX', wintypes.DWORD),
+        ('dwY', wintypes.DWORD),
+        ('dwXSize', wintypes.DWORD),
+        ('dwYSize', wintypes.DWORD),
+        ('dwXCountChars', wintypes.DWORD),
+        ('dwYCountChars', wintypes.DWORD),
+        ('dwFillAttribute', wintypes.DWORD),
+        ('dwFlags', wintypes.DWORD),
+        ('wShowWindow', wintypes.WORD),
+        ('cbReserved2', wintypes.WORD),
+        ('lpReserved2', ctypes.c_void_p),
+        ('hStdInput', wintypes.HANDLE),
+        ('hStdOutput', wintypes.HANDLE),
+        ('hStdError', wintypes.HANDLE),
+    ]
+
+
+class PROCESS_INFORMATION(ctypes.Structure):
+    _fields_ = [
+        ('hProcess', wintypes.HANDLE),
+        ('hThread', wintypes.HANDLE),
+        ('dwProcessId', wintypes.DWORD),
+        ('dwThreadId', wintypes.DWORD),
+    ]
+
+
+class Win32Process:
+    """Wraps a Windows process handle returned by CreateProcessWithLogonW to match Popen interface."""
+
+    def __init__(self, hProcess, hThread, pid: int):
+        self._handle = hProcess
+        self._thread = hThread
+        self.pid = pid
+        self.returncode = None
+
+    def poll(self) -> int | None:
+        if sys.platform != "win32" or not self._handle:
+            return -1
+        exit_code = wintypes.DWORD()
+        if ctypes.windll.kernel32.GetExitCodeProcess(self._handle, ctypes.byref(exit_code)) != 0:
+            if exit_code.value == 259:  # STILL_ACTIVE
+                return None
+            self.returncode = exit_code.value
+            return self.returncode
+        return -1
+
+    def terminate(self):
+        if sys.platform == "win32" and self._handle:
+            ctypes.windll.kernel32.TerminateProcess(self._handle, 1)
+
+    def kill(self):
+        self.terminate()
+
+    def wait(self, timeout: float | None = None) -> int | None:
+        if sys.platform != "win32" or not self._handle:
+            return -1
+        ms = int(timeout * 1000) if timeout else 0xFFFFFFFF
+        ctypes.windll.kernel32.WaitForSingleObject(self._handle, ms)
+        return self.poll()
 
 
 # ---------------------------------------------------------------------------
@@ -74,12 +149,13 @@ JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
 JOB_OBJECT_LIMIT_JOB_MEMORY = 0x200
 JOB_OBJECT_LIMIT_PROCESS_MEMORY = 0x100
 JOB_OBJECT_LIMIT_ACTIVE_PROCESS = 0x8
+JOB_OBJECT_LIMIT_PROCESS_TIME = 0x2
 
 
 class JobObjectSandbox:
-    """Encapsulates a Win32 Job Object for hard memory, process count, and auto-kill containment."""
+    """Encapsulates a Win32 Job Object for hard memory, process count, CPU time limit, and auto-kill containment."""
 
-    def __init__(self, max_memory_mb: int = 512, max_processes: int = 16):
+    def __init__(self, max_memory_mb: int = 512, max_processes: int = 16, max_cpu_time_seconds: int = 15):
         self.handle = None
         if sys.platform == "win32":
             try:
@@ -90,8 +166,11 @@ class JobObjectSandbox:
                         JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
                         | JOB_OBJECT_LIMIT_ACTIVE_PROCESS
                         | JOB_OBJECT_LIMIT_JOB_MEMORY
+                        | JOB_OBJECT_LIMIT_PROCESS_TIME
                     )
                     info.BasicLimitInformation.ActiveProcessLimit = max_processes
+                    # 100-nanosecond intervals: 1 second = 10,000,000 units
+                    info.BasicLimitInformation.PerProcessUserTimeLimit = max_cpu_time_seconds * 10_000_000
                     info.JobMemoryLimit = max_memory_mb * 1024 * 1024
                     ctypes.windll.kernel32.SetInformationJobObject(
                         self.handle,
@@ -102,8 +181,8 @@ class JobObjectSandbox:
             except Exception:
                 self.handle = None
 
-    def assign(self, proc: subprocess.Popen) -> bool:
-        if self.handle and sys.platform == "win32" and hasattr(proc, "_handle"):
+    def assign(self, proc) -> bool:
+        if self.handle and sys.platform == "win32" and hasattr(proc, "_handle") and proc._handle:
             res = ctypes.windll.kernel32.AssignProcessToJobObject(self.handle, int(proc._handle))
             return bool(res)
         return False
@@ -224,6 +303,68 @@ def ensure_node_modules() -> str:
     return ""
 
 
+def launch_sandboxed_node(slot_id: int, slot_dir: Path, env: dict, job_sandbox: JobObjectSandbox):
+    """
+    Launches node server under the BreachRunner{slot_id} user token if credentials are provisioned.
+    Falls back to subprocess.Popen with full Job Object containment in development environments.
+    """
+    cred_file = Path("C:/BreachSecrets/runner_credentials.json")
+    if sys.platform == "win32" and cred_file.exists():
+        try:
+            creds = json.loads(cred_file.read_text(encoding="utf-8"))
+            user_name = f"BreachRunner{slot_id}"
+            password = creds.get(user_name)
+            if password:
+                si = STARTUPINFOW()
+                si.cb = ctypes.sizeof(STARTUPINFOW)
+                pi = PROCESS_INFORMATION()
+
+                # Build command line
+                cmd_line = f'node "{slot_dir / "server.js"}"'
+                res = ctypes.windll.advapi32.CreateProcessWithLogonW(
+                    user_name,
+                    ".",
+                    password,
+                    1,  # LOGON_WITH_PROFILE
+                    None,
+                    cmd_line,
+                    0x08000000,  # CREATE_NO_WINDOW
+                    None,
+                    str(slot_dir),
+                    ctypes.byref(si),
+                    ctypes.byref(pi)
+                )
+                if res != 0:
+                    win_proc = Win32Process(pi.hProcess, pi.hThread, pi.dwProcessId)
+                    job_sandbox.assign(win_proc)
+                    return win_proc
+        except Exception as ex:
+            # Fall back cleanly
+            pass
+
+    # Standard fallback
+    proc = subprocess.Popen(
+        ["node", "server.js"],
+        cwd=str(slot_dir),
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL
+    )
+    job_sandbox.assign(proc)
+    return proc
+
+
+def call_check_fn(fn, base_url: str, context: dict | None = None):
+    """Invokes check function with context if signature accepts it, else base_url only."""
+    try:
+        sig = inspect.signature(fn)
+        if len(sig.parameters) >= 2 or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
+            return fn(base_url, context)
+    except Exception:
+        pass
+    return fn(base_url)
+
+
 def evaluate_attack(attack_id: int, attack_dir: Path, workspace: Path, timeout_seconds: float = 15.0) -> Verdict:
     check_file = attack_dir / "checks" / "check.py"
     if not check_file.exists():
@@ -262,18 +403,10 @@ def evaluate_attack(attack_id: int, attack_dir: Path, workspace: Path, timeout_s
             env["NODE_PATH"] = node_path
 
         # Win32 Job Object sandbox configuration
-        job_sandbox = JobObjectSandbox(max_memory_mb=512, max_processes=16)
+        job_sandbox = JobObjectSandbox(max_memory_mb=512, max_processes=16, max_cpu_time_seconds=int(timeout_seconds))
 
         start_time = time.time()
-        proc = subprocess.Popen(
-            ["node", "server.js"],
-            cwd=str(slot_dir),
-            env=env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
-        )
-
-        job_sandbox.assign(proc)
+        proc = launch_sandboxed_node(slot_id, slot_dir, env, job_sandbox)
 
         # Wrap in psutil for CPU and memory telemetry
         ps_proc = None
@@ -284,6 +417,16 @@ def evaluate_attack(attack_id: int, attack_dir: Path, workspace: Path, timeout_s
             cpu_before = None
 
         base_url = f"http://127.0.0.1:{port}"
+
+        # Build context object for rich checks (CPU times, slot info)
+        context = {
+            "pid": proc.pid,
+            "slot_id": slot_id,
+            "slot_dir": slot_dir,
+            "ps_proc": ps_proc,
+            "base_url": base_url,
+            "get_cpu_times": lambda: ps_proc.cpu_times() if ps_proc and ps_proc.is_running() else None
+        }
 
         # Wait up to 5s for server to start, checking deadline
         healthy = False
@@ -309,41 +452,87 @@ def evaluate_attack(attack_id: int, attack_dir: Path, workspace: Path, timeout_s
         if not healthy:
             return Verdict(attack_id, FAILED, "Application failed to boot or /api/health did not respond.")
 
-        # Run checks within remaining timeout deadline
+        # Telemetry metrics helper
+        def collect_telemetry():
+            c_time_ms = 0.0
+            p_mem_mb = 0.0
+            try:
+                if ps_proc and ps_proc.is_running():
+                    cpu_after = ps_proc.cpu_times()
+                    if cpu_before:
+                        c_time_ms = round(((cpu_after.user - cpu_before.user) + (cpu_after.system - cpu_before.system)) * 1000, 2)
+                    mem = ps_proc.memory_info()
+                    p_mem_mb = round(mem.rss / (1024 * 1024), 2)
+            except Exception:
+                pass
+            return c_time_ms, p_mem_mb
+
+        # -------------------------------------------------------------------
+        # Branch 1: Additive Tier Checks (if exported by check module)
+        # -------------------------------------------------------------------
+        if hasattr(check_mod, "tier_checks"):
+            if time.time() > deadline:
+                return Verdict(attack_id, FAILED, "Execution timed out before tier checks.")
+
+            tier_results = call_check_fn(check_mod.tier_checks, base_url, context)
+            if not isinstance(tier_results, dict):
+                return Verdict(attack_id, FAILED, "Malformed tier_checks return: expected dictionary of bools.")
+
+            # Load tiers weighting from manifest if present
+            manifest_file = attack_dir / "manifest.yaml"
+            tiers_spec = []
+            if manifest_file.exists():
+                try:
+                    m_data = yaml.safe_load(manifest_file.read_text(encoding="utf-8"))
+                    tiers_spec = m_data.get("tests", {}).get("tiers", [])
+                except Exception:
+                    tiers_spec = []
+
+            cpu_time_ms, peak_memory_mb = collect_telemetry()
+
+            if tiers_spec:
+                total_weight = sum(t.get("weight", 0) for t in tiers_spec) or 100
+                earned_weight = sum(t.get("weight", 0) for t in tiers_spec if tier_results.get(t.get("id"), False))
+                score_pct = round(earned_weight / total_weight, 4)
+
+                status = SOLVED if score_pct >= 1.0 else (PARTIAL if score_pct > 0.0 else FAILED)
+                passed_ids = [t.get("id") for t in tiers_spec if tier_results.get(t.get("id"), False)]
+                reason = f"Tiers passed: {earned_weight}/{total_weight}% ({', '.join(passed_ids) if passed_ids else 'none'})"
+                return Verdict(attack_id, status, reason, cpu_time_ms, peak_memory_mb, tier_results, score_pct)
+            else:
+                # Default equal weighting across keys
+                total_count = len(tier_results)
+                passed_count = sum(1 for v in tier_results.values() if v)
+                score_pct = round(passed_count / total_count, 4) if total_count > 0 else 0.0
+                status = SOLVED if score_pct >= 1.0 else (PARTIAL if score_pct > 0.0 else FAILED)
+                reason = f"Tiers passed: {passed_count}/{total_count}"
+                return Verdict(attack_id, status, reason, cpu_time_ms, peak_memory_mb, tier_results, score_pct)
+
+        # -------------------------------------------------------------------
+        # Branch 2: Standard Fallback (regression, replay, variant)
+        # -------------------------------------------------------------------
         # 1. Regression check
         if time.time() > deadline:
             return Verdict(attack_id, FAILED, "Execution timed out during regression check.")
         regression_fn = getattr(check_mod, "regression_check", None)
-        if regression_fn and not regression_fn(base_url):
+        if regression_fn and not call_check_fn(regression_fn, base_url, context):
             return Verdict(attack_id, FAILED, "Regression detected: The site no longer works properly.")
 
         # 2. Replay check (returns True if site is STILL VULNERABLE)
         if time.time() > deadline:
             return Verdict(attack_id, FAILED, "Execution timed out during replay check.")
         replay_fn = getattr(check_mod, "replay_check", None)
-        if replay_fn and replay_fn(base_url):
+        if replay_fn and call_check_fn(replay_fn, base_url, context):
             return Verdict(attack_id, FAILED, "The original vulnerability is still exploitable.")
 
         # 3. Variant check (returns True if variants are safely blocked)
         if time.time() > deadline:
             return Verdict(attack_id, FAILED, "Execution timed out during variant check.")
         variant_fn = getattr(check_mod, "variant_check", None)
-        if variant_fn and not variant_fn(base_url):
+        if variant_fn and not call_check_fn(variant_fn, base_url, context):
             return Verdict(attack_id, PARTIAL, "Exploit variant succeeded: fix is incomplete or hardcoded.")
 
-        # Telemetry metrics
-        cpu_time_ms = 0.0
-        peak_memory_mb = 0.0
-        try:
-            if ps_proc and ps_proc.is_running():
-                cpu_after = ps_proc.cpu_times()
-                if cpu_before:
-                    cpu_time_ms = round(((cpu_after.user - cpu_before.user) + (cpu_after.system - cpu_before.system)) * 1000, 2)
-                mem = ps_proc.memory_info()
-                peak_memory_mb = round(mem.rss / (1024 * 1024), 2)
-        except Exception:
-            pass
-
+        cpu_time_ms, peak_memory_mb = collect_telemetry()
         return Verdict(attack_id, SOLVED, "All checks passed! Vulnerability successfully neutralized.", cpu_time_ms, peak_memory_mb)
 
     finally:
