@@ -1,0 +1,17 @@
+id: 7
+name: "Poisoned dependency and data beacon"
+fires_at: "16:30"
+touches:
+  - package.json
+  - server.js
+fix_requires: "Audit the lockfile and remove the package"
+weights:
+  speed: 30
+  performance: 25
+  prompt_efficiency: 20
+  quality: 15
+  resource: 10
+reference_prompts: 2
+replay_checks: ["checks/check.py:replay_check"]
+hidden_variant_checks: ["checks/check.py:variant_check"]
+status: ready

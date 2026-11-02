@@ -1,0 +1,16 @@
+id: 4
+name: "Hardcoded secret and backdoor debug route"
+fires_at: "13:00"
+touches:
+  - routes/api.js
+fix_requires: "Remove the route, move the secret to the environment"
+weights:
+  speed: 30
+  performance: 25
+  prompt_efficiency: 20
+  quality: 15
+  resource: 10
+reference_prompts: 2
+replay_checks: ["checks/check.py:replay_check"]
+hidden_variant_checks: ["checks/check.py:variant_check"]
+status: ready

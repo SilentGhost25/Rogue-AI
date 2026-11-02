@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Event log entry (append-only)",
+  "type": "object",
+  "required": ["ts", "type"],
+  "properties": {
+    "ts": { "type": "string", "format": "date-time", "description": "Server timestamp, UTC" },
+    "type": {
+      "enum": [
+        "ATTACK_SCHEDULED", "ATTACK_FIRED", "ATTACK_LANDED", "PROMPT", "SUBMISSION", "VERDICT",
+        "BENCHMARK", "QUOTA_SIGNAL", "AGY_EXHAUSTED", "OC_CAP_REACHED", "PROVIDER_THROTTLED",
+        "ELIMINATED", "ADMIN_ACTION", "PAUSE", "RESUME", "KIOSK_REGISTERED", "SNAPSHOT"
+      ]
+    },
+    "participant_id": { "type": ["string", "null"] },
+    "attack_id": { "type": ["integer", "null"] },
+    "payload": { "type": "object" }
+  }
+}

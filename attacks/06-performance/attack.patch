@@ -1,0 +1,14 @@
+--- a/routes/api.js
++++ b/routes/api.js
+@@ -1,3 +1,4 @@
+ const express = require('express');
++const crypto = require('crypto');
+
+ module.exports = (db) => {
+@@ -9,2 +10,5 @@
+   r.get('/api/stats', (_req, res) => {
++    for (let i = 0; i < 200000; i++) {
++      crypto.createHash('sha256').update(String(i)).digest('hex');
++    }
+     const posts = db.prepare('SELECT COUNT(*) AS n FROM posts').get().n;
+

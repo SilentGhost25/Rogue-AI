@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(KioskOnly)' == 'true'">
+    <DefineConstants>$(DefineConstants);KIOSK_ONLY</DefineConstants>
+    <OutputPath>bin\KioskRelease\net9.0-windows\</OutputPath>
+    <IntermediateOutputPath>obj\KioskRelease\net9.0-windows\</IntermediateOutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(KioskOnly)' == 'true'">
+    <Compile Remove="AdminWindow.xaml.cs" />
+    <Page Remove="AdminWindow.xaml" />
+  </ItemGroup>
+  <ItemGroup>
+    <Using Include="System.IO" />
+    <Using Include="System.Net.Http" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Pin and verify these exist on nuget.org before first restore (AGENTS.md rule). -->
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="9.0.2" />
+    <PackageReference Include="EasyWindowsTerminalControl" Version="1.0.38" />
+    <PackageReference Include="AvalonEdit" Version="6.3.1.120" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Update="kiosk.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ROGUE AI: The Breach Protocol — Live Stadium Leaderboard</title>
+<style>
+  :root {
+    --bg: #070d12;
+    --panel: #0d1821;
+    --panel-border: #1b2f3f;
+    --ink: #f0f6fc;
+    --mute: #7d8b99;
+    --accent: #ff3366;
+    --ok: #00e676;
+    --warn: #ffab00;
+    --gold: #ffd700;
+    --silver: #c0c0c0;
+    --bronze: #cd7f32;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font);
+    overflow-x: hidden;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  header {
+    background: linear-gradient(180deg, #10212e 0%, var(--bg) 100%);
+    border-bottom: 2px solid var(--panel-border);
+    padding: 1.2rem 2.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .title-group { display: flex; align-items: center; gap: 1.2rem; }
+  .logo-box {
+    width: 48px;
+    height: 48px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 24px;
+    font-weight: 900;
+    display: grid;
+    place-items: center;
+    border-radius: 8px;
+    box-shadow: 0 0 20px rgba(255, 51, 102, 0.5);
+  }
+  h1 { margin: 0; font-size: 1.8rem; letter-spacing: 2px; text-transform: uppercase; font-weight: 800; }
+  .subtitle { color: var(--mute); font-size: 0.95rem; margin-top: 2px; letter-spacing: 1px; }
+  .header-badges { display: flex; gap: 1rem; align-items: center; }
+  .badge {
+    padding: 0.4rem 1rem;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  .badge.live { background: rgba(0, 230, 118, 0.15); border: 1px solid var(--ok); color: var(--ok); animation: pulse 2s infinite; }
+  .badge.frozen { background: rgba(255, 171, 0, 0.15); border: 1px solid var(--warn); color: var(--warn); display: none; }
+  
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+
+  /* Ticker */
+  .ticker-wrap {
+    background: #0a141c;
+    border-bottom: 1px solid var(--panel-border);
+    padding: 0.6rem 2rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    font-size: 0.95rem;
+  }
+  .ticker-label {
+    background: var(--accent);
+    color: #fff;
+    padding: 0.2rem 0.6rem;
+    border-radius: 4px;
+    font-weight: 800;
+    font-size: 0.75rem;
+    letter-spacing: 1px;
+  }
+  .ticker-text { flex: 1; font-weight: 600; color: #a4b8c6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* Leaderboard Grid */
+  main { flex: 1; padding: 2rem 2.5rem; display: grid; grid-template-columns: 2.2fr 1fr; gap: 2rem; }
+  .table-card {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+  }
+  .card-header {
+    padding: 1.2rem 1.5rem;
+    border-bottom: 1px solid var(--panel-border);
+    font-size: 1.2rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  table { width: 100%; border-collapse: collapse; text-align: left; }
+  th {
+    padding: 0.9rem 1.2rem;
+    background: rgba(255,255,255,0.02);
+    border-bottom: 2px solid var(--panel-border);
+    color: var(--mute);
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  td {
+    padding: 0.85rem 1.2rem;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    font-size: 1.05rem;
+    font-weight: 600;
+  }
+  tr.rank-1 td { background: rgba(255, 215, 0, 0.04); }
+  tr.rank-2 td { background: rgba(192, 192, 192, 0.03); }
+  tr.rank-3 td { background: rgba(205, 127, 50, 0.02); }
+  .rank-pill {
+    display: inline-flex;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 0.9rem;
+  }
+  .r1 { background: var(--gold); color: #000; box-shadow: 0 0 12px rgba(255,215,0,0.5); }
+  .r2 { background: var(--silver); color: #000; }
+  .r3 { background: var(--bronze); color: #fff; }
+  .rn { color: var(--mute); }
+
+  .score-val { font-size: 1.2rem; font-weight: 800; color: var(--ok); }
+  .score-val.masked { color: var(--warn); font-style: italic; font-size: 0.95rem; }
+
+  /* Attack Radar */
+  .radar-card {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+  .attacks-list { display: flex; flex-direction: column; gap: 0.8rem; }
+  .attack-row {
+    background: #09131a;
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    padding: 0.9rem 1.1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .attack-meta { display: flex; flex-direction: column; gap: 2px; }
+  .attack-name { font-weight: 700; font-size: 0.95rem; }
+  .attack-desc { color: var(--mute); font-size: 0.8rem; }
+  .attack-tag {
+    padding: 0.3rem 0.7rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+  }
+  .tag-sched { background: #1a2d3c; color: var(--mute); }
+  .tag-active { background: rgba(255, 51, 102, 0.2); border: 1px solid var(--accent); color: var(--accent); animation: pulse 1.5s infinite; }
+
+  /* Audio button */
+  .sound-btn {
+    background: #1a2d3c;
+    border: 1px solid var(--panel-border);
+    color: var(--ink);
+    padding: 0.4rem 0.8rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.85rem;
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="title-group">
+    <div class="logo-box">&#x26A0;</div>
+    <div>
+      <h1>ROGUE AI &bull; THE BREACH PROTOCOL</h1>
+      <div class="subtitle">Campus Cyber Defense Arena &bull; Realtime Scoring Ledger</div>
+    </div>
+  </div>
+  <div class="header-badges">
+    <button id="sndToggle" class="sound-btn">&#x1F50A; Sound ON</button>
+    <div id="badgeFrozen" class="badge frozen">&#x2744; FINAL HOUR SCOREBOARD FROZEN</div>
+    <div class="badge live">&#x25CF; LIVE TELEMETRY</div>
+  </div>
+</header>
+
+<div class="ticker-wrap">
+  <span class="ticker-label">INCIDENT FEED</span>
+  <span id="ticker" class="ticker-text">Breach network established. Awaiting active intrusions.</span>
+</div>
+
+<main>
+  <section class="table-card">
+    <div class="card-header">
+      <span>TOP DEFENDERS</span>
+      <span id="kioskCount" style="color:var(--mute); font-size:0.9rem">0 Active Kiosks</span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:70px">Rank</th>
+          <th>Defender / Kiosk</th>
+          <th style="width:120px; text-align:center">Neutralized</th>
+          <th style="width:140px; text-align:right">Score</th>
+        </tr>
+      </thead>
+      <tbody id="board">
+        <tr><td colspan="4" style="text-align:center; padding:2rem; color:var(--mute)">Connecting to arena control plane...</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <aside class="radar-card">
+    <div style="font-weight:700; font-size:1.1rem; letter-spacing:1px">SCHEDULED BREACHES</div>
+    <div class="attacks-list" id="attacksList">
+      <div class="attack-row"><div class="attack-meta"><span class="attack-name">#1 Defacement &amp; Redirect</span><span class="attack-desc">CSS &amp; Route injection</span></div><span class="attack-tag tag-sched">READY</span></div>
+      <div class="attack-row"><div class="attack-meta"><span class="attack-name">#2 Stored XSS Script</span><span class="attack-desc">Comment sanitization</span></div><span class="attack-tag tag-sched">READY</span></div>
+      <div class="attack-row"><div class="attack-meta"><span class="attack-name">#3 SQL Injection Extraction</span><span class="attack-desc">Raw query bypass</span></div><span class="attack-tag tag-sched">READY</span></div>
+      <div class="attack-row"><div class="attack-meta"><span class="attack-name">#4 Hardcoded Backdoor Key</span><span class="attack-desc">Admin token exploit</span></div><span class="attack-tag tag-sched">READY</span></div>
+      <div class="attack-row"><div class="attack-meta"><span class="attack-name">#5 Auth Bypass &amp; CORS</span><span class="attack-desc">Permissive origin</span></div><span class="attack-tag tag-sched">READY</span></div>
+      <div class="attack-row"><div class="attack-meta"><span class="attack-name">#6 Performance Sabotage</span><span class="attack-desc">200k hash CPU stall</span></div><span class="attack-tag tag-sched">READY</span></div>
+      <div class="attack-row"><div class="attack-meta"><span class="attack-name">#7 Poisoned Dependency</span><span class="attack-desc">Malicious package hook</span></div><span class="attack-tag tag-sched">READY</span></div>
+    </div>
+  </aside>
+</main>
+
+<script src="/signalr.min.js"></script>
+<script>
+let soundEnabled = true;
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+function playTone(freq, type, duration) {
+  if (!soundEnabled) return;
+  try {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + duration);
+  } catch(e) {}
+}
+
+function playSolveFanfare() {
+  playTone(523.25, 'triangle', 0.2); // C5
+  setTimeout(() => playTone(659.25, 'triangle', 0.2), 150); // E5
+  setTimeout(() => playTone(783.99, 'triangle', 0.4), 300); // G5
+}
+
+function playAlertSiren() {
+  playTone(330, 'sawtooth', 0.3);
+  setTimeout(() => playTone(220, 'sawtooth', 0.3), 200);
+}
+
+document.getElementById('sndToggle').onclick = () => {
+  soundEnabled = !soundEnabled;
+  document.getElementById('sndToggle').innerHTML = soundEnabled ? '&#x1F50A; Sound ON' : '&#x1F507; Sound OFF';
+};
+
+async function loadLeaderboard() {
+  try {
+    const res = await fetch('/api/leaderboard');
+    if (!res.ok) return;
+    const data = await res.json();
+    
+    // Toggle frozen indicator
+    document.getElementById('badgeFrozen').style.display = data.frozen ? 'block' : 'none';
+
+    const tbody = document.getElementById('board');
+    document.getElementById('kioskCount').textContent = `${data.leaderboard.length} Active Kiosks`;
+
+    if (data.leaderboard.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:2rem; color:var(--mute)">Waiting for participants to connect...</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = data.leaderboard.map((item, idx) => {
+      let rankClass = idx === 0 ? 'r1' : idx === 1 ? 'r2' : idx === 2 ? 'r3' : 'rn';
+      let rowClass = idx < 3 ? `rank-${idx+1}` : '';
+      let scoreHtml = item.scoreMasked
+        ? '<span class="score-val masked">&#x2744; HIDDEN</span>'
+        : `<span class="score-val">${item.score.toFixed(1)}</span>`;
+
+      return `
+        <tr class="${rowClass}">
+          <td><span class="rank-pill ${rankClass}">${item.rank}</span></td>
+          <td><div style="font-weight:700">${item.name}</div><div style="font-size:0.8rem;color:var(--mute)">${item.participantId}</div></td>
+          <td style="text-align:center; font-size:1.1rem">&#x2705; ${item.solved} / 7</td>
+          <td style="text-align:right">${scoreHtml}</td>
+        </tr>
+      `;
+    }).join('');
+  } catch(e) {
+    console.error('Error fetching leaderboard:', e);
+  }
+}
+
+// SignalR Realtime Listener
+const conn = new signalR.HubConnectionBuilder().withUrl('/hub').withAutomaticReconnect().build();
+
+conn.on('VERDICT', (pid, attackId, status, reason, score) => {
+  const ticker = document.getElementById('ticker');
+  if (status === 'SOLVED') {
+    ticker.textContent = `\uD83D\uDFE2 [NEUTRALIZED] ${pid} successfully solved Attack #${attackId}! (+${score.toFixed(1)} pts)`;
+    playSolveFanfare();
+  } else {
+    ticker.textContent = `\u26A0\uFE0F [FAILED] ${pid} submitted invalid patch for Attack #${attackId}: ${reason} (-3 pts)`;
+  }
+  loadLeaderboard();
+});
+
+conn.on('BREACH_IMMINENT', (attackId, seconds) => {
+  document.getElementById('ticker').textContent = `\uD83D\uDD34 [CRITICAL] BREACH #${attackId} IMMINENT IN ${seconds} SECONDS!`;
+  playAlertSiren();
+});
+
+conn.on('ATTACK_LANDED', (attackId) => {
+  document.getElementById('ticker').textContent = `\uD83D\uDCA5 [ATTACK LANDED] Attack #${attackId} payload deployed across all active nodes!`;
+  playAlertSiren();
+});
+
+conn.on('BROADCAST', (msg) => {
+  document.getElementById('ticker').textContent = `\uD83D\uDCE2 [BROADCAST] ${msg}`;
+});
+
+conn.on('FROZEN', () => {
+  document.getElementById('badgeFrozen').style.display = 'block';
+  loadLeaderboard();
+});
+
+conn.on('UNFROZEN', () => {
+  document.getElementById('badgeFrozen').style.display = 'none';
+  loadLeaderboard();
+});
+
+conn.start().then(() => {
+  conn.invoke('JoinProjector');
+  loadLeaderboard();
+}).catch(console.error);
+
+setInterval(loadLeaderboard, 6000);
+</script>
+</body>
+</html>

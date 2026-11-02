@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Attack manifest",
+  "type": "object",
+  "required": ["id", "name", "fires_at", "touches", "fix_requires", "weights"],
+  "properties": {
+    "id": { "type": "integer", "minimum": 1, "maximum": 7 },
+    "name": { "type": "string" },
+    "fires_at": { "type": "string", "pattern": "^[0-2][0-9]:[0-5][0-9]$" },
+    "touches": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+    "fix_requires": { "type": "string" },
+    "weights": {
+      "type": "object",
+      "required": ["speed", "performance", "prompt_efficiency", "quality", "resource"],
+      "additionalProperties": false,
+      "properties": {
+        "speed": { "type": "integer" }, "performance": { "type": "integer" },
+        "prompt_efficiency": { "type": "integer" }, "quality": { "type": "integer" },
+        "resource": { "type": "integer" }
+      }
+    },
+    "reference_prompts": { "type": "integer", "minimum": 0 },
+    "replay_checks": { "type": "array", "items": { "type": "string" } },
+    "hidden_variant_checks": { "type": "array", "items": { "type": "string" } }
+  }
+}

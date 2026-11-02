@@ -1,0 +1,361 @@
+using System.IO;
+using System.Text.RegularExpressions;
+using System.Windows;
+using LabKiosk.Services;
+
+namespace LabKiosk;
+
+public partial class MainWindow : Window
+{
+    private readonly KioskSettings _settings = KioskSettings.Load();
+    private readonly ApiClient _api;
+    private readonly BudgetState _budget = new();
+    private HubClient? _hub;
+    private SnapshotSync? _sync;
+    private string? _participantId;
+
+    public MainWindow()
+    {
+        InitializeComponent();
+        _api = new ApiClient(_settings.ServerUrl);
+        Loaded += async (_, _) => await StartAsync();
+        Closed += (_, _) =>
+        {
+            _sync?.Dispose();
+            CodeView?.Dispose();
+            _ = _hub?.DisposeAsync();
+        };
+
+        // F5 shortcut for Submit Fix, F6 for Test Locally
+        KeyDown += (s, e) =>
+        {
+            if (e.Key == System.Windows.Input.Key.F5)
+            {
+                OnSubmitFix(SubmitButton, new RoutedEventArgs());
+            }
+            else if (e.Key == System.Windows.Input.Key.F6)
+            {
+                OnTestLocally(TestLocallyButton, new RoutedEventArgs());
+            }
+        };
+    }
+
+    private async Task StartAsync()
+    {
+        try
+        {
+            try
+            {
+                Directory.CreateDirectory(_settings.WorkspacePath);
+            }
+            catch
+            {
+                _settings.WorkspacePath = Path.Combine(AppContext.BaseDirectory, "workspace");
+                Directory.CreateDirectory(_settings.WorkspacePath);
+            }
+
+            // 1. Initialize WebView2 for the live website
+            await Site.EnsureCoreWebView2Async();
+            Site.Source = new Uri(_settings.SiteUrl);
+
+            // 2. Initialize in-app Code Viewer
+            CodeView.InitializeWorkspace(_settings.WorkspacePath);
+
+            // 3. Initialize ConPTY Terminals
+            InitializeTerminals();
+
+            // 4. Register with the event server
+            _participantId = await _api.RegisterAsync(_settings.DisplayName, _settings.KioskId);
+
+            // 5. Start continuous snapshot sync (every 15s)
+            _sync = new SnapshotSync(_api, _participantId, _settings.WorkspacePath);
+            _sync.Start(TimeSpan.FromSeconds(15));
+
+            // 6. Connect to SignalR Hub
+            _hub = new HubClient(_settings.ServerUrl, _participantId, _api.Token ?? "");
+
+            _hub.Imminent += async (attackId, seconds) =>
+            {
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    StatusText.Text = $"⚠ IMMINENT BREACH #{attackId} in {seconds}s! Saving workspace...";
+                    StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Alert");
+                });
+                await _sync.FlushAsync();
+                await _hub.AckImminentAsync(attackId);
+            };
+
+            _hub.Landed += attackId => Dispatcher.InvokeAsync(async () =>
+            {
+                StatusText.Text = $"🔴 Attack #{attackId} has LANDED! Applying attack payload...";
+                StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Alert");
+                VerdictBadge.Visibility = Visibility.Collapsed;
+
+                if (_participantId is not null)
+                {
+                    try
+                    {
+                        var payload = await _api.GetAttackPayloadAsync(_participantId, attackId);
+                        if (payload?.Files != null && payload.Files.Count > 0)
+                        {
+                            var backupDir = Path.Combine(_settings.WorkspacePath, ".breach-backup", attackId.ToString());
+                            Directory.CreateDirectory(backupDir);
+                            foreach (var file in payload.Files)
+                            {
+                                var targetPath = Path.Combine(_settings.WorkspacePath, file.Path);
+                                if (File.Exists(targetPath))
+                                {
+                                    var bkp = Path.Combine(backupDir, file.Path);
+                                    Directory.CreateDirectory(Path.GetDirectoryName(bkp)!);
+                                    File.Copy(targetPath, bkp, overwrite: true);
+                                }
+                                var bytes = Convert.FromBase64String(file.ContentBase64);
+                                Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);
+                                File.WriteAllBytes(targetPath, bytes);
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        StatusText.Text = $"Payload download warning: {ex.Message}";
+                    }
+                }
+
+                StatusText.Text = $"🔴 Attack #{attackId} has LANDED! Inspect code in viewer and neutralize the exploit.";
+
+                // Refresh website and code viewer to show the corruption
+                Site.Reload();
+                CodeView.RefreshFileList();
+                CodeView.ReloadCurrentFile();
+            });
+
+            _hub.Verdict += (attackId, status, reason, score) => Dispatcher.InvokeAsync(() =>
+            {
+                if (status == "SOLVED")
+                {
+                    VerdictBadge.Visibility = Visibility.Visible;
+                    VerdictBadge.Background = (System.Windows.Media.SolidColorBrush)FindResource("Ok");
+                    VerdictBadgeText.Text = "SOLVED";
+                    StatusText.Text = $"Attack #{attackId} NEUTRALIZED! +{score:F1} pts. ({reason})";
+                    StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Ok");
+                }
+                else
+                {
+                    VerdictBadge.Visibility = Visibility.Visible;
+                    VerdictBadge.Background = (System.Windows.Media.SolidColorBrush)FindResource("Alert");
+                    VerdictBadgeText.Text = "FAILED";
+                    StatusText.Text = $"Fix rejected for Attack #{attackId}: {reason} (-3 pts penalty)";
+                    StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Alert");
+                }
+                Site.Reload();
+            });
+
+            _hub.Message += text => Dispatcher.InvokeAsync(() => StatusText.Text = text);
+            _hub.Paused += () => Dispatcher.InvokeAsync(() =>
+            {
+                StatusText.Text = "⏸ Event PAUSED by the organizers. Timers frozen.";
+                StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Mute");
+            });
+
+            await _hub.StartAsync();
+
+            StatusText.Text = "Connected to Breach Command. System nominal. No active attacks.";
+            StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Ink");
+            RefreshMeters();
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = $"Server offline or unreachable: {ex.Message}";
+            StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Alert");
+        }
+    }
+
+    private void InitializeTerminals()
+    {
+        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var agyCandidate = Path.Combine(localAppData, @"agy\bin\agy.exe");
+
+        // Set up agy Terminal
+        AgyTerm.WorkingDirectory = _settings.WorkspacePath;
+        if (File.Exists(agyCandidate))
+        {
+            AgyTerm.StartupCommandLine = $"\"{agyCandidate}\"";
+        }
+        else
+        {
+            // Fallback shell that displays agy instructions
+            AgyTerm.StartupCommandLine = "powershell.exe -NoExit -Command \"Write-Host 'Antigravity CLI (agy) Workspace Ready' -ForegroundColor Cyan; Write-Host 'Workspace: ' (Get-Location) -ForegroundColor Gray\"";
+        }
+
+        // Set up OpenCode Terminal
+        OpenCodeTerm.WorkingDirectory = _settings.WorkspacePath;
+        OpenCodeTerm.StartupCommandLine = "powershell.exe -NoExit -Command \"Write-Host 'OpenCode Terminal Workspace Ready' -ForegroundColor Green; opencode --version 2>$null\"";
+
+        // Listen for quota signals
+        AgyTerm.ConPTYTerm.TerminalOutput += (s, e) =>
+        {
+            var text = e.Data;
+            if (string.IsNullOrEmpty(text)) return;
+
+            if (text.Contains("Individual quota reached", StringComparison.OrdinalIgnoreCase) ||
+                text.Contains("RESOURCE_EXHAUSTED", StringComparison.OrdinalIgnoreCase))
+            {
+                Dispatcher.InvokeAsync(() =>
+                {
+                    _budget.MarkAgyExhausted();
+                    RefreshMeters();
+                    StatusText.Text = "Antigravity quota exhausted! Switching to OpenCode for remaining tasks.";
+                    StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Alert");
+                    TabOpenCode.IsChecked = true;
+                    OnTabChanged(TabOpenCode, new RoutedEventArgs());
+                    if (_participantId is not null)
+                    {
+                        _ = _api.SendTelemetryAsync(_participantId, "AGY_EXHAUSTED");
+                    }
+                });
+            }
+        };
+    }
+
+    private async void OnSubmitFix(object sender, RoutedEventArgs e)
+    {
+        if (_participantId is null || _sync is null) return;
+        SubmitButton.IsEnabled = false;
+        try
+        {
+            StatusText.Text = "Uploading fix snapshot to Gitea...";
+            StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Ink");
+            await _sync.FlushAsync();
+            await _api.SubmitAsync(_participantId);
+            StatusText.Text = "Fix submitted to evaluator queue. Awaiting verdict...";
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = $"Submit failed: {ex.Message}. Please retry.";
+            StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Alert");
+        }
+        finally
+        {
+            SubmitButton.IsEnabled = true;
+        }
+    }
+
+    private async void OnTestLocally(object sender, RoutedEventArgs e)
+    {
+        if (TestLocallyButton.IsEnabled == false) return;
+        TestLocallyButton.IsEnabled = false;
+        TestLocallyButton.Content = "⏳ Testing...";
+        StatusText.Text = "Executing local test suite (npm test)...";
+        StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Ink");
+
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "cmd.exe",
+                Arguments = "/c npm test",
+                WorkingDirectory = _settings.WorkspacePath,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var proc = new System.Diagnostics.Process { StartInfo = psi };
+            proc.Start();
+
+            var stdoutTask = proc.StandardOutput.ReadToEndAsync();
+            var stderrTask = proc.StandardError.ReadToEndAsync();
+
+            await proc.WaitForExitAsync();
+            var stdout = await stdoutTask;
+            var stderr = await stderrTask;
+
+            var output = (stdout + "\n" + stderr).Trim();
+            var passed = proc.ExitCode == 0;
+
+            if (passed)
+            {
+                StatusText.Text = "✔ Local tests passed! Workspace verified and ready to submit.";
+                StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Ok");
+            }
+            else
+            {
+                StatusText.Text = "✖ Local tests failed! Fix the issues before submitting to avoid point penalties.";
+                StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Alert");
+            }
+
+            var dialog = new TestResultsWindow(passed, output, _settings.WorkspacePath)
+            {
+                Owner = this
+            };
+            dialog.ShowDialog();
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = $"Error running local tests: {ex.Message}";
+            StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Alert");
+            MessageBox.Show($"Failed to execute npm test: {ex.Message}", "Test Runner Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            TestLocallyButton.IsEnabled = true;
+            TestLocallyButton.Content = "🧪 Test Locally (F6)";
+        }
+    }
+
+    private void OnTabChanged(object sender, RoutedEventArgs e)
+    {
+        if (AgyTerm is null || OpenCodeTerm is null) return;
+
+        if (TabAgy.IsChecked == true)
+        {
+            AgyTerm.Visibility = Visibility.Visible;
+            OpenCodeTerm.Visibility = Visibility.Collapsed;
+        }
+        else
+        {
+            AgyTerm.Visibility = Visibility.Collapsed;
+            OpenCodeTerm.Visibility = Visibility.Visible;
+        }
+    }
+
+    private void RefreshMeters()
+    {
+        AgyMeter.Text = _budget.AgyExhausted ? "agy: EXHAUSTED" : "agy: READY";
+        AgyMeter.Foreground = _budget.AgyExhausted
+            ? (System.Windows.Media.SolidColorBrush)FindResource("Alert")
+            : (System.Windows.Media.SolidColorBrush)FindResource("Ok");
+
+        OcMeter.Text = $"OpenCode: {_budget.OpenCodePrompts} / {_budget.OpenCodeCap} prompts";
+    }
+
+    private void OnReloadSite(object sender, RoutedEventArgs e) => Site.Reload();
+
+    private void OnLayoutAll3(object sender, RoutedEventArgs e)
+    {
+        ColWeb.Width = new GridLength(1.1, GridUnitType.Star);
+        ColCode.Width = new GridLength(1.2, GridUnitType.Star);
+        ColTerm.Width = new GridLength(1.2, GridUnitType.Star);
+        ColSplitter1.Width = new GridLength(6);
+        ColSplitter2.Width = new GridLength(6);
+    }
+
+    private void OnLayoutWebTerm(object sender, RoutedEventArgs e)
+    {
+        ColWeb.Width = new GridLength(1, GridUnitType.Star);
+        ColCode.Width = new GridLength(0);
+        ColTerm.Width = new GridLength(1, GridUnitType.Star);
+        ColSplitter1.Width = new GridLength(0);
+        ColSplitter2.Width = new GridLength(6);
+    }
+
+    private void OnLayoutCodeTerm(object sender, RoutedEventArgs e)
+    {
+        ColWeb.Width = new GridLength(0);
+        ColCode.Width = new GridLength(1.1, GridUnitType.Star);
+        ColTerm.Width = new GridLength(1.2, GridUnitType.Star);
+        ColSplitter1.Width = new GridLength(0);
+        ColSplitter2.Width = new GridLength(6);
+    }
+}

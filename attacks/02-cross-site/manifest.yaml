@@ -1,0 +1,17 @@
+id: 2
+name: "Cross-site scripting in search and comments"
+fires_at: "11:30"
+touches:
+  - routes/search.js
+  - routes/posts.js
+fix_requires: "Output encoding and sanitising"
+weights:
+  speed: 30
+  performance: 25
+  prompt_efficiency: 20
+  quality: 15
+  resource: 10
+reference_prompts: 3
+replay_checks: ["checks/check.py:replay_check"]
+hidden_variant_checks: ["checks/check.py:variant_check"]
+status: ready
