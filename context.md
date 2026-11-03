@@ -111,8 +111,8 @@ ROGUE AI: The Breach Protocol is a live cybersecurity competition platform where
 
 | Test Suite / Target | Command | Result |
 |---|---|---|
-| **ControlPlane Tests** | `$env:DOTNET_ROOT = "$env:LOCALAPPDATA\dotnet"; $env:Path = "$env:DOTNET_ROOT;$env:Path"; dotnet test server/ControlPlane.Tests` | **22 Passed, 0 Failed, 0 Skipped** (100% green) |
-| **LabKiosk Build** | `$env:DOTNET_ROOT = "$env:LOCALAPPDATA\dotnet"; $env:Path = "$env:DOTNET_ROOT;$env:Path"; dotnet build kiosk/LabKiosk` | **0 Warnings, 0 Errors** |
+| **ControlPlane Tests** | `$env:DOTNET_ROOT = "$env:LOCALAPPDATA\dotnet"; $env:Path = "$env:DOTNET_ROOT;$env:Path"; dotnet test server/ControlPlane.Tests` | **24 Passed, 0 Failed, 0 Skipped** (100% green, includes restart recovery and unique index) |
+| **LabKiosk Build** | `$env:DOTNET_ROOT = "$env:LOCALAPPDATA\dotnet"; $env:Path = "$env:DOTNET_ROOT;$env:Path"; dotnet build kiosk/LabKiosk` | **0 Warnings, 0 Errors** (Process-isolated WebView2) |
 | **Engine Tests** | `cd engine && python -m unittest discover -s tests -t .` | **10 Passed, 0 Failed** |
 | **Sandbox Security Tests** | `python tests/security/test_sandbox_escape.py` | **5 Passed, 0 Failed** |
 | **Harbour Notes Site** | `cd site && npm test` | **6 Passed, 0 Failed** |
@@ -124,9 +124,16 @@ ROGUE AI: The Breach Protocol is a live cybersecurity competition platform where
 1. **Differentiated Attack Modals & Popups:**
    - Customize intrusion alert dialogs and top-bar banner styling per attack vector (displaying `narrative.broadcast_title`, codename, targeted architectural layer, and tactical description from `manifest.yaml`).
    - Distinct visual themes and audio/haptic cues per severity band (Band 1: Defacement/XSS, Band 2: Stored/SQLi, Band 3: Auth/IDOR, Band 4: Sabotage/Supply Chain).
-2. **Local AI CLI Provisioning (`agy` & `opencode`):**
-   - Provide fallback mock binaries or auto-installer checks for `agy.exe` and `opencode` so local dev environments without pre-provisioned CLI agents can simulate agent responses.
-   - Reaffirm AvalonEdit in-app editor as the official zero-dependency contingency path.
-3. **Multi-Window Launcher Process Decoupling:**
-   - Enhance `run.ps1` service cleanup to check for remaining active kiosk or server consumers before terminating background Node and Control Plane processes.
+2. **Event-Day AI CLI Machine Provisioning (`agy` & `opencode`):**
+   - **Decision gate for event organizer:** `agy.exe` and `opencode` must be pre-provisioned in campus laptop images (under `%LOCALAPPDATA%\agy\bin\` and npm global `PATH`).
+   - For dev/testing environments, create a mock script or install `opencode` globally (`npm i -g opencode`).
+   - AvalonEdit in-app editor remains the official zero-dependency contingency path.
+3. **Mid-Countdown Restart Recovery (Test 4 Verified):**
+   - Implemented in `RogueAgentOrchestrator.StartAsync()`: scans `ArenaImminent` rows on boot; if overdue, marks landed immediately; if future, re-arms `LandAtAsync`.
+4. **Scheduler UTC Timezone Alignment (Test 3 Verified):**
+   - `ScheduledTimeToday()` in `AttackManifest.cs` converts local arena time to UTC `DateTime`; `ExecuteAsync` compares against `_clock.UtcNow`.
+5. **Kiosk Process Isolation & Simultaneity Logging (Test 1 Verified):**
+   - Dynamically isolated WebView2 user data folders per PID (`%LOCALAPPDATA%\RogueAI\WV2_Kiosk_<PID>`).
+   - `[SIMULTANEITY] Attack #{id} payload written at {landingTimestamp:O}` logged on disk write for quantitative $\Delta < 200\text{ms}$ audit.
+
 
