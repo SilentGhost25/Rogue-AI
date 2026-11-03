@@ -17,6 +17,10 @@ if (Test-Path "$env:LOCALAPPDATA\dotnet") {
     $env:Path = "$env:LOCALAPPDATA\dotnet;$env:Path"
 }
 
+if (-not $env:BREACH_ADMIN_KEY) {
+    $env:BREACH_ADMIN_KEY = "LocalDevAdminKey_2026_Secure123"
+}
+
 Write-Host "==========================================================" -ForegroundColor Cyan
 Write-Host "  ROGUE AI — THE BREACH PROTOCOL (All-In-One Launcher)   " -ForegroundColor Yellow
 Write-Host "==========================================================" -ForegroundColor Cyan
