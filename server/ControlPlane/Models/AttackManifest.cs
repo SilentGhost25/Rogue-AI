@@ -50,10 +50,13 @@ public sealed class AttackManifest
 
     public TimeOnly ScheduledTime => TimeOnly.Parse(Dispatch.Time);
 
-    public DateTime ScheduledTimeToday(DateTime arenaNowLocal) =>
-        DateTime.SpecifyKind(
+    public DateTime ScheduledTimeToday(DateTime arenaNowLocal)
+    {
+        var local = DateTime.SpecifyKind(
             arenaNowLocal.Date.Add(ScheduledTime.ToTimeSpan()),
             DateTimeKind.Local);
+        return local.ToUniversalTime();
+    }
 
     public static AttackManifest LoadFromFile(string path)
     {

@@ -311,6 +311,36 @@ public class RogueAgentOrchestratorTests : IDisposable
             "SELECT \"unique\" FROM pragma_index_list('attack_deliveries') WHERE name = 'ux_attack_deliveries_attack_participant'");
         Assert.Equal(1, isUnique);
     }
+
+    [Fact]
+    public async Task Startup_reconciles_ArenaImminent_crash_recovery()
+    {
+        CreateTestAttack(0, "Attack 0");
+        var hub = new RecordingHubContext();
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                {"Breach:DatabasePath", _testDbPath},
+                {"RogueAgent:AttacksRoot", _attacksDir}
+            })
+            .Build();
+
+        // Simulate crash state: attack 0 was in ArenaImminent 20s ago with 10s countdown
+        _db.EnsureDispatchRow(0);
+        _db.TransitionDispatch(0, DispatchState.ArenaImminent);
+        var pastImminent = DateTime.UtcNow.AddSeconds(-20).ToString("O");
+        _db.Exec("UPDATE attack_dispatch SET arena_imminent_at = @t WHERE attack_id = 0", ("@t", pastImminent));
+        _db.Exec("INSERT OR REPLACE INTO attack_dispatch_runtime (attack_id, imminent_seconds) VALUES (0, 10)");
+        _db.PreregisterAttackDeliveries(0, new[] { "p1", "p2" });
+
+        var orch = new RogueAgentOrchestrator(hub, _db, new SystemClock(), NullLogger<RogueAgentOrchestrator>.Instance, config);
+        await orch.StartAsync(CancellationToken.None);
+
+        // Assert: state reconciled to ArenaLanded and deliveries marked landed
+        Assert.Equal(DispatchState.ArenaLanded, _db.GetDispatchState(0));
+        var unlanded = _db.QueryScalar<int>("SELECT COUNT(*) FROM attack_deliveries WHERE attack_id = 0 AND landed_at IS NULL");
+        Assert.Equal(0, unlanded);
+    }
 }
 
 public class RecordingHubContext : IHubContext<BreachHub>

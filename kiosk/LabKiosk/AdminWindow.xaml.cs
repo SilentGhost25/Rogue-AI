@@ -18,7 +18,10 @@ public partial class AdminWindow : Window
         {
             try
             {
-                await AdminWeb.EnsureCoreWebView2Async();
+                var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                var udata = Path.Combine(localAppData, "RogueAI", "WV2_Admin_" + Environment.ProcessId);
+                var env = await Microsoft.Web.WebView2.Core.CoreWebView2Environment.CreateAsync(null, udata);
+                await AdminWeb.EnsureCoreWebView2Async(env);
                 AdminWeb.Source = new Uri($"{_serverUrl}/index.html");
             }
             catch (Exception ex)

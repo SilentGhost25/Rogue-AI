@@ -104,6 +104,34 @@ public sealed class RogueAgentOrchestrator : BackgroundService
                 """,
                 ("@id", m.Id), ("@s", m.Dispatch.ImminentSeconds));
         }
+
+        // Startup reconciliation for mid-countdown restart recovery
+        foreach (var m in _attacks)
+        {
+            var state = _db.GetDispatchState(m.Id);
+            if (state == DispatchState.ArenaImminent)
+            {
+                var imminentAtStr = _db.QueryScalar<string>(
+                    "SELECT arena_imminent_at FROM attack_dispatch WHERE attack_id = @id",
+                    ("@id", m.Id));
+                if (DateTime.TryParse(imminentAtStr, null, System.Globalization.DateTimeStyles.RoundtripKind, out var imminentAt))
+                {
+                    var landAtUtc = imminentAt.ToUniversalTime().AddSeconds(m.Dispatch.ImminentSeconds);
+                    if (_clock.UtcNow >= landAtUtc)
+                    {
+                        _log.LogWarning("Attack #{Id} was ArenaImminent with overdue land time {LandAt:O}. Marking landed immediately on recovery.", m.Id, landAtUtc);
+                        _db.MarkAttackLanded(m.Id);
+                        _db.TransitionDispatch(m.Id, DispatchState.ArenaLanded);
+                    }
+                    else
+                    {
+                        _log.LogInformation("Attack #{Id} was ArenaImminent with future land time {LandAt:O}. Re-arming landing timer.", m.Id, landAtUtc);
+                        _ = LandAtAsync(m.Id, landAtUtc);
+                    }
+                }
+            }
+        }
+
         _log.LogInformation("RogueAgent ready: {Count} attacks loaded.", _attacks.Count);
         await base.StartAsync(ct);
     }
@@ -118,7 +146,7 @@ public sealed class RogueAgentOrchestrator : BackgroundService
                 foreach (var m in _attacks.Where(a => a.Dispatch.Mode == "scheduled"))
                 {
                     var state = _db.GetDispatchState(m.Id);
-                    if (state == DispatchState.Pending && _clock.Now >= m.ScheduledTimeToday(DateTime.Now))
+                    if (state == DispatchState.Pending && _clock.UtcNow >= m.ScheduledTimeToday(DateTime.Now))
                         await FireToCanaryAsync(m.Id);
                 }
             }

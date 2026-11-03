@@ -61,8 +61,22 @@ public partial class MainWindow : Window
                 Directory.CreateDirectory(_settings.WorkspacePath);
             }
 
-            // 1. Initialize WebView2 for the live website
-            await Site.EnsureCoreWebView2Async();
+            // 1. Initialize WebView2 for the live website with isolated profile folder
+            var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            var udata = Path.Combine(localAppData, "RogueAI", "WV2_Kiosk_" + Environment.ProcessId);
+            var env = await Microsoft.Web.WebView2.Core.CoreWebView2Environment.CreateAsync(null, udata);
+            await Site.EnsureCoreWebView2Async(env);
+            Site.NavigationCompleted += (s, e) =>
+            {
+                if (!e.IsSuccess)
+                {
+                    Dispatcher.InvokeAsync(() =>
+                    {
+                        StatusText.Text = $"⚠ Website at {_settings.SiteUrl} unreachable ({e.WebErrorStatus}). Verify background node server.";
+                        StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Alert");
+                    });
+                }
+            };
             Site.Source = new Uri(_settings.SiteUrl);
 
             // 2. Initialize in-app Code Viewer
@@ -168,7 +182,7 @@ public partial class MainWindow : Window
                     StatusText.Text = $"Submission rejected ({status}): {reason}";
                     StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Alert");
                 }
-                Site.Reload();
+                ReloadSiteSafe();
             });
 
             _hub.Message += text => Dispatcher.InvokeAsync(() => StatusText.Text = text);
@@ -233,10 +247,13 @@ public partial class MainWindow : Window
             }
         }
 
-        StatusText.Text = $"🔴 Attack #{attackId} has LANDED! Inspect code in viewer and neutralize the exploit.";
+        var landingTimestamp = (_clock?.SyncedUtcNow ?? DateTime.UtcNow).ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
+        Console.WriteLine($"[SIMULTANEITY] Attack #{attackId} payload written at {landingTimestamp}");
+        System.Diagnostics.Debug.WriteLine($"[SIMULTANEITY] Attack #{attackId} payload written at {landingTimestamp}");
+        StatusText.Text = $"🔴 Attack #{attackId} has LANDED at {landingTimestamp}! Inspect code in viewer and neutralize the exploit.";
 
         // Refresh website and code viewer to show the corruption
-        Site.Reload();
+        ReloadSiteSafe();
         CodeView.RefreshFileList();
         CodeView.ReloadCurrentFile();
     }
@@ -446,7 +463,19 @@ public partial class MainWindow : Window
         OcMeter.Text = $"OpenCode: {_budget.OpenCodePrompts} / {_budget.OpenCodeCap} prompts";
     }
 
-    private void OnReloadSite(object sender, RoutedEventArgs e) => Site.Reload();
+    private void ReloadSiteSafe()
+    {
+        if (Site.CoreWebView2 != null)
+        {
+            Site.Reload();
+        }
+        else
+        {
+            Site.Source = new Uri(_settings.SiteUrl);
+        }
+    }
+
+    private void OnReloadSite(object sender, RoutedEventArgs e) => ReloadSiteSafe();
 
     private void OnLayoutAll3(object sender, RoutedEventArgs e)
     {
