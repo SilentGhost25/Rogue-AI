@@ -239,11 +239,11 @@ const post = (url, body) => fetch(url, { method: 'POST', headers: getHeaders(), 
 
 // Load saved key if available and not stale
 const savedKey = localStorage.getItem('breachAdminKey');
-if (savedKey && savedKey !== 'change-me-locally') {
+if (savedKey && savedKey !== 'change-me-locally' && savedKey !== 'CHANGE-ME-BEFORE-EVENT') {
   $('adminKey').value = savedKey;
 } else {
-  $('adminKey').value = 'CHANGE-ME-BEFORE-EVENT';
-  localStorage.setItem('breachAdminKey', 'CHANGE-ME-BEFORE-EVENT');
+  $('adminKey').value = 'LocalDevAdminKey_2026_Secure123';
+  localStorage.setItem('breachAdminKey', 'LocalDevAdminKey_2026_Secure123');
 }
 $('adminKey').addEventListener('input', () => {
   localStorage.setItem('breachAdminKey', $('adminKey').value);
