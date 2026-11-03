@@ -116,3 +116,17 @@ ROGUE AI: The Breach Protocol is a live cybersecurity competition platform where
 | **Engine Tests** | `cd engine && python -m unittest discover -s tests -t .` | **10 Passed, 0 Failed** |
 | **Sandbox Security Tests** | `python tests/security/test_sandbox_escape.py` | **5 Passed, 0 Failed** |
 | **Harbour Notes Site** | `cd site && npm test` | **6 Passed, 0 Failed** |
+
+---
+
+## 6. Backlog & Upcoming Polish Items
+
+1. **Differentiated Attack Modals & Popups:**
+   - Customize intrusion alert dialogs and top-bar banner styling per attack vector (displaying `narrative.broadcast_title`, codename, targeted architectural layer, and tactical description from `manifest.yaml`).
+   - Distinct visual themes and audio/haptic cues per severity band (Band 1: Defacement/XSS, Band 2: Stored/SQLi, Band 3: Auth/IDOR, Band 4: Sabotage/Supply Chain).
+2. **Local AI CLI Provisioning (`agy` & `opencode`):**
+   - Provide fallback mock binaries or auto-installer checks for `agy.exe` and `opencode` so local dev environments without pre-provisioned CLI agents can simulate agent responses.
+   - Reaffirm AvalonEdit in-app editor as the official zero-dependency contingency path.
+3. **Multi-Window Launcher Process Decoupling:**
+   - Enhance `run.ps1` service cleanup to check for remaining active kiosk or server consumers before terminating background Node and Control Plane processes.
+
