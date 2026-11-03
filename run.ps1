@@ -143,9 +143,14 @@ try {
     $kioskProc.WaitForExit()
     Write-Host "[*] Application closed." -ForegroundColor Cyan
 } finally {
-    Write-Host "[*] Cleaning up background service processes..." -ForegroundColor DarkGray
-    if ($serverProc -and !$serverProc.HasExited) { Stop-Process -Id $serverProc.Id -Force -ErrorAction SilentlyContinue }
-    if ($engineProc -and !$engineProc.HasExited) { Stop-Process -Id $engineProc.Id -Force -ErrorAction SilentlyContinue }
-    if ($siteProc -and !$siteProc.HasExited) { Stop-Process -Id $siteProc.Id -Force -ErrorAction SilentlyContinue }
-    Write-Host "[+] Shutdown complete. Standby." -ForegroundColor Green
+    $remainingKiosks = Get-Process LabKiosk -ErrorAction SilentlyContinue | Where-Object { $kioskProc -and $_.Id -ne $kioskProc.Id }
+    if ($remainingKiosks) {
+        Write-Host "[*] Other LabKiosk instances are still active ($($remainingKiosks.Count)). Keeping background services running." -ForegroundColor Cyan
+    } else {
+        Write-Host "[*] Cleaning up background service processes..." -ForegroundColor DarkGray
+        if ($serverProc -and !$serverProc.HasExited) { Stop-Process -Id $serverProc.Id -Force -ErrorAction SilentlyContinue }
+        if ($engineProc -and !$engineProc.HasExited) { Stop-Process -Id $engineProc.Id -Force -ErrorAction SilentlyContinue }
+        if ($siteProc -and !$siteProc.HasExited) { Stop-Process -Id $siteProc.Id -Force -ErrorAction SilentlyContinue }
+        Write-Host "[+] Shutdown complete. Standby." -ForegroundColor Green
+    }
 }
