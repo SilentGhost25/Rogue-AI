@@ -22,6 +22,7 @@ public sealed class RogueAgentOrchestrator : BackgroundService
     private readonly IClock _clock;
     private readonly ILogger<RogueAgentOrchestrator> _log;
     private readonly string _attacksRoot;
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<int, byte> _armedLandings = new();
 
     public RogueAgentOrchestrator(
         IHubContext<BreachHub> hub,
@@ -122,6 +123,19 @@ public sealed class RogueAgentOrchestrator : BackgroundService
                         _log.LogWarning("Attack #{Id} was ArenaImminent with overdue land time {LandAt:O}. Marking landed immediately on recovery.", m.Id, landAtUtc);
                         _db.MarkAttackLanded(m.Id);
                         _db.TransitionDispatch(m.Id, DispatchState.ArenaLanded);
+                        try
+                        {
+                            await _hub.Clients.Group("arena").SendAsync("ATTACK_LANDED", new
+                            {
+                                attackId = m.Id,
+                                landedAtUtcIso = DateTime.UtcNow.ToString("O")
+                            });
+                            await _hub.Clients.Group("arena").SendAsync("ATTACK_LANDED", m.Id);
+                        }
+                        catch (Exception ex)
+                        {
+                            _log.LogWarning(ex, "Failed to broadcast ATTACK_LANDED during recovery for attack #{Id}", m.Id);
+                        }
                     }
                     else
                     {
@@ -223,11 +237,24 @@ public sealed class RogueAgentOrchestrator : BackgroundService
 
     private async Task LandAtAsync(int attackId, DateTime landAtUtc)
     {
-        var delay = landAtUtc - _clock.UtcNow;
-        if (delay > TimeSpan.Zero) await Task.Delay(delay);
+        if (!_armedLandings.TryAdd(attackId, 0))
+        {
+            _log.LogWarning("Landing for attack #{Id} is already armed; skipping duplicate schedule.", attackId);
+            return;
+        }
 
         try
         {
+            var delay = landAtUtc - _clock.UtcNow;
+            if (delay > TimeSpan.Zero) await Task.Delay(delay);
+
+            var current = _db.GetDispatchState(attackId);
+            if (current != DispatchState.ArenaImminent)
+            {
+                _log.LogInformation("Attack #{Id} is no longer ArenaImminent (current state: {Current}); aborting landing timer.", attackId, current);
+                return;
+            }
+
             _db.MarkAttackLanded(attackId);
             _db.TransitionDispatch(attackId, DispatchState.ArenaLanded);
             await _hub.Clients.Group("arena").SendAsync("ATTACK_LANDED", new
@@ -242,6 +269,10 @@ public sealed class RogueAgentOrchestrator : BackgroundService
         {
             _log.LogError(ex, "Landing failed for attack #{Id}", attackId);
             _db.TransitionDispatch(attackId, DispatchState.Failed, ex.Message);
+        }
+        finally
+        {
+            _armedLandings.TryRemove(attackId, out _);
         }
     }
 

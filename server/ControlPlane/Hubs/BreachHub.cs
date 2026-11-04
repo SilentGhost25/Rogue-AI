@@ -17,7 +17,7 @@ public sealed class BreachHub(IConfiguration config, Database db) : Hub
         await Groups.AddToGroupAsync(Context.ConnectionId, $"p:{participantId}");
         await Groups.AddToGroupAsync(Context.ConnectionId, "arena");
 
-        var canaryDeskId = config["RogueAgent:CanaryDeskId"] ?? "DESK-01";
+        var canaryDeskId = config["RogueAgent:CanaryDeskId"] ?? "CANARY";
         var participantDesk = db.QueryScalar<string>("SELECT desk_id FROM desk_tokens WHERE participant_id = @p", ("@p", participantId));
         if (string.Equals(participantId, canaryDeskId, StringComparison.OrdinalIgnoreCase) ||
             string.Equals(participantDesk, canaryDeskId, StringComparison.OrdinalIgnoreCase))

@@ -212,7 +212,7 @@ app.MapGet("/api/time", () => Results.Ok(new { serverTimeUtc = DateTime.UtcNow.T
 
 bool IsCanaryDesk(string id, Database db)
 {
-    var canaryDeskId = app.Configuration["RogueAgent:CanaryDeskId"] ?? "DESK-01";
+    var canaryDeskId = app.Configuration["RogueAgent:CanaryDeskId"] ?? "CANARY";
     if (string.Equals(id, canaryDeskId, StringComparison.OrdinalIgnoreCase)) return true;
     var participantDesk = db.QueryScalar<string>("SELECT desk_id FROM desk_tokens WHERE participant_id = @p", ("@p", id));
     return string.Equals(participantDesk, canaryDeskId, StringComparison.OrdinalIgnoreCase);

@@ -207,7 +207,16 @@ public partial class MainWindow : Window
 
     private void ApplyAttack(int attackId)
     {
-        if (_lastAppliedAttackId == attackId) return; // Prevent duplicate writes
+        if (_lastAppliedAttackId == attackId) return; // Prevent duplicate writes in-memory
+
+        var markerDir = Path.Combine(_settings.WorkspacePath, ".breach-applied");
+        var markerFile = Path.Combine(markerDir, $"attack-{attackId}.applied");
+        if (File.Exists(markerFile))
+        {
+            _lastAppliedAttackId = attackId;
+            return; // Already applied to disk previously; NEVER overwrite participant fix!
+        }
+
         _lastAppliedAttackId = attackId;
         _landingTimerCts?.Cancel();
 
@@ -247,10 +256,22 @@ public partial class MainWindow : Window
             }
         }
 
-        var landingTimestamp = (_clock?.SyncedUtcNow ?? DateTime.UtcNow).ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
-        Console.WriteLine($"[SIMULTANEITY] Attack #{attackId} payload written at {landingTimestamp}");
-        System.Diagnostics.Debug.WriteLine($"[SIMULTANEITY] Attack #{attackId} payload written at {landingTimestamp}");
-        StatusText.Text = $"🔴 Attack #{attackId} has LANDED at {landingTimestamp}! Inspect code in viewer and neutralize the exploit.";
+        // Write durable marker so reboot / reconnect never overwrites code
+        try
+        {
+            Directory.CreateDirectory(markerDir);
+            File.WriteAllText(markerFile, DateTime.UtcNow.ToString("O"));
+        }
+        catch { }
+
+        var isSynced = _clock != null && _clock.IsSynced;
+        var clockSource = isSynced ? "SYNCED" : "UNSYNCED_FALLBACK";
+        var now = isSynced ? _clock!.SyncedUtcNow : DateTime.UtcNow;
+        var landingTimestamp = now.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
+
+        Console.WriteLine($"[SIMULTANEITY] Attack #{attackId} payload written at {landingTimestamp} (Clock: {clockSource})");
+        System.Diagnostics.Debug.WriteLine($"[SIMULTANEITY] Attack #{attackId} payload written at {landingTimestamp} (Clock: {clockSource})");
+        StatusText.Text = $"🔴 Attack #{attackId} has LANDED at {landingTimestamp}! (Clock: {clockSource}) Inspect code in viewer and neutralize the exploit.";
 
         // Refresh website and code viewer to show the corruption
         ReloadSiteSafe();
@@ -306,23 +327,27 @@ public partial class MainWindow : Window
     private void InitializeTerminals()
     {
         var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        var agyCandidate = Path.Combine(localAppData, @"agy\bin\agy.exe");
+        var agyExe = Path.Combine(localAppData, @"agy\bin\agy.exe");
+        var agyCmd = Path.Combine(localAppData, @"agy\bin\agy.cmd");
 
         // Set up agy Terminal
         AgyTerm.WorkingDirectory = _settings.WorkspacePath;
-        if (File.Exists(agyCandidate))
+        if (File.Exists(agyExe))
         {
-            AgyTerm.StartupCommandLine = $"\"{agyCandidate}\"";
+            AgyTerm.StartupCommandLine = $"\"{agyExe}\"";
+        }
+        else if (File.Exists(agyCmd))
+        {
+            AgyTerm.StartupCommandLine = $"cmd.exe /c \"{agyCmd}\"";
         }
         else
         {
-            // Fallback shell that displays agy instructions
-            AgyTerm.StartupCommandLine = "powershell.exe -NoExit -Command \"Write-Host 'Antigravity CLI (agy) Workspace Ready' -ForegroundColor Cyan; Write-Host 'Workspace: ' (Get-Location) -ForegroundColor Gray\"";
+            AgyTerm.StartupCommandLine = "powershell.exe -NoExit -Command \"if (Get-Command agy -ErrorAction SilentlyContinue) { agy } else { Write-Host 'Antigravity CLI (agy) Workspace Ready' -ForegroundColor Cyan; Write-Host 'agy executable not detected in %LOCALAPPDATA%\\agy\\bin or PATH.' -ForegroundColor Yellow; Write-Host 'Run: .\\scripts\\provision-ai-clis.ps1 to configure the AI CLIs.' -ForegroundColor Gray; Write-Host ('Workspace: ' + (Get-Location)) -ForegroundColor Gray }\"";
         }
 
         // Set up OpenCode Terminal
         OpenCodeTerm.WorkingDirectory = _settings.WorkspacePath;
-        OpenCodeTerm.StartupCommandLine = "powershell.exe -NoExit -Command \"Write-Host 'OpenCode Terminal Workspace Ready' -ForegroundColor Green; opencode --version 2>$null\"";
+        OpenCodeTerm.StartupCommandLine = "powershell.exe -NoExit -Command \"if (Get-Command opencode -ErrorAction SilentlyContinue) { Write-Host 'Starting OpenCode interactive session...' -ForegroundColor Green; opencode } else { Write-Host 'OpenCode Terminal Workspace Ready' -ForegroundColor Green; Write-Host 'opencode not detected in PATH.' -ForegroundColor Yellow; Write-Host 'Run: .\\scripts\\provision-ai-clis.ps1 to install opencode globally.' -ForegroundColor Gray; Write-Host ('Workspace: ' + (Get-Location)) -ForegroundColor Gray }\"";
 
         // Listen for quota signals
         AgyTerm.ConPTYTerm.TerminalOutput += (s, e) =>
