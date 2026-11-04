@@ -33,8 +33,10 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Name: "organizericon"; Description: "Create Organizer Command Center shortcut"; GroupDescription: "{cm:AdditionalIcons}"
 
 [Files]
-; Kiosk WPF Application & Dependencies
-Source: "..\kiosk\LabKiosk\bin\Debug\net9.0-windows\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Kiosk WPF Application & Self-Contained .NET 9 Runtime
+Source: "..\kiosk\LabKiosk\bin\SelfContained\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "*.pdb,*.WebView2\*"
+; Bundled Standalone Portable Node.js Runtime (Zero External Dependency)
+Source: "..\vendor\nodejs\node.exe"; DestDir: "{app}\nodejs"; Flags: ignoreversion
 ; Default Kiosk Settings
 Source: "..\kiosk\LabKiosk\kiosk.json"; DestDir: "{app}"; Flags: ignoreversion
 ; Target Website (Harbour Notes including bundled node_modules)

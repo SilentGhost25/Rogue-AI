@@ -387,6 +387,16 @@ public partial class MainWindow : Window
 
     private void InitializeTerminals()
     {
+        var bundledNodeDir = Path.Combine(AppContext.BaseDirectory, "nodejs");
+        if (Directory.Exists(bundledNodeDir))
+        {
+            var currentPath = Environment.GetEnvironmentVariable("PATH") ?? "";
+            if (!currentPath.Contains(bundledNodeDir, StringComparison.OrdinalIgnoreCase))
+            {
+                Environment.SetEnvironmentVariable("PATH", $"{bundledNodeDir};{currentPath}");
+            }
+        }
+
         var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         var agyExe = Path.Combine(localAppData, @"agy\bin\agy.exe");
         var agyCmd = Path.Combine(localAppData, @"agy\bin\agy.cmd");
@@ -594,9 +604,12 @@ public partial class MainWindow : Window
             var serverJs = Path.Combine(_settings.WorkspacePath, "server.js");
             if (File.Exists(serverJs))
             {
+                var bundledNode = Path.Combine(AppContext.BaseDirectory, "nodejs", "node.exe");
+                var nodeExe = File.Exists(bundledNode) ? bundledNode : "node";
+
                 var psi = new System.Diagnostics.ProcessStartInfo
                 {
-                    FileName = "node",
+                    FileName = nodeExe,
                     Arguments = "--watch server.js",
                     WorkingDirectory = _settings.WorkspacePath,
                     UseShellExecute = false,
