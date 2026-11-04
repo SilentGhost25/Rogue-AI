@@ -49,6 +49,7 @@ public partial class MainWindow : Window
             CodeView?.Dispose();
             _ = _clock?.DisposeAsync();
             _ = _hub?.DisposeAsync();
+            try { _localSiteProc?.Kill(entireProcessTree: true); } catch { }
         };
 
         // F5 shortcut for Submit Fix, F6 for Test Locally
@@ -79,20 +80,54 @@ public partial class MainWindow : Window
                 Directory.CreateDirectory(_settings.WorkspacePath);
             }
 
+            EnsureWorkspaceSeeded();
+            EnsureLocalSiteRunning();
+
             // 1. Initialize WebView2 for the live website with isolated profile folder
             var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
             var udata = Path.Combine(localAppData, "RogueAI", "WV2_Kiosk_" + Environment.ProcessId);
             var env = await Microsoft.Web.WebView2.Core.CoreWebView2Environment.CreateAsync(null, udata);
             await Site.EnsureCoreWebView2Async(env);
+
+            Site.CoreWebView2.NavigationStarting += (s, e) =>
+            {
+                if (!e.Uri.StartsWith("http://127.0.0.1:3000", StringComparison.OrdinalIgnoreCase) &&
+                    !e.Uri.StartsWith("http://localhost:3000", StringComparison.OrdinalIgnoreCase) &&
+                    !e.Uri.StartsWith("data:", StringComparison.OrdinalIgnoreCase) &&
+                    !e.Uri.StartsWith("about:", StringComparison.OrdinalIgnoreCase))
+                {
+                    e.Cancel = true;
+                    Site.CoreWebView2.NavigateToString(@"
+                        <!doctype html>
+                        <html>
+                        <head><meta charset='utf-8'></head>
+                        <body style='margin:0; background:#0b0f19; color:#f87171; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif; display:flex; align-items:center; justify-content:center; min-height:100vh; text-align:center;'>
+                          <div style='max-width:540px; margin:24px; padding:32px; background:#1e293b; border:2px solid #ef4444; border-radius:12px; box-shadow:0 10px 25px rgba(0,0,0,0.5);'>
+                            <div style='font-size:48px; margin-bottom:12px;'>🚨</div>
+                            <h2 style='color:#ef4444; margin:0 0 12px 0; font-size:22px; font-weight:700;'>MALICIOUS BEACON BLOCKED</h2>
+                            <p style='color:#cbd5e1; font-size:14px; line-height:1.5; margin-bottom:16px;'>Your web application was compromised by an intrusion payload and attempted to redirect the browser to an external address:</p>
+                            <div style='background:#0f172a; padding:10px 14px; border-radius:6px; font-family:Consolas,monospace; font-size:13px; color:#38bdf8; word-break:break-all; margin-bottom:20px; border:1px solid #334155;'>" + System.Net.WebUtility.HtmlEncode(e.Uri) + @"</div>
+                            <p style='color:#94a3b8; font-size:13px; margin:0 0 20px 0;'>Inspect and remove this malicious script from <code>lib/html.js</code> or <code>routes/search.js</code> using the in-app code editor, then click <b>Reload</b>.</p>
+                            <button onclick='window.location.href=""http://127.0.0.1:3000/?nobounce=1""' style='background:#ef4444; color:#fff; border:none; padding:10px 20px; border-radius:6px; font-weight:600; cursor:pointer;'>View Site (Safe Mode: ?nobounce)</button>
+                          </div>
+                        </body>
+                        </html>");
+                }
+            };
+
             Site.NavigationCompleted += (s, e) =>
             {
                 if (!e.IsSuccess)
                 {
-                    Dispatcher.InvokeAsync(() =>
+                    var failedUri = Site.Source?.ToString() ?? "";
+                    if (failedUri.StartsWith(_settings.SiteUrl, StringComparison.OrdinalIgnoreCase))
                     {
-                        StatusText.Text = $"⚠ Website at {_settings.SiteUrl} unreachable ({e.WebErrorStatus}). Verify background node server.";
-                        StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Alert");
-                    });
+                        Dispatcher.InvokeAsync(() =>
+                        {
+                            StatusText.Text = $"⚠ Website at {_settings.SiteUrl} unreachable ({e.WebErrorStatus}). Verify background node server.";
+                            StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Alert");
+                        });
+                    }
                 }
             };
             Site.Source = new Uri(_settings.SiteUrl);
@@ -514,11 +549,70 @@ public partial class MainWindow : Window
         OcMeter.Text = $"OpenCode: {_budget.OpenCodePrompts} / {_budget.OpenCodeCap} prompts";
     }
 
+    private System.Diagnostics.Process? _localSiteProc;
+
+    private void EnsureWorkspaceSeeded()
+    {
+        try
+        {
+            if (!File.Exists(Path.Combine(_settings.WorkspacePath, "server.js")))
+            {
+                var siteSource = Path.Combine(AppContext.BaseDirectory, "site");
+                if (Directory.Exists(siteSource))
+                {
+                    CopyDirectory(siteSource, _settings.WorkspacePath);
+                }
+            }
+        }
+        catch { }
+    }
+
+    private static void CopyDirectory(string sourceDir, string targetDir)
+    {
+        Directory.CreateDirectory(targetDir);
+        foreach (var file in Directory.GetFiles(sourceDir, "*", SearchOption.AllDirectories))
+        {
+            var rel = Path.GetRelativePath(sourceDir, file);
+            var dest = Path.Combine(targetDir, rel);
+            Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
+            File.Copy(file, dest, overwrite: true);
+        }
+    }
+
+    private void EnsureLocalSiteRunning()
+    {
+        try
+        {
+            using var client = new HttpClient { Timeout = TimeSpan.FromMilliseconds(400) };
+            var res = client.GetAsync(_settings.SiteUrl).GetAwaiter().GetResult();
+            if (res.IsSuccessStatusCode) return;
+        }
+        catch { }
+
+        try
+        {
+            var serverJs = Path.Combine(_settings.WorkspacePath, "server.js");
+            if (File.Exists(serverJs))
+            {
+                var psi = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "node",
+                    Arguments = "--watch server.js",
+                    WorkingDirectory = _settings.WorkspacePath,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+                _localSiteProc = System.Diagnostics.Process.Start(psi);
+            }
+        }
+        catch { }
+    }
+
     private void ReloadSiteSafe()
     {
         if (Site.CoreWebView2 != null)
         {
-            Site.Reload();
+            Site.CoreWebView2.Navigate(_settings.SiteUrl);
         }
         else
         {

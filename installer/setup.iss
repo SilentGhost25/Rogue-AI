@@ -37,18 +37,18 @@ Name: "organizericon"; Description: "Create Organizer Command Center shortcut"; 
 Source: "..\kiosk\LabKiosk\bin\Debug\net9.0-windows\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; Default Kiosk Settings
 Source: "..\kiosk\LabKiosk\kiosk.json"; DestDir: "{app}"; Flags: ignoreversion
-; Target Website (Harbour Notes)
-Source: "..\site\*"; DestDir: "{app}\site"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "node_modules\*,*.db,*.sqlite"
+; Target Website (Harbour Notes including bundled node_modules)
+Source: "..\site\*"; DestDir: "{app}\site"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "*.db,*.sqlite,*.log"
 ; Control Plane Server
 Source: "..\server\ControlPlane\bin\Debug\net9.0\*"; DestDir: "{app}\server"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; Engine and Attack Packs
-Source: "..\engine\*"; DestDir: "{app}\engine"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "__pycache__\*,*.pyc"
+Source: "..\engine\*"; DestDir: "{app}\engine"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "__pycache__\*,*.pyc,*.db"
 Source: "..\attacks\*"; DestDir: "{app}\attacks"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "__pycache__\*,*.pyc"
 
 [Icons]
 ; Participant Mode
-Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+Name: "{group}\Rogue AI - Participant Defense Studio"; Filename: "{app}\{#MyAppExeName}"
+Name: "{autodesktop}\Rogue AI - Participant Defense Studio"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 ; Organizer Command Mode
 Name: "{group}\Rogue AI - Organizer Command Center"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--host"
 Name: "{autodesktop}\Rogue AI - Organizer Command Center"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--host"; Tasks: organizericon
