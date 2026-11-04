@@ -25,8 +25,8 @@ public sealed class KioskConfig
         return new KioskConfig
         {
             ServerUrl = m.GetValueOrDefault("server-url", string.IsNullOrWhiteSpace(settings.ServerUrl) ? "http://127.0.0.1:5080" : settings.ServerUrl),
-            DeskId    = m.GetValueOrDefault("desk-id", string.IsNullOrWhiteSpace(settings.KioskId) ? "DESK-01" : settings.KioskId),
-            DeskToken = m.GetValueOrDefault("desk-token")
+            DeskId    = m.GetValueOrDefault("desk-id", !string.IsNullOrWhiteSpace(settings.DeskId) ? settings.DeskId : (!string.IsNullOrWhiteSpace(settings.KioskId) ? settings.KioskId : "DESK-01")),
+            DeskToken = m.GetValueOrDefault("desk-token", settings.DeskToken)
         };
     }
 }

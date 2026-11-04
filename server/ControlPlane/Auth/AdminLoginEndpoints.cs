@@ -12,8 +12,8 @@ public static class AdminLoginEndpoints
 
         app.MapPost("/admin/api/login", async (HttpContext ctx, LoginBody body) =>
         {
-            var user = cfg["AdminAuth:Username"] ?? "admin";
-            var hash = cfg["AdminAuth:PasswordHash"] ?? "";
+            var user = Environment.GetEnvironmentVariable("ADMIN_USERNAME") ?? cfg["AdminAuth:Username"] ?? "admin";
+            var hash = Environment.GetEnvironmentVariable("ADMIN_PASSWORD_HASH") ?? cfg["AdminAuth:PasswordHash"] ?? "";
 
             if (string.IsNullOrEmpty(hash))
             {

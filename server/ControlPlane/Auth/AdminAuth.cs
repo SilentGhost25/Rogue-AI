@@ -28,6 +28,12 @@ public static class AdminAuth
                 o.LogoutPath = "/admin/api/logout";
                 o.AccessDeniedPath = "/admin/login.html";
             });
+
+        services.AddAuthorization(o =>
+        {
+            o.AddPolicy(Scheme, p => p.AddAuthenticationSchemes(Scheme).RequireAuthenticatedUser());
+        });
+
         return services;
     }
 

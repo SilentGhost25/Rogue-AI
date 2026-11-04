@@ -10,6 +10,8 @@ public sealed class KioskSettings
     public string WorkspacePath { get; set; } = @"C:\BreachWorkspace";
     public string KioskId { get; set; } = Environment.MachineName;
     public string DisplayName { get; set; } = Environment.MachineName;
+    public string? DeskId { get; set; }
+    public string? DeskToken { get; set; }
 
     public static KioskSettings Load()
     {
