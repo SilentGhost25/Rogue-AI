@@ -111,8 +111,10 @@ ROGUE AI: The Breach Protocol is a live cybersecurity competition platform where
 
 | Test Suite / Target | Command | Result |
 |---|---|---|
-| **ControlPlane Tests** | `$env:DOTNET_ROOT = "$env:LOCALAPPDATA\dotnet"; $env:Path = "$env:DOTNET_ROOT;$env:Path"; dotnet test server/ControlPlane.Tests` | **25 Passed, 0 Failed, 0 Skipped** (100% green, includes restart recovery, overdue broadcast, in-countdown re-arm, and unique index) |
-| **LabKiosk Build** | `$env:DOTNET_ROOT = "$env:LOCALAPPDATA\dotnet"; $env:Path = "$env:DOTNET_ROOT;$env:Path"; dotnet build kiosk/LabKiosk` | **0 Warnings, 0 Errors** (Process-isolated WebView2, durable applied-marker) |
+| Test Suite / Target | Command | Result |
+|---|---|---|
+| **ControlPlane Tests** | `$env:DOTNET_ROOT = "$env:LOCALAPPDATA\dotnet"; $env:Path = "$env:DOTNET_ROOT;$env:Path"; dotnet test server/ControlPlane.Tests` | **29 Passed, 0 Failed, 0 Skipped** (100% green, includes restart recovery, overdue broadcast, in-countdown re-arm, unique index, and dual admin auth) |
+| **LabKiosk Build** | `$env:DOTNET_ROOT = "$env:LOCALAPPDATA\dotnet"; $env:Path = "$env:DOTNET_ROOT;$env:Path"; dotnet build kiosk/LabKiosk` | **0 Warnings, 0 Errors** (Process-isolated WebView2, durable applied-marker, remote KioskConfig) |
 | **Engine Tests** | `cd engine && python -m unittest discover -s tests -t .` | **10 Passed, 0 Failed** |
 | **Sandbox Security Tests** | `python tests/security/test_sandbox_escape.py` | **5 Passed, 0 Failed** |
 | **Harbour Notes Site** | `cd site && npm test` | **6 Passed, 0 Failed** |
@@ -137,7 +139,16 @@ ROGUE AI: The Breach Protocol is a live cybersecurity competition platform where
 6. **AI CLI Provisioning Automation (`scripts/provision-ai-clis.ps1`):**
    - Automated script installs `opencode-ai` via npm, ensures npm global bin is in User PATH, validates `%LOCALAPPDATA%\agy\bin`, and generates dev/test stubs if `agy.exe` is missing.
    - `MainWindow.xaml.cs` updated to launch `opencode` and `agy` directly or display actionable PowerShell instructions.
-7. **Differentiated Attack Modals & Popups (Backlog):**
+7. **Admin/Participant Separation & Dual-Auth (Multi-System Testing):**
+   - **Kestrel Network Binding:** Bound to `0.0.0.0:5080` in `appsettings.json`.
+   - **Firewall Rule (One-Time Setup on Control Plane Host):**
+     `New-NetFirewallRule -DisplayName "RogueAI-ControlPlane" -Direction Inbound -Protocol TCP -LocalPort 5080 -Action Allow -Profile Private`
+   - **Cookie Session Auth:** `AdminAuth.cs` registers cookie scheme `AdminSession` (8-hour non-sliding expiry, `SameSite=Strict`, `HttpOnly`).
+   - **Dual-Auth Compatibility:** `AuthorizeAdmin` and `AdminAuth.AuthorizeAdminOrSession` accept either a valid session cookie OR a valid `X-Admin-Key` / `?key=`. Session cookie bypasses loopback restrictions from LAN IPs, while key auth retains loopback and rate-limiting.
+   - **Admin Static Console SPA:** Zero-build frontend in `server/ControlPlane/wwwroot/admin/` (`login.html`, `index.html`, `admin.js`, `admin.css`) with real-time dispatch control and event logging.
+   - **Remote Kiosk Configuration:** `KioskConfig.cs` parses `--server-url`, `--desk-id`, and `--desk-token` CLI args. When `--desk-token` is present, `MainWindow` calls `_api.EnrollAsync()` and wires SignalR with the desk token.
+   - **Host Mode Deprecation:** `LabKiosk --host` redirects automatically to the browser admin console at `{server}/admin/` and terminates the kiosk window.
+8. **Differentiated Attack Modals & Popups (Backlog):**
    - Customize intrusion alert dialogs and top-bar banner styling per attack vector (displaying `narrative.broadcast_title`, codename, targeted architectural layer, and tactical description from `manifest.yaml`).
    - Distinct visual themes and audio/haptic cues per severity band (Band 1: Defacement/XSS, Band 2: Stored/SQLi, Band 3: Auth/IDOR, Band 4: Sabotage/Supply Chain).
 

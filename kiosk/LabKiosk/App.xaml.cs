@@ -16,20 +16,33 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        var args = e.Args;
+        var config = KioskConfig.FromArgs(args);
+
 #if !KIOSK_ONLY
-        var isHost = e.Args.Any(a => a.Equals("--host", StringComparison.OrdinalIgnoreCase) ||
-                                     a.Equals("--admin", StringComparison.OrdinalIgnoreCase) ||
-                                     a.Equals("-h", StringComparison.OrdinalIgnoreCase));
+        var isHost = args.Any(a => a.Equals("--host", StringComparison.OrdinalIgnoreCase) ||
+                                   a.Equals("--admin", StringComparison.OrdinalIgnoreCase) ||
+                                   a.Equals("-h", StringComparison.OrdinalIgnoreCase));
 
         if (isHost)
         {
             TryStartControlPlaneServer();
-            var adminWin = new AdminWindow("http://127.0.0.1:5080");
-            adminWin.Show();
+            var target = $"{config.ServerUrl.TrimEnd('/')}/admin/";
+            try
+            {
+                Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
+            }
+            catch
+            {
+                var adminWin = new AdminWindow(config.ServerUrl);
+                adminWin.Show();
+                return;
+            }
+            Shutdown();
             return;
         }
 #endif
-        var mainWin = new MainWindow();
+        var mainWin = new MainWindow(config);
         mainWin.Show();
     }
 

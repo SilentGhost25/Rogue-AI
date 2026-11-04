@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rogue AI — Control Plane Admin</title>
+  <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="header-left">
+      <span class="brand-tag">ROGUE AI</span>
+      <h1>Control Plane Console</h1>
+    </div>
+    <div class="header-right">
+      <div class="status-indicator">
+        <span class="live-dot"></span>
+        <span id="server-time">UTC --:--:--</span>
+      </div>
+      <span class="user-pill" id="whoami">Admin</span>
+      <button id="logout-btn" class="btn secondary sm">Sign Out</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="card">
+      <div class="card-header">
+        <h2>Attack Dispatch State Machine</h2>
+        <button id="refresh-btn" class="btn secondary sm">Refresh</button>
+      </div>
+      <div class="table-responsive">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Attack Title</th>
+              <th>Codename</th>
+              <th>Band</th>
+              <th>Mode</th>
+              <th>Schedule</th>
+              <th>State</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="attack-list">
+            <tr><td colspan="8" class="muted">Loading attacks...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <div class="grid-two">
+      <section class="card">
+        <div class="card-header">
+          <h2>Active Kiosks &amp; Desks</h2>
+          <span id="kiosk-count" class="counter-badge">0</span>
+        </div>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Desk</th>
+                <th>Participant</th>
+                <th>Score</th>
+                <th>Solved</th>
+                <th>AI Status</th>
+              </tr>
+            </thead>
+            <tbody id="kiosk-list">
+              <tr><td colspan="5" class="muted">No kiosks connected yet</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-header">
+          <h2>Event Console Log</h2>
+          <button id="clear-log-btn" class="btn secondary sm">Clear</button>
+        </div>
+        <pre id="log-content" class="console-box">[System] Admin console initialized. Monitoring arena events...</pre>
+      </section>
+    </div>
+  </main>
+
+  <script src="admin.js"></script>
+</body>
+</html>

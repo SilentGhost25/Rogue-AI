@@ -8,6 +8,7 @@ namespace LabKiosk;
 public partial class MainWindow : Window
 {
     private readonly KioskSettings _settings = KioskSettings.Load();
+    private readonly KioskConfig _config;
     private readonly ApiClient _api;
     private readonly BudgetState _budget = new();
     private HubClient? _hub;
@@ -19,10 +20,27 @@ public partial class MainWindow : Window
     private int? _bufferedAttackId;
     private CancellationTokenSource? _landingTimerCts;
 
-    public MainWindow()
+    public MainWindow() : this(KioskConfig.FromArgs(Environment.GetCommandLineArgs()))
     {
+    }
+
+    public MainWindow(KioskConfig config)
+    {
+        _config = config;
+        _settings.ServerUrl = _config.ServerUrl;
+        if (!string.IsNullOrEmpty(_config.DeskId))
+        {
+            _settings.KioskId = _config.DeskId;
+            _settings.DisplayName = _config.DeskId;
+        }
+
         InitializeComponent();
-        _api = new ApiClient(_settings.ServerUrl);
+        _api = new ApiClient(_config.ServerUrl);
+        if (!string.IsNullOrEmpty(_config.DeskToken))
+        {
+            _api.SetToken(_config.DeskToken);
+        }
+
         Loaded += async (_, _) => await StartAsync();
         Closed += (_, _) =>
         {
@@ -85,8 +103,16 @@ public partial class MainWindow : Window
             // 3. Initialize ConPTY Terminals
             InitializeTerminals();
 
-            // 4. Register with the event server
-            _participantId = await _api.RegisterAsync(_settings.DisplayName, _settings.KioskId);
+            // 4. Enroll or Register with the event server
+            if (!string.IsNullOrEmpty(_config.DeskToken))
+            {
+                var (pid, desk) = await _api.EnrollAsync(_config.DeskToken, _config.DeskId, _config.DeskId);
+                _participantId = pid;
+            }
+            else
+            {
+                _participantId = await _api.RegisterAsync(_settings.DisplayName, _settings.KioskId);
+            }
 
             // 5. Start continuous snapshot sync (every 15s) and clock sync
             _clock = new ClockSync(_api);
@@ -94,7 +120,7 @@ public partial class MainWindow : Window
             _sync.Start(TimeSpan.FromSeconds(15));
 
             // 6. Connect to SignalR Hub
-            _hub = new HubClient(_settings.ServerUrl, _participantId, _api.Token ?? "");
+            _hub = new HubClient(_config.ServerUrl, _participantId, _api.Token ?? _config.DeskToken ?? "");
 
             _hub.Imminent += async (attackId, seconds, landAtUtcStr) =>
             {

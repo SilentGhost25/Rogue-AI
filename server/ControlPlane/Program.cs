@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text.Json;
+using ControlPlane.Auth;
 using ControlPlane.Data;
 using ControlPlane.Hubs;
 using ControlPlane.Models;
@@ -9,6 +10,8 @@ using ControlPlane.Services;
 using Microsoft.AspNetCore.SignalR;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddAdminSessionAuth(builder.Configuration);
+builder.Services.AddAuthorization();
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddSingleton<Database>();
@@ -24,6 +27,9 @@ builder.Services.AddHttpClient("engine", (sp, c) =>
 var app = builder.Build();
 app.UseDefaultFiles();
 app.UseStaticFiles();
+app.UseAuthentication();
+app.UseAuthorization();
+app.MapAdminLogin();
 app.MapHub<BreachHub>("/hub");
 
 var adminKey = Environment.GetEnvironmentVariable("BREACH_ADMIN_KEY") ?? app.Configuration["Breach:AdminKey"] ?? "";
@@ -65,6 +71,12 @@ bool FixedTimeEquals(string a, string b)
 
 IResult? AuthorizeAdmin(HttpRequest r, Database db)
 {
+    // Path 1: Valid admin session cookie — bypasses loopback and rate-limiting
+    if (r.HttpContext.User.Identity?.IsAuthenticated == true && r.HttpContext.User.IsInRole("admin"))
+    {
+        return null; // Authorized via session cookie
+    }
+
     var remoteIp = r.HttpContext.Connection.RemoteIpAddress;
     var ipStr = remoteIp?.ToString() ?? "127.0.0.1";
 
