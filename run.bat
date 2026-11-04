@@ -3,7 +3,7 @@ setlocal
 cd /d "%~dp0"
 where pwsh.exe >nul 2>nul
 if %ERRORLEVEL% EQU 0 (
-    pwsh.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0run.ps1" %*
+    pwsh.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0run.ps1" -HostMode %*
 ) else (
-    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0run.ps1" %*
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0run.ps1" -HostMode %*
 )

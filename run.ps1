@@ -117,31 +117,52 @@ if ($ready) {
     Write-Host "[!] Warning: Services took longer than expected to report ready, proceeding..." -ForegroundColor Yellow
 }
 
-# 5. Launch Kiosk App
+# 5. Launch Kiosk App or Host Mode
 $kioskExe = "$RogueRoot\kiosk\LabKiosk\bin\Debug\net9.0-windows\LabKiosk.exe"
-if (!(Test-Path $kioskExe)) {
-    Write-Host "[*] Building LabKiosk application..." -ForegroundColor Cyan
-    dotnet build "$RogueRoot\kiosk\LabKiosk\LabKiosk.csproj" -c Debug | Out-Null
-}
 
-$appArgs = ""
 if ($HostMode) {
-    Write-Host "[*] Launching ROGUE AI in Organizer Host Mode (--host)..." -ForegroundColor Magenta
-    $appArgs = "--host"
-} elseif ($Both) {
-    Write-Host "[*] Launching BOTH Participant Kiosk and Organizer Command Center..." -ForegroundColor Magenta
-    Start-Process -FilePath $kioskExe -ArgumentList "--host"
-    $appArgs = ""
-} else {
-    Write-Host "[*] Launching ROGUE AI Defense Studio (Participant Kiosk)..." -ForegroundColor Green
-    Write-Host "    (Hint: Click 'Admin Console' in top bar or pass -HostMode for Organizer view)" -ForegroundColor DarkGray
-}
+    Write-Host "`n==========================================================" -ForegroundColor Green
+    Write-Host " ROGUE AI: ORGANIZER COMMAND CENTER ONLINE" -ForegroundColor Green
+    Write-Host "==========================================================" -ForegroundColor Green
+    Write-Host "Local Admin URL:   http://127.0.0.1:5080/admin/" -ForegroundColor Cyan
+    Write-Host "LAN Admin URL:     http://192.168.0.82:5080/admin/" -ForegroundColor Cyan
+    Write-Host "Credentials:       admin / admin123456" -ForegroundColor Yellow
+    Write-Host "==========================================================" -ForegroundColor Green
 
-try {
-    $kioskProc = Start-Process -FilePath $kioskExe -ArgumentList $appArgs -PassThru
-    Write-Host "[+] ROGUE AI is active (PID: $($kioskProc.Id)). Monitoring session..." -ForegroundColor Green
-    $kioskProc.WaitForExit()
-    Write-Host "[*] Application closed." -ForegroundColor Cyan
+    # Open Admin Console in default browser
+    Start-Process "http://127.0.0.1:5080/admin/"
+
+    Write-Host "`n[+] Control Plane and Evaluation Engine are active." -ForegroundColor Green
+    Write-Host "[*] Participant kiosks can now connect to http://192.168.0.82:5080" -ForegroundColor Cyan
+    Write-Host "[*] Press ENTER in this window to stop all services..." -ForegroundColor Yellow
+    try {
+        [void][System.Console]::ReadLine()
+    } catch {
+        # Fallback if non-interactive
+        Start-Sleep -Seconds 86400
+    }
+} else {
+    if (!(Test-Path $kioskExe)) {
+        Write-Host "[*] Building LabKiosk application..." -ForegroundColor Cyan
+        dotnet build "$RogueRoot\kiosk\LabKiosk\LabKiosk.csproj" -c Debug | Out-Null
+    }
+
+    $appArgs = ""
+    if ($Both) {
+        Write-Host "[*] Launching BOTH Participant Kiosk and Organizer Command Center..." -ForegroundColor Magenta
+        Start-Process -FilePath $kioskExe -ArgumentList "--host"
+        $appArgs = ""
+    } else {
+        Write-Host "[*] Launching ROGUE AI Defense Studio (Participant Kiosk)..." -ForegroundColor Green
+    }
+
+    try {
+        $kioskProc = Start-Process -FilePath $kioskExe -ArgumentList $appArgs -PassThru
+        Write-Host "[+] ROGUE AI is active (PID: $($kioskProc.Id)). Monitoring session..." -ForegroundColor Green
+        $kioskProc.WaitForExit()
+        Write-Host "[*] Application closed." -ForegroundColor Cyan
+    } catch { }
+}
 } finally {
     $remainingKiosks = Get-Process LabKiosk -ErrorAction SilentlyContinue | Where-Object { $kioskProc -and $_.Id -ne $kioskProc.Id }
     if ($remainingKiosks) {
