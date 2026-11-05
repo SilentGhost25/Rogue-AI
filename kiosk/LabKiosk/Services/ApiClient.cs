@@ -33,6 +33,10 @@ public sealed class ApiClient
         var res = await _http.PostAsJsonAsync("/api/kiosk/register", new { name, kioskId });
         res.EnsureSuccessStatusCode();
         var body = await res.Content.ReadFromJsonAsync<RegisterResponse>();
+        if (!string.IsNullOrEmpty(body?.Token))
+        {
+            SetToken(body.Token);
+        }
         return body!.ParticipantId;
     }
 
@@ -92,7 +96,7 @@ public sealed class ApiClient
     }
 
     private sealed record ServerTimeResponse(string ServerTimeUtc);
-    private sealed record RegisterResponse(string ParticipantId);
+    private sealed record RegisterResponse(string ParticipantId, string? Token = null);
     private sealed record EnrollResponse(string ParticipantId, string DeskId);
 }
 

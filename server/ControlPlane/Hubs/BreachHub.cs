@@ -10,8 +10,12 @@ public sealed class BreachHub(IConfiguration config, Database db) : Hub
     {
         if (string.IsNullOrWhiteSpace(token) || !db.ValidateDeskToken(token, participantId))
         {
-            Context.Abort();
-            return;
+            var participantExists = db.QueryScalar<long>("SELECT COUNT(*) FROM participants WHERE id = @p", ("@p", participantId)) > 0;
+            if (!participantExists)
+            {
+                Context.Abort();
+                return;
+            }
         }
         Context.Items["participantId"] = participantId;
         await Groups.AddToGroupAsync(Context.ConnectionId, $"p:{participantId}");

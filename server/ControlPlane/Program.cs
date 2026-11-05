@@ -190,22 +190,57 @@ app.MapPost("/api/kiosk/enroll", async (EnrollRequest req, Database db, IHubCont
 app.MapPost("/api/kiosk/register", async (RegisterRequest req, Database db, IHubContext<BreachHub> hub) =>
 {
     using var c = db.Open();
+    string id;
     using var find = c.CreateCommand();
     find.CommandText = "SELECT id FROM participants WHERE kiosk_id = $k";
     find.Parameters.AddWithValue("$k", req.KioskId);
-    if (find.ExecuteScalar() is string existing) return Results.Ok(new { participantId = existing });
+    if (find.ExecuteScalar() is string existing)
+    {
+        id = existing;
+    }
+    else
+    {
+        id = "p" + Guid.NewGuid().ToString("N")[..10];
+        using var ins = c.CreateCommand();
+        ins.CommandText = "INSERT INTO participants (id, name, kiosk_id, created_at) VALUES ($i,$n,$k,$t)";
+        ins.Parameters.AddWithValue("$i", id);
+        ins.Parameters.AddWithValue("$n", req.Name);
+        ins.Parameters.AddWithValue("$k", req.KioskId);
+        ins.Parameters.AddWithValue("$t", DateTime.UtcNow.ToString("O"));
+        ins.ExecuteNonQuery();
+        db.Log("KIOSK_REGISTERED", id);
+        await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, id);
+    }
 
-    var id = "p" + Guid.NewGuid().ToString("N")[..10];
-    using var ins = c.CreateCommand();
-    ins.CommandText = "INSERT INTO participants (id, name, kiosk_id, created_at) VALUES ($i,$n,$k,$t)";
-    ins.Parameters.AddWithValue("$i", id);
-    ins.Parameters.AddWithValue("$n", req.Name);
-    ins.Parameters.AddWithValue("$k", req.KioskId);
-    ins.Parameters.AddWithValue("$t", DateTime.UtcNow.ToString("O"));
-    ins.ExecuteNonQuery();
-    db.Log("KIOSK_REGISTERED", id);
-    await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, id);
-    return Results.Ok(new { participantId = id });
+    // Bind or issue a valid desk token for this desk/participant so SignalR and Snapshots authorize cleanly
+    string token;
+    using var findTok = c.CreateCommand();
+    findTok.CommandText = "SELECT token FROM desk_tokens WHERE desk_id = $d OR participant_id = $p LIMIT 1";
+    findTok.Parameters.AddWithValue("$d", req.KioskId);
+    findTok.Parameters.AddWithValue("$p", id);
+    if (findTok.ExecuteScalar() is string tok)
+    {
+        token = tok;
+        using var upd = c.CreateCommand();
+        upd.CommandText = "UPDATE desk_tokens SET participant_id = $p, enrolled_at = $t WHERE token = $tok";
+        upd.Parameters.AddWithValue("$p", id);
+        upd.Parameters.AddWithValue("$t", DateTime.UtcNow.ToString("O"));
+        upd.Parameters.AddWithValue("$tok", token);
+        upd.ExecuteNonQuery();
+    }
+    else
+    {
+        token = "dt_" + Guid.NewGuid().ToString("N")[..16];
+        using var insTok = c.CreateCommand();
+        insTok.CommandText = "INSERT OR REPLACE INTO desk_tokens (token, desk_id, participant_id, enrolled_at) VALUES ($t, $d, $p, $time)";
+        insTok.Parameters.AddWithValue("$t", token);
+        insTok.Parameters.AddWithValue("$d", req.KioskId);
+        insTok.Parameters.AddWithValue("$p", id);
+        insTok.Parameters.AddWithValue("$time", DateTime.UtcNow.ToString("O"));
+        insTok.ExecuteNonQuery();
+    }
+
+    return Results.Ok(new { participantId = id, token = token });
 });
 
 app.MapPost("/api/kiosk/{id}/snapshot", async (string id, SnapshotRequest req, HttpRequest httpReq, WorkspaceStore store, Database db, IHubContext<BreachHub> hub) =>
