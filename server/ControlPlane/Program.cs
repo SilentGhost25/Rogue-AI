@@ -9,7 +9,28 @@ using ControlPlane.Models;
 using ControlPlane.Services;
 using Microsoft.AspNetCore.SignalR;
 
-var builder = WebApplication.CreateBuilder(args);
+string FindWebRoot()
+{
+    var candidates = new[]
+    {
+        Path.Combine(Directory.GetCurrentDirectory(), "server", "ControlPlane", "wwwroot"),
+        Path.Combine(Directory.GetCurrentDirectory(), "wwwroot"),
+        Path.Combine(AppContext.BaseDirectory, "wwwroot"),
+        Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "wwwroot"))
+    };
+    foreach (var dir in candidates)
+    {
+        if (Directory.Exists(dir)) return dir;
+    }
+    return Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
+}
+
+var resolvedWebRoot = FindWebRoot();
+var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+{
+    Args = args,
+    WebRootPath = resolvedWebRoot
+});
 builder.Services.AddAdminSessionAuth(builder.Configuration);
 builder.Services.AddAuthorization();
 builder.Services.AddSignalR();
@@ -38,16 +59,36 @@ app.UseStaticFiles(new StaticFileOptions
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapGet("/download", () => Results.Redirect("/download.html"));
-app.MapGet("/RogueAI-Setup.exe", (IWebHostEnvironment env) =>
+
+string? FindSetupExe()
 {
-    var setupPath = Path.Combine(env.WebRootPath, "RogueAI-Setup.exe");
-    if (!File.Exists(setupPath))
+    var candidates = new[]
     {
-        var fallbackPath = Path.GetFullPath(Path.Combine(env.ContentRootPath, "..", "..", "dist", "RogueAI-Setup.exe"));
-        if (File.Exists(fallbackPath)) setupPath = fallbackPath;
+        Path.Combine(resolvedWebRoot, "RogueAI-Setup.exe"),
+        Path.Combine(Directory.GetCurrentDirectory(), "dist", "RogueAI-Setup.exe"),
+        Path.Combine(Directory.GetCurrentDirectory(), "server", "ControlPlane", "wwwroot", "RogueAI-Setup.exe"),
+        Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "wwwroot", "RogueAI-Setup.exe")),
+        Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "dist", "RogueAI-Setup.exe"))
+    };
+    foreach (var path in candidates)
+    {
+        if (File.Exists(path)) return path;
     }
-    if (!File.Exists(setupPath)) return Results.NotFound("RogueAI-Setup.exe not found on server.");
-    return Results.File(setupPath, "application/octet-stream", "RogueAI-Setup.exe");
+    return null;
+}
+
+app.MapMethods("/RogueAI-Setup.exe", new[] { "GET", "HEAD" }, () =>
+{
+    var exePath = FindSetupExe();
+    if (exePath == null) return Results.NotFound("RogueAI-Setup.exe not found on server.");
+    return Results.File(exePath, "application/octet-stream", "RogueAI-Setup.exe");
+});
+
+app.MapMethods("/download/setup", new[] { "GET", "HEAD" }, () =>
+{
+    var exePath = FindSetupExe();
+    if (exePath == null) return Results.NotFound("RogueAI-Setup.exe not found on server.");
+    return Results.File(exePath, "application/octet-stream", "RogueAI-Setup.exe");
 });
 app.MapAdminLogin();
 app.MapHub<BreachHub>("/hub");
