@@ -248,28 +248,45 @@ app.MapPost("/api/kiosk/enroll", async (EnrollRequest req, Database db, IHubCont
     return Results.Ok(new { participantId = pid, deskId });
 });
 
-app.MapPost("/api/kiosk/register", async (RegisterRequest req, Database db, IHubContext<BreachHub> hub) =>
+app.MapPost("/api/kiosk/register", async (RegisterRequest req, HttpRequest httpReq, Database db, IHubContext<BreachHub> hub) =>
 {
+    var remoteIp = httpReq.HttpContext.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1";
+    var desk = !string.IsNullOrWhiteSpace(req.DeskId) ? req.DeskId : req.KioskId;
     using var c = db.Open();
     string id;
     using var find = c.CreateCommand();
-    find.CommandText = "SELECT id FROM participants WHERE kiosk_id = $k";
+    find.CommandText = "SELECT id FROM participants WHERE kiosk_id = $k OR (desk_id = $d AND desk_id != '')";
     find.Parameters.AddWithValue("$k", req.KioskId);
+    find.Parameters.AddWithValue("$d", desk);
     if (find.ExecuteScalar() is string existing)
     {
         id = existing;
+        using var upd = c.CreateCommand();
+        upd.CommandText = "UPDATE participants SET name = $n, desk_id = $d, password = $pwd, ip_address = $ip, last_seen_at = $t, status = 'online' WHERE id = $id";
+        upd.Parameters.AddWithValue("$n", req.Name);
+        upd.Parameters.AddWithValue("$d", desk);
+        upd.Parameters.AddWithValue("$pwd", req.Password ?? "");
+        upd.Parameters.AddWithValue("$ip", remoteIp);
+        upd.Parameters.AddWithValue("$t", DateTime.UtcNow.ToString("O"));
+        upd.Parameters.AddWithValue("$id", id);
+        upd.ExecuteNonQuery();
+        db.Log("KIOSK_UPDATED", id, payloadJson: JsonSerializer.Serialize(new { name = req.Name, deskId = desk, ip = remoteIp }));
+        await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, id);
     }
     else
     {
         id = "p" + Guid.NewGuid().ToString("N")[..10];
         using var ins = c.CreateCommand();
-        ins.CommandText = "INSERT INTO participants (id, name, kiosk_id, created_at) VALUES ($i,$n,$k,$t)";
+        ins.CommandText = "INSERT INTO participants (id, name, kiosk_id, desk_id, password, ip_address, last_seen_at, status, created_at) VALUES ($i,$n,$k,$d,$pwd,$ip,$t,'online',$t)";
         ins.Parameters.AddWithValue("$i", id);
         ins.Parameters.AddWithValue("$n", req.Name);
         ins.Parameters.AddWithValue("$k", req.KioskId);
+        ins.Parameters.AddWithValue("$d", desk);
+        ins.Parameters.AddWithValue("$pwd", req.Password ?? "");
+        ins.Parameters.AddWithValue("$ip", remoteIp);
         ins.Parameters.AddWithValue("$t", DateTime.UtcNow.ToString("O"));
         ins.ExecuteNonQuery();
-        db.Log("KIOSK_REGISTERED", id);
+        db.Log("KIOSK_REGISTERED", id, payloadJson: JsonSerializer.Serialize(new { name = req.Name, deskId = desk, ip = remoteIp }));
         await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, id);
     }
 
@@ -277,17 +294,18 @@ app.MapPost("/api/kiosk/register", async (RegisterRequest req, Database db, IHub
     string token;
     using var findTok = c.CreateCommand();
     findTok.CommandText = "SELECT token FROM desk_tokens WHERE desk_id = $d OR participant_id = $p LIMIT 1";
-    findTok.Parameters.AddWithValue("$d", req.KioskId);
+    findTok.Parameters.AddWithValue("$d", desk);
     findTok.Parameters.AddWithValue("$p", id);
     if (findTok.ExecuteScalar() is string tok)
     {
         token = tok;
-        using var upd = c.CreateCommand();
-        upd.CommandText = "UPDATE desk_tokens SET participant_id = $p, enrolled_at = $t WHERE token = $tok";
-        upd.Parameters.AddWithValue("$p", id);
-        upd.Parameters.AddWithValue("$t", DateTime.UtcNow.ToString("O"));
-        upd.Parameters.AddWithValue("$tok", token);
-        upd.ExecuteNonQuery();
+        using var updTok = c.CreateCommand();
+        updTok.CommandText = "UPDATE desk_tokens SET participant_id = $p, desk_id = $d, enrolled_at = $t WHERE token = $tok";
+        updTok.Parameters.AddWithValue("$p", id);
+        updTok.Parameters.AddWithValue("$d", desk);
+        updTok.Parameters.AddWithValue("$t", DateTime.UtcNow.ToString("O"));
+        updTok.Parameters.AddWithValue("$tok", token);
+        updTok.ExecuteNonQuery();
     }
     else
     {
@@ -295,7 +313,7 @@ app.MapPost("/api/kiosk/register", async (RegisterRequest req, Database db, IHub
         using var insTok = c.CreateCommand();
         insTok.CommandText = "INSERT OR REPLACE INTO desk_tokens (token, desk_id, participant_id, enrolled_at) VALUES ($t, $d, $p, $time)";
         insTok.Parameters.AddWithValue("$t", token);
-        insTok.Parameters.AddWithValue("$d", req.KioskId);
+        insTok.Parameters.AddWithValue("$d", desk);
         insTok.Parameters.AddWithValue("$p", id);
         insTok.Parameters.AddWithValue("$time", DateTime.UtcNow.ToString("O"));
         insTok.ExecuteNonQuery();
@@ -614,7 +632,9 @@ app.MapGet("/admin/kiosks", (HttpRequest r, Database db) =>
     using var c = db.Open();
     using var cmd = c.CreateCommand();
     cmd.CommandText = """
-        SELECT p.id, p.name, p.kiosk_id, p.status, p.created_at,
+        SELECT p.id, p.name, p.kiosk_id, COALESCE(NULLIF(p.desk_id, ''), p.kiosk_id) AS desk_id,
+               p.status, p.created_at, COALESCE(p.ip_address, '127.0.0.1') as ip_address,
+               COALESCE(p.password, '') as password, COALESCE(p.last_seen_at, p.created_at) as last_seen_at,
                COALESCE(SUM(l.points), 0) AS total_score,
                COUNT(DISTINCT CASE WHEN d.solved_at IS NOT NULL THEN d.attack_id END) AS solved_count,
                COUNT(DISTINCT d.attack_id) AS landed_count,
@@ -635,16 +655,163 @@ app.MapGet("/admin/kiosks", (HttpRequest r, Database db) =>
             id = rd.GetString(0),
             name = rd.GetString(1),
             kioskId = rd.GetString(2),
-            status = rd.GetString(3),
-            createdAt = rd.GetString(4),
-            totalScore = rd.GetDouble(5),
-            solvedCount = rd.GetInt32(6),
-            landedCount = rd.GetInt32(7),
-            agyExhausted = rd.GetInt32(8) == 1,
-            openCodePrompts = rd.GetInt32(9)
+            deskId = rd.GetString(3),
+            status = rd.GetString(4),
+            createdAt = rd.GetString(5),
+            ipAddress = rd.GetString(6),
+            password = rd.GetString(7),
+            lastSeenAt = rd.GetString(8),
+            totalScore = rd.GetDouble(9),
+            solvedCount = rd.GetInt32(10),
+            landedCount = rd.GetInt32(11),
+            agyExhausted = rd.GetInt32(12) == 1,
+            openCodePrompts = rd.GetInt32(13)
         });
     }
     return Results.Ok(list);
+});
+
+app.MapGet("/api/admin/evaluations", (HttpRequest r, Database db, RogueAgentOrchestrator orch) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+
+    using var c = db.Open();
+    var allAttacks = orch.Attacks.OrderBy(a => a.Id).ToList();
+
+    // 1. Fetch participants
+    var participants = new List<dynamic>();
+    using var pCmd = c.CreateCommand();
+    pCmd.CommandText = """
+        SELECT p.id, p.name, COALESCE(NULLIF(p.desk_id, ''), p.kiosk_id) AS desk_id, p.kiosk_id,
+               COALESCE(p.ip_address, '127.0.0.1') as ip_address, COALESCE(p.password, '') as password,
+               COALESCE(p.last_seen_at, p.created_at) as last_seen_at,
+               COALESCE(SUM(l.points), 0) AS total_score
+        FROM participants p
+        LEFT JOIN score_ledger l ON l.participant_id = p.id
+        GROUP BY p.id
+        ORDER BY desk_id ASC
+        """;
+    using var pRd = pCmd.ExecuteReader();
+    while (pRd.Read())
+    {
+        participants.Add(new
+        {
+            id = pRd.GetString(0),
+            name = pRd.GetString(1),
+            deskId = pRd.GetString(2),
+            kioskId = pRd.GetString(3),
+            ipAddress = pRd.GetString(4),
+            password = pRd.GetString(5),
+            lastSeenAt = pRd.GetString(6),
+            totalScore = pRd.GetDouble(7)
+        });
+    }
+
+    // 2. Fetch attack deliveries (landed / solved)
+    var deliveries = new Dictionary<(string ParticipantId, int AttackId), (string? LandedAt, string? SolvedAt)>();
+    using var dCmd = c.CreateCommand();
+    dCmd.CommandText = "SELECT participant_id, attack_id, landed_at, solved_at FROM attack_deliveries";
+    using var dRd = dCmd.ExecuteReader();
+    while (dRd.Read())
+    {
+        deliveries[(dRd.GetString(0), dRd.GetInt32(1))] = (
+            dRd.IsDBNull(2) ? null : dRd.GetString(2),
+            dRd.IsDBNull(3) ? null : dRd.GetString(3)
+        );
+    }
+
+    // 3. Fetch submissions & eval results
+    var submissions = new List<dynamic>();
+    using var sCmd = c.CreateCommand();
+    sCmd.CommandText = """
+        SELECT s.id, s.participant_id, e.attack_id, e.status, e.reason, s.created_at
+        FROM submissions s
+        JOIN eval_results e ON e.submission_id = s.id
+        ORDER BY s.created_at DESC
+        """;
+    using var sRd = sCmd.ExecuteReader();
+    while (sRd.Read())
+    {
+        submissions.Add(new
+        {
+            submissionId = sRd.GetString(0),
+            participantId = sRd.GetString(1),
+            attackId = sRd.GetInt32(2),
+            status = sRd.GetString(3),
+            reason = sRd.GetString(4),
+            createdAt = sRd.GetString(5)
+        });
+    }
+
+    // 4. Fetch local test penalties
+    var penalties = new Dictionary<string, int>();
+    using var penCmd = c.CreateCommand();
+    penCmd.CommandText = "SELECT participant_id, COUNT(*) FROM score_ledger WHERE component = 'penalty' GROUP BY participant_id";
+    using var penRd = penCmd.ExecuteReader();
+    while (penRd.Read())
+    {
+        penalties[penRd.GetString(0)] = penRd.GetInt32(1);
+    }
+
+    // Build comprehensive response
+    var evalList = participants.Select(p =>
+    {
+        string pid = p.id;
+        var pSubs = submissions.Where(s => s.participantId == pid).ToList();
+
+        var attackMetrics = allAttacks.Select(att =>
+        {
+            var key = (pid, att.Id);
+            bool wasDelivered = deliveries.ContainsKey(key);
+            var del = wasDelivered ? deliveries[key] : (LandedAt: (string?)null, SolvedAt: (string?)null);
+            bool isSolved = del.SolvedAt != null;
+            var attSubs = pSubs.Where(s => s.attackId == att.Id).ToList();
+
+            string statusBadge = "PENDING";
+            if (isSolved) statusBadge = "PASSED";
+            else if (wasDelivered && attSubs.Any(s => s.status == "FAILED")) statusBadge = "FAILED";
+            else if (wasDelivered) statusBadge = "IN_PROGRESS";
+
+            return new
+            {
+                attackId = att.Id,
+                title = att.Title,
+                band = att.Band,
+                status = statusBadge,
+                landedAt = del.LandedAt,
+                solvedAt = del.SolvedAt,
+                attempts = attSubs.Count,
+                lastReason = attSubs.FirstOrDefault()?.reason ?? (isSolved ? "Vulnerability neutralized (+points)" : (wasDelivered ? "Breach active (unfixed)" : "Not dispatched yet"))
+            };
+        }).ToList();
+
+        int passedCount = attackMetrics.Count(a => a.status == "PASSED");
+        int failedCount = attackMetrics.Count(a => a.status == "FAILED");
+
+        return new
+        {
+            participantId = pid,
+            deskId = p.deskId,
+            name = p.name,
+            kioskId = p.kioskId,
+            ipAddress = p.ipAddress,
+            password = p.password,
+            lastSeenAt = p.lastSeenAt,
+            totalScore = p.totalScore,
+            passedAttacks = passedCount,
+            failedAttacks = failedCount,
+            localPenalties = penalties.GetValueOrDefault(pid, 0),
+            attacks = attackMetrics,
+            recentSubmissions = pSubs.Take(5).ToList()
+        };
+    });
+
+    return Results.Ok(new
+    {
+        attacks = allAttacks.Select(a => new { id = a.Id, title = a.Title, band = a.Band }),
+        evaluations = evalList
+    });
 });
 
 app.MapGet("/admin/kiosks/{id}", (string id, HttpRequest r, Database db) =>
@@ -924,7 +1091,7 @@ app.MapPost("/api/kiosk/{id}/hint/{attackId:int}/{level:int}", (string id, int a
 
 app.Run();
 
-public sealed record RegisterRequest(string Name, string KioskId);
+public sealed record RegisterRequest(string Name, string KioskId, string? DeskId = null, string? Password = null);
 public sealed record EnrollRequest(string Token, string KioskId, string Name);
 public sealed record TelemetryRequest(string Type, JsonElement? Payload);
 public sealed record BroadcastRequest(string Message);

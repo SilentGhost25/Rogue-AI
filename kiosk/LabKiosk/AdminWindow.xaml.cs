@@ -18,9 +18,7 @@ public partial class AdminWindow : Window
         {
             try
             {
-                var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-                var udata = Path.Combine(localAppData, "RogueAI", "WV2_Admin_" + Environment.ProcessId);
-                var env = await Microsoft.Web.WebView2.Core.CoreWebView2Environment.CreateAsync(null, udata);
+                var env = await WebView2Helper.GetSharedEnvironmentAsync();
                 await AdminWeb.EnsureCoreWebView2Async(env);
                 AdminWeb.Source = new Uri($"{_serverUrl}/index.html");
             }
@@ -45,7 +43,8 @@ public partial class AdminWindow : Window
         projWin.Content = webView;
         projWin.Loaded += async (_, _) =>
         {
-            await webView.EnsureCoreWebView2Async();
+            var env = await WebView2Helper.GetSharedEnvironmentAsync();
+            await webView.EnsureCoreWebView2Async(env);
             webView.Source = new Uri($"{_serverUrl}/projector.html");
         };
         projWin.Show();
@@ -53,6 +52,16 @@ public partial class AdminWindow : Window
 
     private void OnOpenParticipantView(object sender, RoutedEventArgs e)
     {
+        try
+        {
+            var exe = Environment.ProcessPath ?? System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName;
+            if (!string.IsNullOrEmpty(exe) && File.Exists(exe))
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(exe) { UseShellExecute = true });
+                return;
+            }
+        }
+        catch { }
         var mainWin = new MainWindow();
         mainWin.Show();
     }

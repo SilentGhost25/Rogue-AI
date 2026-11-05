@@ -13,6 +13,10 @@
       <h1>Control Plane Console</h1>
     </div>
     <div class="header-right">
+      <div class="event-timer-box">
+        <span class="timer-label">EVENT REMAINING:</span>
+        <span id="event-timer" class="timer-countdown">02:00:00</span>
+      </div>
       <div class="status-indicator">
         <span class="live-dot"></span>
         <span id="server-time">UTC --:--:--</span>
@@ -23,6 +27,7 @@
   </header>
 
   <main class="container">
+    <!-- Section 1: Attack Dispatcher -->
     <section class="card">
       <div class="card-header">
         <h2>Attack Dispatch State Machine</h2>
@@ -49,6 +54,48 @@
       </div>
     </section>
 
+    <!-- Section 2: Detailed Participant Evaluation Scorecard & Pass/Fail Metrics -->
+    <section class="card">
+      <div class="card-header">
+        <div>
+          <h2>Participant Evaluation Scorecard &amp; Diagnostics</h2>
+          <div class="muted" style="font-size:12px; margin-top:2px;">Live pass/fail indicators, local test run penalties (-3.0 pts), and submission verdicts across all 8 attacks</div>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <span id="eval-count" class="counter-badge">0 participants</span>
+          <button id="refresh-eval-btn" class="btn secondary sm" onclick="refreshEvaluations()">Refresh Evals</button>
+        </div>
+      </div>
+      <div class="table-responsive">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Desk</th>
+              <th>Participant / Team</th>
+              <th>Station IP</th>
+              <th>PIN / Pass</th>
+              <th>Score</th>
+              <th>Pass / Solved</th>
+              <th>Local Penalties</th>
+              <th title="Attack 1: SQL Injection">#1</th>
+              <th title="Attack 2: Session Fixation">#2</th>
+              <th title="Attack 3: Prototype Pollution">#3</th>
+              <th title="Attack 4: Stored XSS">#4</th>
+              <th title="Attack 5: Path Traversal">#5</th>
+              <th title="Attack 6: Timing Attack / Signature">#6</th>
+              <th title="Attack 7: SSRF">#7</th>
+              <th title="Attack 8: IDOR">#8</th>
+              <th>Diagnostic Verdict / Reason</th>
+            </tr>
+          </thead>
+          <tbody id="eval-list">
+            <tr><td colspan="16" class="muted">Loading participant evaluations...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Section 3: Active Kiosks and Console Log -->
     <div class="grid-two">
       <section class="card">
         <div class="card-header">
@@ -61,13 +108,14 @@
               <tr>
                 <th>Desk</th>
                 <th>Participant</th>
+                <th>Station IP</th>
                 <th>Score</th>
                 <th>Solved</th>
                 <th>AI Status</th>
               </tr>
             </thead>
             <tbody id="kiosk-list">
-              <tr><td colspan="5" class="muted">No kiosks connected yet</td></tr>
+              <tr><td colspan="6" class="muted">No kiosks connected yet</td></tr>
             </tbody>
           </table>
         </div>

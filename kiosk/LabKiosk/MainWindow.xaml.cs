@@ -73,6 +73,25 @@ public partial class MainWindow : Window
         {
             _uiInitialized = true;
 
+            // Prompt participant login on startup
+            if (string.IsNullOrWhiteSpace(_settings.DisplayName) ||
+                _settings.DisplayName == Environment.MachineName ||
+                string.IsNullOrWhiteSpace(_settings.Password))
+            {
+                var loginDlg = new ParticipantLoginDialog(_settings) { Owner = this };
+                if (loginDlg.ShowDialog() == true)
+                {
+                    _settings.DisplayName = loginDlg.ParticipantName;
+                    _settings.DeskId = loginDlg.DeskId;
+                    _settings.Password = loginDlg.Password;
+                    _settings.ServerUrl = loginDlg.ServerUrl;
+                    _config.ServerUrl = loginDlg.ServerUrl;
+                    _config.DeskId = loginDlg.DeskId;
+                    _api = new ApiClient(_config.ServerUrl);
+                }
+            }
+            UpdateUserButton();
+
             try
             {
                 Directory.CreateDirectory(_settings.WorkspacePath);
@@ -86,11 +105,19 @@ public partial class MainWindow : Window
             EnsureWorkspaceSeeded();
             EnsureLocalSiteRunning();
 
-            // 1. Initialize WebView2 for the live website with isolated profile folder
-            var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            var udata = Path.Combine(localAppData, "RogueAI", "WV2_Kiosk_" + Environment.ProcessId);
-            var env = await Microsoft.Web.WebView2.Core.CoreWebView2Environment.CreateAsync(null, udata);
-            await Site.EnsureCoreWebView2Async(env);
+            // 1. Initialize WebView2 for the live website with shared profile folder
+            if (Site.CoreWebView2 == null)
+            {
+                try
+                {
+                    var env = await WebView2Helper.GetSharedEnvironmentAsync();
+                    await Site.EnsureCoreWebView2Async(env);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"WebView2 initialization warning: {ex.Message}");
+                }
+            }
 
             Site.CoreWebView2.NavigationStarting += (s, e) =>
             {
@@ -196,7 +223,7 @@ public partial class MainWindow : Window
             }
             else
             {
-                _participantId = await _api.RegisterAsync(_settings.DisplayName, _settings.KioskId);
+                _participantId = await _api.RegisterAsync(_settings.DisplayName, _settings.KioskId, _settings.DeskId, _settings.Password);
             }
 
             // 5. Start continuous snapshot sync (every 15s) and clock sync
@@ -535,6 +562,31 @@ public partial class MainWindow : Window
         }
     }
 
+    private void UpdateUserButton()
+    {
+        var label = !string.IsNullOrWhiteSpace(_settings.DisplayName) && _settings.DisplayName != Environment.MachineName
+            ? $"👤 {_settings.DisplayName} ({_settings.DeskId ?? "DESK"})"
+            : "👤 Login";
+        UserButton.Content = label;
+    }
+
+    private async void OnUserLoginClicked(object sender, RoutedEventArgs e)
+    {
+        var loginDlg = new ParticipantLoginDialog(_settings) { Owner = this };
+        if (loginDlg.ShowDialog() == true)
+        {
+            _settings.DisplayName = loginDlg.ParticipantName;
+            _settings.DeskId = loginDlg.DeskId;
+            _settings.Password = loginDlg.Password;
+            _settings.ServerUrl = loginDlg.ServerUrl;
+            _config.ServerUrl = loginDlg.ServerUrl;
+            _config.DeskId = loginDlg.DeskId;
+            _api = new ApiClient(_config.ServerUrl);
+            UpdateUserButton();
+            await ConnectToControlPlaneAsync();
+        }
+    }
+
     private async void OnServerConfigClicked(object sender, RoutedEventArgs e)
     {
         var dlg = new ServerConfigDialog(_config.ServerUrl, _config.DeskId) { Owner = this };
@@ -710,9 +762,17 @@ public partial class MainWindow : Window
         {
             Site.CoreWebView2.Navigate(_settings.SiteUrl);
         }
+        else if (Site.Source != null)
+        {
+            Site.Reload();
+        }
         else
         {
-            Site.Source = new Uri(_settings.SiteUrl);
+            try
+            {
+                Site.Source = new Uri(_settings.SiteUrl);
+            }
+            catch { }
         }
     }
 

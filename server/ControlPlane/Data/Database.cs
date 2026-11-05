@@ -93,6 +93,11 @@ public partial class Database
         EnsureColumn(c, "attack_dispatch", "dispatched_at", "TEXT");
 
         EnsureColumn(c, "score_ledger", "centipoints", "INTEGER NOT NULL DEFAULT 0");
+
+        EnsureColumn(c, "participants", "desk_id", "TEXT");
+        EnsureColumn(c, "participants", "password", "TEXT");
+        EnsureColumn(c, "participants", "ip_address", "TEXT");
+        EnsureColumn(c, "participants", "last_seen_at", "TEXT");
         EnsureColumn(c, "score_ledger", "seq", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn(c, "score_ledger", "prev_hash", "TEXT NOT NULL DEFAULT ''");
         EnsureColumn(c, "score_ledger", "entry_hash", "TEXT NOT NULL DEFAULT ''");

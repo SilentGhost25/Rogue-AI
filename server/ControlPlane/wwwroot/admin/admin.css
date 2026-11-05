@@ -267,3 +267,57 @@ body {
   font-size: 13px;
   text-align: center;
 }
+
+/* Event Countdown Timer */
+.event-timer-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #050811;
+  border: 1px solid #3b82f6;
+  border-radius: 6px;
+  padding: 4px 12px;
+}
+.timer-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #94a3b8;
+  letter-spacing: 0.5px;
+}
+.timer-countdown {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 700;
+  color: #38bdf8;
+  letter-spacing: 1px;
+}
+
+/* Evaluation Scorecard */
+.badge.passed { background: #065f46; color: #a7f3d0; border: 1px solid #10b981; }
+.badge.failed { background: #7f1d1d; color: #fca5a5; border: 1px solid #ef4444; }
+.badge.inprogress { background: #1e3a8a; color: #bfdbfe; border: 1px solid #3b82f6; }
+.badge.pending { background: #374151; color: #9ca3af; border: 1px solid #4b5563; }
+.penalty-tag {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+}
+.reason-tooltip {
+  cursor: pointer;
+  border-bottom: 1px dotted #94a3b8;
+}
+.pass-rate-pill {
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+.pass-rate-high { background: #065f46; color: #a7f3d0; }
+.pass-rate-mid { background: #854d0e; color: #fef08a; }
+.pass-rate-low { background: #7f1d1d; color: #fca5a5; }

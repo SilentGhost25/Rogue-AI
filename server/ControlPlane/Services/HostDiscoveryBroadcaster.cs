@@ -92,3 +92,4 @@ public sealed class HostDiscoveryBroadcaster : BackgroundService
         _logger.LogInformation("HostDiscoveryBroadcaster stopped.");
     }
 }
+

@@ -12,6 +12,7 @@ public sealed class KioskSettings
     public string DisplayName { get; set; } = Environment.MachineName;
     public string? DeskId { get; set; }
     public string? DeskToken { get; set; }
+    public string? Password { get; set; }
 
     public static KioskSettings Load()
     {
