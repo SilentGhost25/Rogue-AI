@@ -149,6 +149,33 @@ public partial class MainWindow : Window
     {
         try
         {
+            StatusText.Text = $"Locating Breach Command ({_config.ServerUrl})...";
+            StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Ink");
+
+            // 1. Check if configured server is reachable; if not, auto-discover dynamically on the network
+            var isReachable = await NetworkDiscovery.ProbeHostAsync(_config.ServerUrl, 800);
+            if (!isReachable)
+            {
+                StatusText.Text = "Breach Command unreachable. Auto-detecting host on local network...";
+                StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Alert");
+
+                var discovered = await NetworkDiscovery.AutoDiscoverHostAsync(_config.ServerUrl, status =>
+                {
+                    Dispatcher.InvokeAsync(() => StatusText.Text = status);
+                });
+
+                if (!string.IsNullOrEmpty(discovered))
+                {
+                    _config.ServerUrl = discovered;
+                    _settings.ServerUrl = discovered;
+                    _settings.Save();
+                    _api = new ApiClient(_config.ServerUrl);
+                    StatusText.Text = $"Breach Command located dynamically at {_config.ServerUrl}!";
+                    StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Ok");
+                    await Task.Delay(500);
+                }
+            }
+
             StatusText.Text = $"Connecting to Breach Command ({_config.ServerUrl})...";
             StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Ink");
 
@@ -287,23 +314,21 @@ public partial class MainWindow : Window
             StatusText.Text = $"Server unreachable ({_config.ServerUrl}): {ex.Message}";
             StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Alert");
 
-            // If connecting to local host failed, prompt user to enter organizer host IP
-            if (_config.ServerUrl.Contains("127.0.0.1") || _config.ServerUrl.Contains("localhost"))
+            // Prompt user to confirm or update organizer host IP
+            Dispatcher.InvokeAsync(async () =>
             {
-                Dispatcher.InvokeAsync(async () =>
+                var dlg = new ServerConfigDialog(_config.ServerUrl, _config.DeskId) { Owner = this };
+                if (dlg.ShowDialog() == true)
                 {
-                    var dlg = new ServerConfigDialog(_config.ServerUrl, _config.DeskId) { Owner = this };
-                    if (dlg.ShowDialog() == true)
-                    {
-                        _config.ServerUrl = dlg.ServerUrl;
-                        _config.DeskId = dlg.DeskId;
-                        _settings.ServerUrl = dlg.ServerUrl;
-                        _settings.DeskId = dlg.DeskId;
-                        _api = new ApiClient(_config.ServerUrl);
-                        await ConnectToControlPlaneAsync();
-                    }
-                });
-            }
+                    _config.ServerUrl = dlg.ServerUrl;
+                    _config.DeskId = dlg.DeskId;
+                    _settings.ServerUrl = dlg.ServerUrl;
+                    _settings.DeskId = dlg.DeskId;
+                    _settings.Save();
+                    _api = new ApiClient(_config.ServerUrl);
+                    await ConnectToControlPlaneAsync();
+                }
+            });
         }
     }
 

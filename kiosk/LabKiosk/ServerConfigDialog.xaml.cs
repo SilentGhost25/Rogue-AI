@@ -36,6 +36,22 @@ public partial class ServerConfigDialog : Window
         Close();
     }
 
+    private async void OnAutoDetect(object sender, RoutedEventArgs e)
+    {
+        var prevText = ServerUrlBox.Text;
+        ServerUrlBox.Text = "Scanning LAN for Breach Command...";
+        var found = await NetworkDiscovery.AutoDiscoverHostAsync(null);
+        if (!string.IsNullOrEmpty(found))
+        {
+            ServerUrlBox.Text = found;
+        }
+        else
+        {
+            ServerUrlBox.Text = prevText;
+            MessageBox.Show("Could not auto-detect Host on this network.\nPlease enter the IP shown on the Organizer screen (or a Cloudflare Tunnel URL).", "LAN Scan Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+    }
+
     private void OnSave(object sender, RoutedEventArgs e)
     {
         var rawUrl = ServerUrlBox.Text.Trim();

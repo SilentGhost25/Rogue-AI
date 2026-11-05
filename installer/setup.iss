@@ -42,10 +42,12 @@ Source: "..\kiosk\LabKiosk\kiosk.json"; DestDir: "{app}"; Flags: ignoreversion
 ; Target Website (Harbour Notes including bundled node_modules)
 Source: "..\site\*"; DestDir: "{app}\site"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "*.db,*.sqlite,*.log"
 ; Control Plane Server
-Source: "..\server\ControlPlane\bin\Debug\net9.0\*"; DestDir: "{app}\server"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\server\ControlPlane\bin\Debug\net9.0\*"; DestDir: "{app}\server"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "wwwroot\*.exe"
 ; Engine and Attack Packs
 Source: "..\engine\*"; DestDir: "{app}\engine"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "__pycache__\*,*.pyc,*.db"
 Source: "..\attacks\*"; DestDir: "{app}\attacks"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "__pycache__\*,*.pyc"
+; Uninstaller Helper Script
+Source: "uninstall.bat"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 ; Participant Mode
@@ -54,6 +56,10 @@ Name: "{autodesktop}\Rogue AI - Participant Defense Studio"; Filename: "{app}\{#
 ; Organizer Command Mode
 Name: "{group}\Rogue AI - Organizer Command Center"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--host"
 Name: "{autodesktop}\Rogue AI - Organizer Command Center"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--host"; Tasks: organizericon
+; Uninstaller
+Name: "{group}\Uninstall Rogue AI"; Filename: "{uninstallexe}"
+Name: "{group}\Cleanup and Uninstall Utility"; Filename: "{app}\uninstall.bat"
+Name: "{autodesktop}\Uninstall Rogue AI"; Filename: "{uninstallexe}"; Tasks: desktopicon
 
 [Run]
 Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Filename: "{app}\{#MyAppExeName}"; Flags: nowait postinstall skipifsilent
@@ -67,10 +73,10 @@ begin
   ServerPage := CreateInputQueryPage(wpSelectDir,
     'Organizer Server Configuration',
     'Specify the Host Server connection for this participant laptop.',
-    'Enter the Organizer Host IP address or URL displayed on the organizer screen:');
-  ServerPage.Add('Organizer Host IP / URL:', False);
-  ServerPage.Add('Desk Identifier (e.g. DESK-01, DESK-02):', False);
-  ServerPage.Values[0] := 'http://192.168.0.82:5080';
+    'Keep AUTO for automatic dynamic discovery, or enter the Host IP / Cloudflare Tunnel URL:');
+  ServerPage.Add('Organizer Host IP / URL (or AUTO for dynamic discovery):', False);
+  ServerPage.Add('Participant Desk Identifier (e.g. DESK-01, DESK-02):', False);
+  ServerPage.Values[0] := 'AUTO';
   ServerPage.Values[1] := 'DESK-01';
 end;
 
@@ -82,10 +88,15 @@ begin
   if CurStep = ssPostInstall then
   begin
     ServerUrlVal := Trim(ServerPage.Values[0]);
-    if (Pos('http://', ServerUrlVal) = 0) and (Pos('https://', ServerUrlVal) = 0) then
-      ServerUrlVal := 'http://' + ServerUrlVal;
-    if (Pos(':', Copy(ServerUrlVal, 8, Length(ServerUrlVal))) = 0) then
-      ServerUrlVal := ServerUrlVal + ':5080';
+    if (CompareText(ServerUrlVal, 'AUTO') = 0) or (ServerUrlVal = '') then
+      ServerUrlVal := 'http://127.0.0.1:5080'
+    else
+    begin
+      if (Pos('http://', ServerUrlVal) = 0) and (Pos('https://', ServerUrlVal) = 0) then
+        ServerUrlVal := 'http://' + ServerUrlVal;
+      if (Pos(':', Copy(ServerUrlVal, 8, Length(ServerUrlVal))) = 0) then
+        ServerUrlVal := ServerUrlVal + ':5080';
+    end;
 
     DeskIdVal := Trim(ServerPage.Values[1]);
     if DeskIdVal = '' then DeskIdVal := 'DESK-01';

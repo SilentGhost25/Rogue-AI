@@ -42,6 +42,7 @@ builder.Services.AddSingleton<AttackDispatcher>();
 builder.Services.AddSingleton<RogueAgentOrchestrator>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<RogueAgentOrchestrator>());
 builder.Services.AddHostedService<BackupService>();
+builder.Services.AddHostedService<HostDiscoveryBroadcaster>();
 builder.Services.AddHttpClient("engine", (sp, c) =>
     c.BaseAddress = new Uri(sp.GetRequiredService<IConfiguration>()["Breach:EngineUrl"] ?? "http://127.0.0.1:8000"));
 

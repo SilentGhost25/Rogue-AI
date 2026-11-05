@@ -20,4 +20,15 @@ public sealed class KioskSettings
             ? JsonSerializer.Deserialize<KioskSettings>(File.ReadAllText(path), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new()
             : new();
     }
+
+    public void Save()
+    {
+        try
+        {
+            var path = Path.Combine(AppContext.BaseDirectory, "kiosk.json");
+            var json = JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true });
+            File.WriteAllText(path, json);
+        }
+        catch { }
+    }
 }

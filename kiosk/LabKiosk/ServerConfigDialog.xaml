@@ -30,6 +30,7 @@
         </StackPanel>
 
         <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="🔍 Auto-Detect on LAN" Padding="14,6" Margin="0,0,10,0" Click="OnAutoDetect" Background="#162733" Foreground="#1E90FF" BorderBrush="#1E90FF" BorderThickness="1"/>
             <Button Content="Cancel" Padding="16,6" Margin="0,0,10,0" Click="OnCancel" Background="#1E3340" Foreground="{StaticResource Ink}" BorderBrush="{StaticResource Line}"/>
             <Button Content="Connect &amp; Save" Padding="18,6" Click="OnSave" Background="#163140" Foreground="#2ED573" BorderBrush="#2ED573" BorderThickness="1" FontWeight="Bold"/>
         </StackPanel>
