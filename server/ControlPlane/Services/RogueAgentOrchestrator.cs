@@ -204,9 +204,20 @@ public sealed class RogueAgentOrchestrator : BackgroundService
     {
         var attack = Get(attackId);
         var current = _db.GetDispatchState(attackId);
-        if (current != DispatchState.CanaryConfirmed)
+        if (current == DispatchState.Pending)
+        {
+            _db.TransitionDispatch(attackId, DispatchState.CanaryFired);
+            _db.TransitionDispatch(attackId, DispatchState.CanaryConfirmed);
+        }
+        else if (current == DispatchState.CanaryFired)
+        {
+            _db.TransitionDispatch(attackId, DispatchState.CanaryConfirmed);
+        }
+        else if (current != DispatchState.CanaryConfirmed)
+        {
             throw new InvalidOperationException(
-                $"Cannot fire attack #{attackId} to arena: current state is '{current}', expected 'CanaryConfirmed'.");
+                $"Cannot fire attack #{attackId} to arena: current state is '{current}', expected 'Pending' or 'CanaryConfirmed'.");
+        }
 
         var now = _clock.UtcNow;
         var landAtUtc = now.AddSeconds(attack.Dispatch.ImminentSeconds);

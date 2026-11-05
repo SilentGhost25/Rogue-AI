@@ -66,7 +66,7 @@ async function refreshAttacks() {
             <button class="btn sm" onclick="confirmCanary(${a.id})" ${!isCanaryFired ? 'disabled' : ''}>
               Confirm
             </button>
-            <button class="btn sm primary" onclick="fireArena(${a.id})" ${!isCanaryConfirmed ? 'disabled' : ''}>
+            <button class="btn sm primary" onclick="fireArena(${a.id})" ${isLanded || isImminent ? 'disabled' : ''}>
               Fire Arena
             </button>
           </td>
