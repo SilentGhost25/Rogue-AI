@@ -52,7 +52,11 @@ try {
 # Detect LAN IP for multi-device connectivity
 $lanIp = "127.0.0.1"
 try {
-    $found = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object { $_.IPAddress -notlike "127.*" -and $_.IPAddress -notlike "169.254.*" -and $_.InterfaceAlias -notmatch "vEthernet|Virtual|Loopback" } | Select-Object -First 1
+    $found = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object { 
+        $_.IPAddress -notlike "127.*" -and 
+        $_.IPAddress -notlike "169.254.*" -and 
+        $_.InterfaceAlias -notmatch "vEthernet|Virtual|Loopback|VMware|Host-Only" 
+    } | Select-Object -First 1
     if ($found) { $lanIp = $found.IPAddress }
 } catch { }
 
