@@ -11,6 +11,7 @@ public partial class MainWindow : Window
     private KioskConfig _config;
     private ApiClient _api;
     private readonly BudgetState _budget = new();
+    private bool _uiInitialized = false;
     private HubClient? _hub;
     private SnapshotSync? _sync;
     private ClockSync? _clock;
@@ -68,8 +69,10 @@ public partial class MainWindow : Window
 
     private async Task StartAsync()
     {
-        try
+        if (!_uiInitialized)
         {
+            _uiInitialized = true;
+
             try
             {
                 Directory.CreateDirectory(_settings.WorkspacePath);
@@ -137,6 +140,26 @@ public partial class MainWindow : Window
 
             // 3. Initialize ConPTY Terminals
             InitializeTerminals();
+        }
+
+        await ConnectToControlPlaneAsync();
+    }
+
+    private async Task ConnectToControlPlaneAsync()
+    {
+        try
+        {
+            StatusText.Text = $"Connecting to Breach Command ({_config.ServerUrl})...";
+            StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Ink");
+
+            // Stop existing sync or connection if retrying
+            _sync?.Dispose();
+            _sync = null;
+            if (_hub != null)
+            {
+                try { await _hub.DisposeAsync(); } catch { }
+                _hub = null;
+            }
 
             // 4. Enroll or Register with the event server
             if (!string.IsNullOrEmpty(_config.DeskToken))
@@ -277,7 +300,7 @@ public partial class MainWindow : Window
                         _settings.ServerUrl = dlg.ServerUrl;
                         _settings.DeskId = dlg.DeskId;
                         _api = new ApiClient(_config.ServerUrl);
-                        await StartAsync();
+                        await ConnectToControlPlaneAsync();
                     }
                 });
             }
@@ -497,7 +520,7 @@ public partial class MainWindow : Window
             _settings.ServerUrl = dlg.ServerUrl;
             _settings.DeskId = dlg.DeskId;
             _api = new ApiClient(_config.ServerUrl);
-            await StartAsync();
+            await ConnectToControlPlaneAsync();
         }
     }
 
