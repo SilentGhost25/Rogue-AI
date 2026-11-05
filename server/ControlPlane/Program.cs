@@ -26,10 +26,29 @@ builder.Services.AddHttpClient("engine", (sp, c) =>
 
 var app = builder.Build();
 app.UseDefaultFiles();
-app.UseStaticFiles();
+
+var fileTypeProvider = new Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider();
+fileTypeProvider.Mappings[".exe"] = "application/vnd.microsoft.portable-executable";
+app.UseStaticFiles(new StaticFileOptions
+{
+    ContentTypeProvider = fileTypeProvider,
+    ServeUnknownFileTypes = true
+});
+
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapGet("/download", () => Results.Redirect("/download.html"));
+app.MapGet("/RogueAI-Setup.exe", (IWebHostEnvironment env) =>
+{
+    var setupPath = Path.Combine(env.WebRootPath, "RogueAI-Setup.exe");
+    if (!File.Exists(setupPath))
+    {
+        var fallbackPath = Path.GetFullPath(Path.Combine(env.ContentRootPath, "..", "..", "dist", "RogueAI-Setup.exe"));
+        if (File.Exists(fallbackPath)) setupPath = fallbackPath;
+    }
+    if (!File.Exists(setupPath)) return Results.NotFound("RogueAI-Setup.exe not found on server.");
+    return Results.File(setupPath, "application/octet-stream", "RogueAI-Setup.exe");
+});
 app.MapAdminLogin();
 app.MapHub<BreachHub>("/hub");
 

@@ -51,13 +51,20 @@ try {
 
 # Detect LAN IP for multi-device connectivity
 $lanIp = "127.0.0.1"
+$availableIps = @()
 try {
-    $found = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object { 
+    $availableIps = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object { 
         $_.IPAddress -notlike "127.*" -and 
         $_.IPAddress -notlike "169.254.*" -and 
         $_.InterfaceAlias -notmatch "vEthernet|Virtual|Loopback|VMware|Host-Only" 
-    } | Select-Object -First 1
-    if ($found) { $lanIp = $found.IPAddress }
+    }
+    # Prefer Wi-Fi adapter if present
+    $wifi = $availableIps | Where-Object { $_.InterfaceAlias -match "Wi-Fi|Wireless" } | Select-Object -First 1
+    if ($wifi) {
+        $lanIp = $wifi.IPAddress
+    } elseif ($availableIps.Count -gt 0) {
+        $lanIp = $availableIps[0].IPAddress
+    }
 } catch { }
 
 try {
@@ -147,6 +154,12 @@ if ($HostMode) {
 
     Write-Host "`n[+] Control Plane and Evaluation Engine are active." -ForegroundColor Green
     Write-Host "[*] Participant kiosks can now connect to: http://${lanIp}:5080" -ForegroundColor Cyan
+    if ($availableIps.Count -gt 1) {
+        Write-Host "[*] Additional network interfaces detected:" -ForegroundColor DarkGray
+        foreach ($ip in $availableIps) {
+            Write-Host "    -> http://$($ip.IPAddress):5080/download ($($ip.InterfaceAlias))" -ForegroundColor DarkGray
+        }
+    }
     Write-Host "[*] Press ENTER in this window to stop all services..." -ForegroundColor Yellow
     try {
         [void][System.Console]::ReadLine()
