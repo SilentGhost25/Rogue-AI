@@ -23,7 +23,7 @@
                     </Border>
                 </StackPanel>
                 <StackPanel VerticalAlignment="Center">
-                    <TextBlock Text="🧪 LOCAL TEST RUNNER (npm test)" FontWeight="Bold" FontSize="14" Foreground="{StaticResource Ink}"/>
+                    <TextBlock Text="🧪 LOCAL TEST RUNNER (node --test)" FontWeight="Bold" FontSize="14" Foreground="{StaticResource Ink}"/>
                     <TextBlock x:Name="ExecutionDetailsText" Text="Executed in workspace" FontSize="11" Foreground="{StaticResource Mute}"/>
                 </StackPanel>
             </DockPanel>

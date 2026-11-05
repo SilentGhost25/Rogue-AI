@@ -26,11 +26,12 @@
                     <TextBlock x:Name="OcMeter" Text="OpenCode: 0 prompts" Foreground="{StaticResource Ink}"/>
                 </StackPanel>
 
-                <!-- Layout Toggle Buttons & Admin -->
+                <!-- Layout Toggle Buttons & Server Config -->
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0">
                     <Button Content="All 3" Padding="8,4" Margin="2,0" FontSize="11" Click="OnLayoutAll3" Background="#1E3340" Foreground="{StaticResource Ink}" BorderBrush="{StaticResource Line}"/>
                     <Button Content="Web+Term" Padding="8,4" Margin="2,0" FontSize="11" Click="OnLayoutWebTerm" Background="#1E3340" Foreground="{StaticResource Ink}" BorderBrush="{StaticResource Line}"/>
                     <Button Content="Code+Term" Padding="8,4" Margin="2,0" FontSize="11" Click="OnLayoutCodeTerm" Background="#1E3340" Foreground="{StaticResource Ink}" BorderBrush="{StaticResource Line}"/>
+                    <Button Content="⚙ Server" Padding="8,4" Margin="6,0,2,0" FontSize="11" Click="OnServerConfigClicked" Background="#1E3340" Foreground="{StaticResource Ink}" BorderBrush="{StaticResource Line}" ToolTip="Configure Organizer Server URL (Host IP)"/>
                 </StackPanel>
 
                 <!-- Verdict Celebration / Status Banner -->

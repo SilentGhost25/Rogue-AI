@@ -8,8 +8,8 @@ namespace LabKiosk;
 public partial class MainWindow : Window
 {
     private readonly KioskSettings _settings = KioskSettings.Load();
-    private readonly KioskConfig _config;
-    private readonly ApiClient _api;
+    private KioskConfig _config;
+    private ApiClient _api;
     private readonly BudgetState _budget = new();
     private HubClient? _hub;
     private SnapshotSync? _sync;
@@ -261,8 +261,26 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            StatusText.Text = $"Server offline or unreachable: {ex.Message}";
+            StatusText.Text = $"Server unreachable ({_config.ServerUrl}): {ex.Message}";
             StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Alert");
+
+            // If connecting to local host failed, prompt user to enter organizer host IP
+            if (_config.ServerUrl.Contains("127.0.0.1") || _config.ServerUrl.Contains("localhost"))
+            {
+                Dispatcher.InvokeAsync(async () =>
+                {
+                    var dlg = new ServerConfigDialog(_config.ServerUrl, _config.DeskId) { Owner = this };
+                    if (dlg.ShowDialog() == true)
+                    {
+                        _config.ServerUrl = dlg.ServerUrl;
+                        _config.DeskId = dlg.DeskId;
+                        _settings.ServerUrl = dlg.ServerUrl;
+                        _settings.DeskId = dlg.DeskId;
+                        _api = new ApiClient(_config.ServerUrl);
+                        await StartAsync();
+                    }
+                });
+            }
         }
     }
 
@@ -469,20 +487,37 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void OnServerConfigClicked(object sender, RoutedEventArgs e)
+    {
+        var dlg = new ServerConfigDialog(_config.ServerUrl, _config.DeskId) { Owner = this };
+        if (dlg.ShowDialog() == true)
+        {
+            _config.ServerUrl = dlg.ServerUrl;
+            _config.DeskId = dlg.DeskId;
+            _settings.ServerUrl = dlg.ServerUrl;
+            _settings.DeskId = dlg.DeskId;
+            _api = new ApiClient(_config.ServerUrl);
+            await StartAsync();
+        }
+    }
+
     private async void OnTestLocally(object sender, RoutedEventArgs e)
     {
         if (TestLocallyButton.IsEnabled == false) return;
         TestLocallyButton.IsEnabled = false;
         TestLocallyButton.Content = "⏳ Testing...";
-        StatusText.Text = "Executing local test suite (npm test)...";
+        StatusText.Text = "Executing local test suite (node --test)...";
         StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Ink");
 
         try
         {
+            var bundledNode = Path.Combine(AppContext.BaseDirectory, "nodejs", "node.exe");
+            var nodeExe = File.Exists(bundledNode) ? bundledNode : "node";
+
             var psi = new System.Diagnostics.ProcessStartInfo
             {
-                FileName = "cmd.exe",
-                Arguments = "/c npm test",
+                FileName = nodeExe,
+                Arguments = "--test test/site.test.js",
                 WorkingDirectory = _settings.WorkspacePath,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
@@ -524,7 +559,7 @@ public partial class MainWindow : Window
         {
             StatusText.Text = $"Error running local tests: {ex.Message}";
             StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Alert");
-            MessageBox.Show($"Failed to execute npm test: {ex.Message}", "Test Runner Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show($"Failed to execute test suite: {ex.Message}", "Test Runner Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally
         {

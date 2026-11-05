@@ -12,7 +12,7 @@ if (Test-Path "$ScriptDir\rogue-ai-base\rogue-ai") {
     $RogueRoot = $ScriptDir
 }
 
-if (Test-Path "$env:LOCALAPPDATA\dotnet") {
+if (Test-Path "$env:LOCALAPPDATA\dotnet" -ErrorAction SilentlyContinue) {
     $env:DOTNET_ROOT = "$env:LOCALAPPDATA\dotnet"
     $env:Path = "$env:LOCALAPPDATA\dotnet;$env:Path"
 }
@@ -22,7 +22,7 @@ if (-not $env:BREACH_ADMIN_KEY) {
 }
 
 Write-Host "==========================================================" -ForegroundColor Cyan
-Write-Host "  ROGUE AI — THE BREACH PROTOCOL (All-In-One Launcher)   " -ForegroundColor Yellow
+Write-Host "  ROGUE AI -- THE BREACH PROTOCOL (All-In-One Launcher)   " -ForegroundColor Yellow
 Write-Host "==========================================================" -ForegroundColor Cyan
 Write-Host "Project Root: $RogueRoot" -ForegroundColor Gray
 
@@ -49,6 +49,14 @@ try {
     Write-Host "[!] Note: Using local fallback workspace: $WorkspaceDir" -ForegroundColor Yellow
 }
 
+# Detect LAN IP for multi-device connectivity
+$lanIp = "127.0.0.1"
+try {
+    $found = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object { $_.IPAddress -notlike "127.*" -and $_.IPAddress -notlike "169.254.*" -and $_.InterfaceAlias -notmatch "vEthernet|Virtual|Loopback" } | Select-Object -First 1
+    if ($found) { $lanIp = $found.IPAddress }
+} catch { }
+
+try {
 # 2. Check and Start Target Website (Port 3000)
 $siteProc = $null
 $isSiteRunning = $false
@@ -96,7 +104,7 @@ if ($isServerRunning) {
         Write-Host "[*] Building Control Plane..." -ForegroundColor Cyan
         dotnet build "$RogueRoot\server\ControlPlane\ControlPlane.csproj" -c Debug | Out-Null
     }
-    $serverProc = Start-Process -FilePath $controlPlaneExe -ArgumentList "--urls http://127.0.0.1:5080" -WorkingDirectory "$RogueRoot\server\ControlPlane" -PassThru -WindowStyle Hidden
+    $serverProc = Start-Process -FilePath $controlPlaneExe -ArgumentList "--urls http://0.0.0.0:5080" -WorkingDirectory "$RogueRoot\server\ControlPlane" -PassThru -WindowStyle Hidden
 }
 
 # Wait for services to be ready
@@ -124,16 +132,17 @@ if ($HostMode) {
     Write-Host "`n==========================================================" -ForegroundColor Green
     Write-Host " ROGUE AI: ORGANIZER COMMAND CENTER ONLINE" -ForegroundColor Green
     Write-Host "==========================================================" -ForegroundColor Green
-    Write-Host "Local Admin URL:   http://127.0.0.1:5080/admin/" -ForegroundColor Cyan
-    Write-Host "LAN Admin URL:     http://192.168.0.82:5080/admin/" -ForegroundColor Cyan
-    Write-Host "Credentials:       admin / admin123456" -ForegroundColor Yellow
+    Write-Host "Local Admin URL:      http://127.0.0.1:5080/admin/" -ForegroundColor Cyan
+    Write-Host "LAN Admin URL:        http://${lanIp}:5080/admin/" -ForegroundColor Cyan
+    Write-Host "Participant Download: http://${lanIp}:5080/download" -ForegroundColor Magenta
+    Write-Host "Credentials:          admin / admin123456" -ForegroundColor Yellow
     Write-Host "==========================================================" -ForegroundColor Green
 
     # Open Admin Console in default browser
     Start-Process "http://127.0.0.1:5080/admin/"
 
     Write-Host "`n[+] Control Plane and Evaluation Engine are active." -ForegroundColor Green
-    Write-Host "[*] Participant kiosks can now connect to http://192.168.0.82:5080" -ForegroundColor Cyan
+    Write-Host "[*] Participant kiosks can now connect to: http://${lanIp}:5080" -ForegroundColor Cyan
     Write-Host "[*] Press ENTER in this window to stop all services..." -ForegroundColor Yellow
     try {
         [void][System.Console]::ReadLine()

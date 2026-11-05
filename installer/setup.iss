@@ -35,8 +35,8 @@ Name: "organizericon"; Description: "Create Organizer Command Center shortcut"; 
 [Files]
 ; Kiosk WPF Application & Self-Contained .NET 9 Runtime
 Source: "..\kiosk\LabKiosk\bin\SelfContained\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "*.pdb,*.WebView2\*"
-; Bundled Standalone Portable Node.js Runtime (Zero External Dependency)
-Source: "..\vendor\nodejs\node.exe"; DestDir: "{app}\nodejs"; Flags: ignoreversion
+; Bundled Standalone Portable Node.js Runtime & NPM Shim (Zero External Dependency)
+Source: "..\vendor\nodejs\*"; DestDir: "{app}\nodejs"; Flags: ignoreversion
 ; Default Kiosk Settings
 Source: "..\kiosk\LabKiosk\kiosk.json"; DestDir: "{app}"; Flags: ignoreversion
 ; Target Website (Harbour Notes including bundled node_modules)
@@ -57,4 +57,47 @@ Name: "{autodesktop}\Rogue AI - Organizer Command Center"; Filename: "{app}\{#My
 
 [Run]
 Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Filename: "{app}\{#MyAppExeName}"; Flags: nowait postinstall skipifsilent
+
+[Code]
+var
+  ServerPage: TInputQueryWizardPage;
+
+procedure InitializeWizard;
+begin
+  ServerPage := CreateInputQueryPage(wpSelectDir,
+    'Organizer Server Configuration',
+    'Specify the Host Server connection for this participant laptop.',
+    'Enter the Organizer Host IP address or URL displayed on the organizer screen:');
+  ServerPage.Add('Organizer Host IP / URL:', False);
+  ServerPage.Add('Desk Identifier (e.g. DESK-01, DESK-02):', False);
+  ServerPage.Values[0] := 'http://192.168.0.82:5080';
+  ServerPage.Values[1] := 'DESK-01';
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  JsonContent: string;
+  ServerUrlVal, DeskIdVal: string;
+begin
+  if CurStep = ssPostInstall then
+  begin
+    ServerUrlVal := Trim(ServerPage.Values[0]);
+    if (Pos('http://', ServerUrlVal) = 0) and (Pos('https://', ServerUrlVal) = 0) then
+      ServerUrlVal := 'http://' + ServerUrlVal;
+    if (Pos(':', Copy(ServerUrlVal, 8, Length(ServerUrlVal))) = 0) then
+      ServerUrlVal := ServerUrlVal + ':5080';
+
+    DeskIdVal := Trim(ServerPage.Values[1]);
+    if DeskIdVal = '' then DeskIdVal := 'DESK-01';
+
+    JsonContent := '{' + #13#10 +
+      '  "ServerUrl": "' + ServerUrlVal + '",' + #13#10 +
+      '  "SiteUrl": "http://127.0.0.1:3000",' + #13#10 +
+      '  "WorkspacePath": "C:\\BreachWorkspace",' + #13#10 +
+      '  "DeskId": "' + DeskIdVal + '",' + #13#10 +
+      '  "DeskToken": ""' + #13#10 +
+      '}';
+    SaveStringToFile(ExpandConstant('{app}\kiosk.json'), JsonContent, False);
+  end;
+end;
 

@@ -29,6 +29,7 @@ app.UseDefaultFiles();
 app.UseStaticFiles();
 app.UseAuthentication();
 app.UseAuthorization();
+app.MapGet("/download", () => Results.Redirect("/download.html"));
 app.MapAdminLogin();
 app.MapHub<BreachHub>("/hub");
 

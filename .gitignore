@@ -17,6 +17,7 @@ secrets/
 *.key
 *desk_tokens_slips*
 dist/
+server/ControlPlane/wwwroot/*.exe
 *.log
 .vscode/
 .idea/

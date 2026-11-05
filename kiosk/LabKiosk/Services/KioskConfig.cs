@@ -5,9 +5,9 @@ namespace LabKiosk.Services;
 
 public sealed class KioskConfig
 {
-    public string ServerUrl { get; init; } = "http://127.0.0.1:5080";
-    public string DeskId { get; init; } = "DESK-01";
-    public string? DeskToken { get; init; }
+    public string ServerUrl { get; set; } = "http://127.0.0.1:5080";
+    public string DeskId { get; set; } = "DESK-01";
+    public string? DeskToken { get; set; }
 
     public static KioskConfig FromArgs(string[] args)
     {
