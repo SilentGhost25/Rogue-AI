@@ -202,18 +202,13 @@ public partial class Database
 
     public bool ValidateDeskToken(string? token, string participantId)
     {
-        if (string.IsNullOrWhiteSpace(participantId)) return false;
+        if (string.IsNullOrWhiteSpace(token) || string.IsNullOrWhiteSpace(participantId)) return false;
         using var c = Open();
         using var cmd = c.CreateCommand();
-        cmd.CommandText = "SELECT COUNT(*) FROM desk_tokens WHERE (token = $tok AND participant_id = $pid) OR (participant_id = $pid)";
-        cmd.Parameters.AddWithValue("$tok", token ?? "");
+        cmd.CommandText = "SELECT COUNT(*) FROM desk_tokens WHERE token = $tok AND participant_id = $pid";
+        cmd.Parameters.AddWithValue("$tok", token);
         cmd.Parameters.AddWithValue("$pid", participantId);
-        if (Convert.ToInt64(cmd.ExecuteScalar()) > 0) return true;
-
-        using var pCmd = c.CreateCommand();
-        pCmd.CommandText = "SELECT COUNT(*) FROM participants WHERE id = $p OR kiosk_id = $p";
-        pCmd.Parameters.AddWithValue("$p", participantId);
-        return Convert.ToInt64(pCmd.ExecuteScalar()) > 0;
+        return Convert.ToInt64(cmd.ExecuteScalar()) > 0;
     }
 
     public (bool Success, string Message, string? ParticipantId, string? DeskId) EnrollDesk(string token, string kioskId, string participantName)

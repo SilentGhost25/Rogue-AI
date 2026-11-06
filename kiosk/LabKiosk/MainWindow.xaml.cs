@@ -105,19 +105,11 @@ public partial class MainWindow : Window
             EnsureWorkspaceSeeded();
             EnsureLocalSiteRunning();
 
-            // 1. Initialize WebView2 for the live website with shared profile folder
-            if (Site.CoreWebView2 == null)
-            {
-                try
-                {
-                    var env = await WebView2Helper.GetSharedEnvironmentAsync();
-                    await Site.EnsureCoreWebView2Async(env);
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"WebView2 initialization warning: {ex.Message}");
-                }
-            }
+            // 1. Initialize WebView2 for the live website with isolated profile folder
+            var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            var udata = Path.Combine(localAppData, "RogueAI", "WV2_Kiosk_" + Environment.ProcessId);
+            var env = await Microsoft.Web.WebView2.Core.CoreWebView2Environment.CreateAsync(null, udata);
+            await Site.EnsureCoreWebView2Async(env);
 
             Site.CoreWebView2.NavigationStarting += (s, e) =>
             {
@@ -762,17 +754,9 @@ public partial class MainWindow : Window
         {
             Site.CoreWebView2.Navigate(_settings.SiteUrl);
         }
-        else if (Site.Source != null)
-        {
-            Site.Reload();
-        }
         else
         {
-            try
-            {
-                Site.Source = new Uri(_settings.SiteUrl);
-            }
-            catch { }
+            Site.Source = new Uri(_settings.SiteUrl);
         }
     }
 

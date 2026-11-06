@@ -1007,7 +1007,7 @@ app.MapPost("/api/admin/attacks/{id:int}/fire-arena", async (int id, HttpRequest
     if (authErr != null) return authErr;
     try
     {
-        var landAt = await orch.FireToArenaAsync(id);
+        var landAt = await orch.ConfirmAndFireArenaAsync(id);
         return Results.Ok(new { firedToArena = true, landAtUtc = landAt.ToString("O") });
     }
     catch (InvalidOperationException ex) { return Results.Conflict(new { error = ex.Message }); }

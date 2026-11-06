@@ -155,3 +155,4 @@ public partial class ParticipantLoginDialog : Window
         Close();
     }
 }
+

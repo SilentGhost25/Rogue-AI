@@ -204,19 +204,10 @@ public sealed class RogueAgentOrchestrator : BackgroundService
     {
         var attack = Get(attackId);
         var current = _db.GetDispatchState(attackId);
-        if (current == DispatchState.Pending)
-        {
-            _db.TransitionDispatch(attackId, DispatchState.CanaryFired);
-            _db.TransitionDispatch(attackId, DispatchState.CanaryConfirmed);
-        }
-        else if (current == DispatchState.CanaryFired)
-        {
-            _db.TransitionDispatch(attackId, DispatchState.CanaryConfirmed);
-        }
-        else if (current != DispatchState.CanaryConfirmed)
+        if (current != DispatchState.CanaryConfirmed)
         {
             throw new InvalidOperationException(
-                $"Cannot fire attack #{attackId} to arena: current state is '{current}', expected 'Pending' or 'CanaryConfirmed'.");
+                $"Cannot fire attack #{attackId} to arena: current state is '{current}', expected 'CanaryConfirmed'.");
         }
 
         var now = _clock.UtcNow;
@@ -294,7 +285,20 @@ public sealed class RogueAgentOrchestrator : BackgroundService
         return Task.CompletedTask;
     }
 
-    public Task<DateTime> ConfirmAndFireArenaAsync(int attackId) => FireToArenaAsync(attackId);
+    public async Task<DateTime> ConfirmAndFireArenaAsync(int attackId)
+    {
+        var current = _db.GetDispatchState(attackId);
+        if (current == DispatchState.Pending)
+        {
+            _db.TransitionDispatch(attackId, DispatchState.CanaryFired);
+            _db.TransitionDispatch(attackId, DispatchState.CanaryConfirmed);
+        }
+        else if (current == DispatchState.CanaryFired)
+        {
+            _db.TransitionDispatch(attackId, DispatchState.CanaryConfirmed);
+        }
+        return await FireToArenaAsync(attackId);
+    }
 
     public (bool Success, string Message, string? Text, int Cost) RequestHint(string participantId, int attackId, int level)
     {
