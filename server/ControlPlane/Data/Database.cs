@@ -20,7 +20,7 @@ public partial class Database
         var c = new SqliteConnection(_connectionString);
         c.Open();
         using var pragma = c.CreateCommand();
-        pragma.CommandText = "PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;";
+        pragma.CommandText = "PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;";
         pragma.ExecuteNonQuery();
         return c;
     }
