@@ -114,15 +114,19 @@ public partial class OnboardingWindow : Window
             var agy = ExeResolver.Resolve(_settings.AgyPath) ?? ExeResolver.Resolve("agy");
             if (agy is not null)
             {
-                // Run in an interactive terminal with /k so the window remains visible and stays open
-                var banner = "echo ======================================================== & " +
-                             "echo ROGUE AI: Antigravity AI Google Authentication & " +
-                             "echo Sign in to your Google Account in the browser when prompted. & " +
-                             "echo Once sign-in completes, this window can be closed. & " +
-                             "echo ======================================================== & ";
+                var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+                var banner = "title ROGUE AI - Antigravity Sign In && " +
+                             "echo ======================================================== && " +
+                             "echo ROGUE AI: Antigravity AI Google Authentication && " +
+                             "echo Sign in to your Google Account in the browser when prompted. && " +
+                             "echo Once sign-in completes, this window can be closed. && " +
+                             "echo ======================================================== && ";
 
-                Process.Start(new ProcessStartInfo("cmd.exe", $"/k \"{banner}\"{agy}\"\"")
+                Process.Start(new ProcessStartInfo
                 {
+                    FileName = "cmd.exe",
+                    Arguments = $"/k {banner}\"{agy}\" --log-file \"%TEMP%\\agy_session.log\"",
+                    WorkingDirectory = userProfile,
                     UseShellExecute = true,
                     CreateNoWindow = false
                 });
@@ -181,40 +185,27 @@ public partial class OnboardingWindow : Window
     {
         try
         {
-            var gh = ExeResolver.Resolve("gh");
-            if (gh is not null)
+            var auth = new GitHubAuthWindow { Owner = this };
+            if (auth.ShowDialog() == true && !string.IsNullOrWhiteSpace(auth.AuthenticatedUsername))
             {
-                var banner = "echo ======================================================== & " +
-                             "echo ROGUE AI: GitHub Authentication (GitHub CLI) & " +
-                             "echo Follow the browser prompts to authorize your GitHub account. & " +
-                             "echo ======================================================== & ";
-
-                Process.Start(new ProcessStartInfo("cmd.exe", $"/k \"{banner}\"{gh}\" auth login --web -h github.com\"")
-                {
-                    UseShellExecute = true,
-                    CreateNoWindow = false
-                });
-
-                TxtGithubStatus.Text = "⏳ Follow browser prompts to authorize...";
+                TxtGithubHandle.Text = "@" + auth.AuthenticatedUsername;
+                _ = VerifyGithubHandleAsync(auth.AuthenticatedUsername);
+                return;
             }
-            else
+        }
+        catch
+        {
+            // Fallback to opening system browser if WebView2 modal encounters an issue
+            try
             {
                 Process.Start(new ProcessStartInfo
                 {
                     FileName = "https://github.com/login",
                     UseShellExecute = true
                 });
-
-                TxtGithubStatus.Text = "⏳ Browser opened. Sign in, then click Auto-Detect...";
             }
-        }
-        catch
-        {
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = "https://github.com/login",
-                UseShellExecute = true
-            });
+            catch { }
+            TxtGithubStatus.Text = "⏳ Browser opened. Enter your handle and click Verify.";
         }
     }
 

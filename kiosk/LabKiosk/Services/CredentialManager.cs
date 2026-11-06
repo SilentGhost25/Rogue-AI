@@ -189,14 +189,11 @@ public static class CredentialManager
         }
         catch { /* best effort */ }
 
-        // 3. Query git config user.name or github.user
+        // 3. Query git config github.user
         try
         {
             var gitUser = RunProcessCaptureOutput("git.exe", "config --get github.user");
             if (IsValidGitHubUsername(gitUser)) return gitUser!.Trim();
-
-            var configName = RunProcessCaptureOutput("git.exe", "config --get user.name");
-            if (IsValidGitHubUsername(configName)) return configName!.Trim();
         }
         catch { /* best effort */ }
 
@@ -249,3 +246,4 @@ public static class CredentialManager
         }
     }
 }
+
