@@ -15,6 +15,8 @@ public partial class OnboardingWindow : Window
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(3) };
     private readonly KioskSettings _settings;
     private readonly DispatcherTimer _pollTimer;
+    private bool _googleConnected;
+    private bool _githubConnected;
 
     public OnboardingWindow(KioskSettings settings)
     {
@@ -32,15 +34,14 @@ public partial class OnboardingWindow : Window
         TxtGithubHandle.Text = _settings.GitHubHandle;
         TxtGoogleEmail.Text = _settings.GoogleAccount;
 
-        _pollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
-        _pollTimer.Tick += (_, _) => CheckGoogleAuth();
+        _pollTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1500) };
+        _pollTimer.Tick += (_, _) => PollCredentials();
         _pollTimer.Start();
 
         Loaded += (_, _) =>
         {
             CheckGoogleAuth();
-            if (!string.IsNullOrWhiteSpace(_settings.GitHubHandle))
-                _ = VerifyGithubHandleAsync(_settings.GitHubHandle);
+            CheckGithubAuth(force: false);
         };
 
         Closed += (_, _) => _pollTimer.Stop();
@@ -52,40 +53,34 @@ public partial class OnboardingWindow : Window
         Close();
     }
 
+    private void PollCredentials()
+    {
+        if (!_googleConnected)
+            CheckGoogleAuth();
+
+        if (!_githubConnected)
+            CheckGithubAuth(force: false);
+    }
+
+    // ---- Google / Antigravity Authentication --------------------------------------------------------
     private void CheckGoogleAuth()
     {
         try
         {
-            var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-            var geminiDir = Path.Combine(userProfile, ".gemini");
-            var accountsFile = Path.Combine(geminiDir, "google_accounts.json");
-            var cliSettings = Path.Combine(geminiDir, "antigravity-cli", "settings.json");
-
-            string? detectedEmail = null;
-
-            if (File.Exists(accountsFile))
-            {
-                var content = File.ReadAllText(accountsFile);
-                if (content.Contains('@'))
-                {
-                    using var doc = JsonDocument.Parse(content);
-                    if (doc.RootElement.ValueKind == JsonValueKind.Object && doc.RootElement.TryGetProperty("active_account", out var emailProp))
-                        detectedEmail = emailProp.GetString();
-                    else if (doc.RootElement.ValueKind == JsonValueKind.Array && doc.RootElement.GetArrayLength() > 0)
-                        detectedEmail = doc.RootElement[0].GetProperty("email").GetString();
-                }
-            }
-
-            if (detectedEmail is null && !string.IsNullOrWhiteSpace(_settings.GoogleAccount))
+            var detectedEmail = CredentialManager.GetAntigravityGoogleEmail();
+            if (string.IsNullOrWhiteSpace(detectedEmail) && !string.IsNullOrWhiteSpace(_settings.GoogleAccount))
                 detectedEmail = _settings.GoogleAccount;
 
             if (!string.IsNullOrWhiteSpace(detectedEmail))
             {
+                _googleConnected = true;
+                _settings.GoogleAccount = detectedEmail;
                 TxtGoogleEmail.Text = detectedEmail;
                 TxtGoogleStatus.Text = "✔ Connected: " + detectedEmail;
                 TxtGoogleStatus.Foreground = (Brush)FindResource("Ok");
                 BadgeGoogle.BorderBrush = (Brush)FindResource("Ok");
                 BadgeGoogle.Background = new SolidColorBrush(Color.FromArgb(50, 63, 182, 139));
+                BtnGoogleLogin.Content = "🔄 Switch Google Account";
             }
         }
         catch { /* best effort */ }
@@ -95,14 +90,44 @@ public partial class OnboardingWindow : Window
     {
         try
         {
-            var agy = ExeResolver.Resolve(_settings.AgyPath);
+            if (_googleConnected)
+            {
+                var res = MessageBox.Show(
+                    "Antigravity is currently authenticated with Google:\n" + TxtGoogleEmail.Text +
+                    "\n\nDo you want to switch accounts? This will clear the current session so you can log in with a different Google account.",
+                    "Switch Google Account",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Question);
+
+                if (res != MessageBoxResult.Yes) return;
+
+                CredentialManager.ClearAntigravityGoogleCredential();
+                _googleConnected = false;
+                TxtGoogleEmail.Text = "";
+                TxtGoogleStatus.Text = "⏳ Awaiting sign-in...";
+                TxtGoogleStatus.Foreground = (Brush)FindResource("Mute");
+                BadgeGoogle.BorderBrush = (Brush)FindResource("Mute");
+                BadgeGoogle.Background = new SolidColorBrush(Color.FromArgb(20, 27, 42, 31));
+                BtnGoogleLogin.Content = "🌐 Sign In with Google";
+            }
+
+            var agy = ExeResolver.Resolve(_settings.AgyPath) ?? ExeResolver.Resolve("agy");
             if (agy is not null)
             {
-                Process.Start(new ProcessStartInfo("cmd.exe", $"/c \"\"{agy}\" auth login\"")
+                // Run in an interactive terminal with /k so the window remains visible and stays open
+                var banner = "echo ======================================================== & " +
+                             "echo ROGUE AI: Antigravity AI Google Authentication & " +
+                             "echo Sign in to your Google Account in the browser when prompted. & " +
+                             "echo Once sign-in completes, this window can be closed. & " +
+                             "echo ======================================================== & ";
+
+                Process.Start(new ProcessStartInfo("cmd.exe", $"/k \"{banner}\"{agy}\"\"")
                 {
                     UseShellExecute = true,
                     CreateNoWindow = false
                 });
+
+                TxtGoogleStatus.Text = "⏳ Complete Google sign-in in browser...";
             }
             else
             {
@@ -111,20 +136,42 @@ public partial class OnboardingWindow : Window
                     FileName = "https://accounts.google.com",
                     UseShellExecute = true
                 });
+                TxtGoogleStatus.Text = "⏳ Browser opened. Sign in to Google...";
             }
-            TxtGoogleStatus.Text = "⏳ Awaiting browser sign-in...";
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Could not open Google sign in: {ex.Message}", "Sign In", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show($"Could not start Google sign in: {ex.Message}", "Sign In Problem", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
+    }
+
+    // ---- GitHub Authentication & Verification -------------------------------------------------------
+    private void CheckGithubAuth(bool force)
+    {
+        try
+        {
+            var detectedUser = CredentialManager.GetGitHubUsername();
+            if (!string.IsNullOrWhiteSpace(detectedUser))
+            {
+                if (force || string.IsNullOrWhiteSpace(TxtGithubHandle.Text) || !_githubConnected)
+                {
+                    TxtGithubHandle.Text = "@" + detectedUser;
+                    _ = VerifyGithubHandleAsync(detectedUser);
+                }
+            }
+            else if (!string.IsNullOrWhiteSpace(_settings.GitHubHandle) && !_githubConnected)
+            {
+                _ = VerifyGithubHandleAsync(_settings.GitHubHandle);
+            }
+        }
+        catch { /* best effort */ }
     }
 
     private void OnHandleChanged(object sender, TextChangedEventArgs e)
     {
+        var h = TxtGithubHandle.Text.Trim().TrimStart('@');
         if (string.IsNullOrWhiteSpace(TxtDisplayName.Text) || TxtDisplayName.Text.StartsWith('@'))
         {
-            var h = TxtGithubHandle.Text.Trim().TrimStart('@');
             if (!string.IsNullOrWhiteSpace(h))
                 TxtDisplayName.Text = "@" + h;
         }
@@ -134,13 +181,60 @@ public partial class OnboardingWindow : Window
     {
         try
         {
+            var gh = ExeResolver.Resolve("gh");
+            if (gh is not null)
+            {
+                var banner = "echo ======================================================== & " +
+                             "echo ROGUE AI: GitHub Authentication (GitHub CLI) & " +
+                             "echo Follow the browser prompts to authorize your GitHub account. & " +
+                             "echo ======================================================== & ";
+
+                Process.Start(new ProcessStartInfo("cmd.exe", $"/k \"{banner}\"{gh}\" auth login --web -h github.com\"")
+                {
+                    UseShellExecute = true,
+                    CreateNoWindow = false
+                });
+
+                TxtGithubStatus.Text = "⏳ Follow browser prompts to authorize...";
+            }
+            else
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = "https://github.com/login",
+                    UseShellExecute = true
+                });
+
+                TxtGithubStatus.Text = "⏳ Browser opened. Sign in, then click Auto-Detect...";
+            }
+        }
+        catch
+        {
             Process.Start(new ProcessStartInfo
             {
                 FileName = "https://github.com/login",
                 UseShellExecute = true
             });
         }
-        catch { }
+    }
+
+    private void OnAutoDetectGithubClick(object sender, RoutedEventArgs e)
+    {
+        var detected = CredentialManager.GetGitHubUsername();
+        if (!string.IsNullOrWhiteSpace(detected))
+        {
+            TxtGithubHandle.Text = "@" + detected;
+            _ = VerifyGithubHandleAsync(detected);
+        }
+        else
+        {
+            MessageBox.Show(
+                "No saved GitHub credential found in Windows.\n\n" +
+                "If you just signed into GitHub in your browser, please enter your username (e.g. Prince649294u83) in the text box and click 'Verify Handle'.",
+                "GitHub Auto-Detect",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
     }
 
     private async void OnVerifyGithubClick(object sender, RoutedEventArgs e)
@@ -169,15 +263,22 @@ public partial class OnboardingWindow : Window
                 var json = await res.Content.ReadAsStringAsync();
                 using var doc = JsonDocument.Parse(json);
                 var login = doc.RootElement.GetProperty("login").GetString() ?? handle;
+                string? realName = null;
+                if (doc.RootElement.TryGetProperty("name", out var nameProp) && nameProp.ValueKind == JsonValueKind.String)
+                    realName = nameProp.GetString();
 
+                _githubConnected = true;
+                _settings.GitHubHandle = login;
                 TxtGithubHandle.Text = "@" + login;
-                TxtGithubStatus.Text = "✔ Verified: @" + login;
+                TxtGithubStatus.Text = string.IsNullOrWhiteSpace(realName)
+                    ? "✔ Verified: @" + login
+                    : $"✔ Verified: @{login} ({realName})";
                 TxtGithubStatus.Foreground = (Brush)FindResource("Ok");
                 BadgeGithub.BorderBrush = (Brush)FindResource("Ok");
                 BadgeGithub.Background = new SolidColorBrush(Color.FromArgb(50, 63, 182, 139));
 
-                if (string.IsNullOrWhiteSpace(TxtDisplayName.Text))
-                    TxtDisplayName.Text = "@" + login;
+                if (string.IsNullOrWhiteSpace(TxtDisplayName.Text) || TxtDisplayName.Text.StartsWith('@'))
+                    TxtDisplayName.Text = login;
             }
             else
             {
@@ -188,12 +289,20 @@ public partial class OnboardingWindow : Window
         }
         catch
         {
-            // Offline fallback: accept handle without blocking
+            // Offline fallback: accept handle without blocking campus event
+            _githubConnected = true;
+            _settings.GitHubHandle = handle;
             TxtGithubStatus.Text = "✔ Registered: @" + handle;
             TxtGithubStatus.Foreground = (Brush)FindResource("Ok");
+            BadgeGithub.BorderBrush = (Brush)FindResource("Ok");
+            BadgeGithub.Background = new SolidColorBrush(Color.FromArgb(50, 63, 182, 139));
+
+            if (string.IsNullOrWhiteSpace(TxtDisplayName.Text))
+                TxtDisplayName.Text = handle;
         }
     }
 
+    // ---- Server Connection & Launch -----------------------------------------------------------------
     private async void OnTestServerClick(object sender, RoutedEventArgs e)
     {
         var raw = TxtServerUrl.Text.Trim();
@@ -254,7 +363,7 @@ public partial class OnboardingWindow : Window
 
         _settings.DisplayName = name;
         _settings.ServerUrl = url;
-        _settings.GitHubHandle = TxtGithubHandle.Text.Trim();
+        _settings.GitHubHandle = TxtGithubHandle.Text.Trim().TrimStart('@');
         _settings.GoogleAccount = TxtGoogleEmail.Text.Trim();
         _settings.Onboarded = true;
 
