@@ -1,0 +1,11 @@
+id: 2
+name: "Stored Cross-Site Scripting (XSS)"
+fires_at: "11:30"
+window_minutes: 45
+touches:
+  - routes/posts.js
+  - routes/search.js
+fix_requires: "HTML-encode comments and the search term when rendering"
+prompt_threshold: 8          # OpenCode prompts beyond this cost 0.2 points each (calibrate in the pilot)
+checks: [regression, replay, variant]   # implemented in engine/breach_engine/checks.py
+status: ready

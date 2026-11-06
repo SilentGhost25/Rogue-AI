@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Pin and verify these versions exist on nuget.org before the first restore (AGENTS.md rule). -->
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="9.0.0" />
+    <PackageReference Include="AvalonEdit" Version="6.3.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Update="kiosk.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- xterm.js files are placed here by scripts/vendor-assets -->
+    <Content Include="Assets\terminal\**" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The clean website ships inside the kiosk so a fresh workspace can be created offline. -->
+    <Content Include="..\..\site\**" Exclude="..\..\site\node_modules\**;..\..\site\data.db*;..\..\site\test\**"
+             Link="site-template\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

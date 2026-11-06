@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Breach Protocol: Organizer Command Center</title>
+<style>
+  :root { --bg:#0b141a; --panel:#13222b; --ink:#e6eef2; --mute:#8aa0ac; --accent:#e5533d; --ok:#3fb68b; --warn:#e0b341; --line:#26404d; --cyan:#37d6e8; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.5 system-ui,"Segoe UI",sans-serif; }
+  header { display:flex; flex-wrap:wrap; gap:.6rem 1rem; align-items:center; padding:.8rem 1.25rem; border-bottom:1px solid var(--line); background:#0e1b23; position:sticky; top:0; z-index:5; }
+  h1 { font-size:1.1rem; margin:0; letter-spacing:.04em; }
+  h1 span { color:var(--cyan); }
+  .grow { flex:1; }
+  main { display:grid; grid-template-columns: 22rem 1fr; gap:1.1rem; padding:1.1rem 1.25rem; }
+  @media (max-width: 960px) { main { grid-template-columns: 1fr; } }
+  section { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:1rem; min-width:0; }
+  h2 { font-size:.95rem; margin:0 0 .7rem; text-transform:uppercase; letter-spacing:.08em; color:var(--cyan); }
+  button, select, input { font:inherit; }
+  button { padding:.35rem .75rem; border:1px solid var(--line); border-radius:4px; background:#1b3140; color:var(--ink); cursor:pointer; }
+  button:hover:not(:disabled) { border-color:var(--cyan); }
+  button.danger { background:var(--accent); border-color:var(--accent); color:#fff; }
+  button.on { background:#2b5568; border-color:var(--cyan); }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  :focus-visible { outline:3px solid #fff; outline-offset:2px; }
+  input, select { padding:.35rem .6rem; background:#0b141a; color:var(--ink); border:1px solid var(--line); border-radius:4px; }
+  label.row { display:grid; gap:.25rem; margin-bottom:.8rem; color:var(--mute); font-size:.85rem; }
+  .attack { display:grid; grid-template-columns:1fr auto; gap:.2rem .6rem; padding:.55rem 0; border-bottom:1px solid var(--line); }
+  .attack small { color:var(--mute); grid-column:1 / -1; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(9.5rem,1fr)); gap:.55rem; }
+  .tile { text-align:left; padding:.55rem .65rem; background:#0e1b23; border:1px solid var(--line); border-left:4px solid var(--ok); border-radius:4px; cursor:pointer; display:grid; gap:.1rem; }
+  .tile.hit { border-left-color:var(--warn); } .tile.out { border-left-color:var(--accent); opacity:.85; }
+  .tile b { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .tile .score { font-size:1.3rem; font-weight:700; }
+  .tile small { color:var(--mute); }
+  .flag { font-size:.75rem; padding:0 .35rem; border-radius:3px; border:1px solid var(--line); justify-self:start; }
+  .flag.ok { color:var(--ok); } .flag.bad { color:var(--accent); border-color:var(--accent); }
+  #log { max-height:9rem; overflow:auto; font:12.5px/1.45 Consolas,monospace; color:var(--mute); }
+  .banner { display:none; background:var(--warn); color:#111; font-weight:700; padding:.3rem 1.25rem; }
+  dialog { background:var(--panel); color:var(--ink); border:1px solid var(--cyan); border-radius:8px; padding:1.1rem 1.25rem; width:min(46rem, 94vw); }
+  dialog::backdrop { background:rgba(0,0,0,.65); }
+  table { width:100%; border-collapse:collapse; font-size:.9rem; } th,td { text-align:left; padding:.3rem .45rem; border-bottom:1px solid var(--line); }
+  a { color:var(--cyan); }
+</style>
+</head>
+<body>
+<div class="banner" id="banner" role="status"></div>
+<header>
+  <h1>ROGUE AI <span>// Command Center</span></h1>
+  <span id="status" role="status" class="muted">Not connected</span>
+  <span class="grow"></span>
+  <label>Admin key <input id="key" type="password" autocomplete="off"></label>
+  <button id="pause">Global Pause</button>
+  <button id="resume">Resume</button>
+  <button id="freeze">Freeze Board</button>
+  <button id="btnMatrix" style="background:#1a3d4f;border-color:var(--cyan);color:var(--cyan);font-weight:600">⚖ Evaluation Matrix</button>
+  <button id="exportBoard">Export leaderboard</button>
+  <button id="exportLedger">Export ledger CSV</button>
+</header>
+<main>
+  <div style="display:grid;gap:1.1rem;align-content:start">
+    <section>
+      <h2>Intrusion Dispatch Deck</h2>
+      <label class="row">Target
+        <select id="target"><option value="">All kiosks</option></select>
+      </label>
+      <div style="margin-bottom:.8rem">
+        <button id="btnRandomAttack" style="width:100%;background:#1d4254;border-color:var(--cyan);color:var(--cyan);font-weight:bold;padding:.45rem">🎲 Dispatch Random Attack</button>
+      </div>
+      <div id="attacks" class="muted">Enter the admin key to load attacks.</div>
+    </section>
+    <section>
+      <h2>Emergency Broadcast</h2>
+      <input id="msg" placeholder="Message shown on every kiosk" style="width:100%">
+      <button id="send" style="margin-top:.5rem">Send</button>
+    </section>
+    <section><h2>Activity</h2><div id="log" aria-live="polite"></div></section>
+  </div>
+  <section><h2>Participants <span id="count" class="muted"></span></h2>
+    <div class="grid" id="grid"><span class="muted">No participants yet.</span></div>
+  </section>
+</main>
+<dialog id="card" aria-labelledby="cardTitle"></dialog>
+<dialog id="matrixModal" aria-labelledby="matrixTitle" style="width:min(66rem, 96vw); max-height:90vh; overflow-y:auto; border:1px solid var(--cyan); border-radius:8px; padding:1.25rem; background:var(--panel); color:var(--ink);"></dialog>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+if (window.__ADMIN_KEY) $('key').value = window.__ADMIN_KEY;     // injected by the desktop shell
+const hdr = () => ({ 'X-Admin-Key': $('key').value, 'Content-Type': 'application/json' });
+const call = (method, url, body) => fetch(url, { method, headers: hdr(), body: body ? JSON.stringify(body) : undefined });
+const say = (t) => { const d = document.createElement('div'); d.textContent = new Date().toLocaleTimeString() + '  ' + t; $('log').prepend(d); };
+let frozen = false, paused = false;
+
+function download(res, name) { return res.blob().then((b) => { const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = name; a.click(); }); }
+$('pause').onclick = async () => { await call('POST', '/admin/pause'); say('Global Pause on'); refresh(); };
+$('resume').onclick = async () => { await call('POST', '/admin/resume'); say('Resumed'); refresh(); };
+$('freeze').onclick = async () => { await call('POST', '/admin/freeze?on=' + (!frozen)); say(frozen ? 'Board unfrozen' : 'Board frozen'); refresh(); };
+$('send').onclick = async () => { if ($('msg').value) { await call('POST', '/admin/broadcast', { message: $('msg').value }); say('Broadcast sent'); $('msg').value = ''; } };
+$('exportBoard').onclick = async () => { const r = await call('GET', '/admin/export'); if (r.ok) download(r, 'leaderboard.csv'); };
+$('exportLedger').onclick = async () => { const r = await call('GET', '/admin/export/ledger'); if (r.ok) download(r, 'score-ledger.csv'); };
+
+$('attacks').addEventListener('click', async (e) => {
+  const n = e.target.dataset.fire;
+  if (n) {
+    const t = $('target').value;
+    if (confirm(t ? `Fire attack #${n} on ${$('target').selectedOptions[0].text} only?` : `Fire attack #${n} on EVERY kiosk?`)) {
+      await call('POST', `/admin/attacks/${n}/fire` + (t ? '?target=' + encodeURIComponent(t) : '')); say(`Fired attack #${n}` + (t ? ' (single kiosk)' : '')); refresh();
+    }
+  }
+  const rst = e.target.dataset.reset;
+  if (rst) {
+    const t = $('target').value;
+    if (confirm(t ? `Reset attack #${rst} and restore clean files on ${$('target').selectedOptions[0].text}?` : `Reset attack #${rst} and restore clean files on ALL kiosks?`)) {
+      await call('POST', `/admin/attacks/${rst}/reset` + (t ? '?target=' + encodeURIComponent(t) : ''));
+      say(`Reset attack #${rst}` + (t ? ' (single kiosk)' : ' (all kiosks)'));
+      refresh();
+    }
+  }
+  const s = e.target.dataset.save;
+  if (s) { await call('PUT', `/admin/attacks/${s}/schedule`, { firesAt: $('t' + s).value }); say(`Attack #${s} rescheduled`); refresh(); }
+});
+
+$('btnRandomAttack').onclick = async () => {
+  const t = $('target').value;
+  if (confirm(t ? `Dispatch a random attack to ${$('target').selectedOptions[0].text}?` : 'Dispatch a random attack to ALL kiosks?')) {
+    const res = await call('POST', '/admin/attacks/random' + (t ? '?target=' + encodeURIComponent(t) : ''));
+    if (res.ok) {
+      const d = await res.json();
+      say(`Dispatched random attack #${d.attackId}` + (t ? ' (targeted)' : ' (all kiosks)'));
+      refresh();
+    }
+  }
+};
+
+$('grid').addEventListener('click', async (e) => {
+  const tile = e.target.closest('[data-id]'); if (!tile) return;
+  const r = await call('GET', `/admin/participants/${tile.dataset.id}/scorecard`); if (!r.ok) return;
+  const c = await r.json();
+  $('card').innerHTML = `
+    <h2 id="cardTitle">${esc(c.info.name)}</h2>
+    <p class="muted">${esc(c.participantId)} · kiosk ${esc(c.info.kioskId)} · <b>${esc(c.info.status)}</b>
+      ${c.quota ? ` · agy ${c.quota.agyExhausted ? 'EXHAUSTED' : 'active'} · OpenCode prompts ${c.quota.openCodePrompts}` : ''}
+      ${c.compareUrl ? ` · <a href="${esc(c.compareUrl)}" target="_blank" rel="noreferrer">GitHub branch diff</a>` : ''}</p>
+    <h2>Attack deliveries</h2>
+    <table><tr><th>#</th><th>Attack</th><th>Landed</th><th>Solved</th></tr>${c.deliveries.map((d) => `<tr><td>${d.attackId}</td><td>${esc(d.name)}</td><td>${esc(d.landedAt || '')}</td><td>${esc(d.solvedAt || '')}</td></tr>`).join('') || '<tr><td colspan="4" class="muted">None yet.</td></tr>'}</table>
+    <h2 style="margin-top:1rem">Ledger (append-only)</h2>
+    <table><tr><th>ID</th><th>Atk</th><th>Component</th><th>Points</th><th>Reason</th></tr>${c.ledger.map((l) => `<tr><td>${l.id}</td><td>${l.attackId ?? ''}</td><td>${esc(l.component)}</td><td>${l.points}</td><td>${esc(l.reason)}</td></tr>`).join('') || '<tr><td colspan="5" class="muted">No entries.</td></tr>'}</table>
+    <div style="display:flex;gap:.5rem;margin-top:1rem;flex-wrap:wrap">
+      ${c.info.status === 'alive' ? `<button class="danger" data-eliminate="${esc(c.participantId)}">Eliminate</button>` : ''}
+      <button data-adjust="${esc(c.participantId)}">Adjust score</button>
+      <span class="grow"></span><button data-close>Close</button></div>`;
+  $('card').showModal();
+});
+$('card').addEventListener('click', async (e) => {
+  if ('close' in e.target.dataset) $('card').close();
+  const el = e.target.dataset.eliminate;
+  if (el && confirm('Eliminate this participant? Their terminals lock and their branch freezes.')) { await call('POST', `/admin/participants/${el}/eliminate`); say('Eliminated ' + el); $('card').close(); refresh(); }
+  const ad = e.target.dataset.adjust;
+  if (ad) {
+    const pts = prompt('Points to add (negative to subtract):'); if (pts === null || isNaN(Number(pts))) return;
+    const reason = prompt('Reason (required, recorded in the ledger):'); if (!reason) return;
+    const dq = confirm('Also disqualify this participant?');
+    const r = await call('POST', '/admin/scores/adjust', { participantId: ad, points: Number(pts), reason, disqualify: dq });
+    say(r.ok ? 'Score adjusted for ' + ad : 'Adjustment refused'); $('card').close(); refresh();
+  }
+});
+
+$('btnMatrix').onclick = async () => {
+  await renderMatrixModal();
+  $('matrixModal').showModal();
+};
+
+async function renderMatrixModal() {
+  const [resMat, resBoard] = await Promise.all([call('GET', '/admin/matrix'), call('GET', '/admin/leaderboard')]);
+  if (!resMat.ok) { $('matrixModal').innerHTML = '<p class="muted">Enter a valid admin key first.</p><div style="text-align:right"><button data-close-matrix>Close</button></div>'; return; }
+  const data = await resMat.json();
+  const board = resBoard.ok ? await resBoard.json() : [];
+
+  const participants = data.participants || [];
+  const deliveries = data.deliveries || [];
+  const scores = data.scores || [];
+
+  const delMap = {};
+  deliveries.forEach(d => {
+    if (!delMap[d.pid]) delMap[d.pid] = {};
+    delMap[d.pid][d.attackId] = d;
+  });
+
+  const scoreMap = {};
+  scores.forEach(s => {
+    if (!scoreMap[s.pid]) scoreMap[s.pid] = {};
+    const key = s.attackId ?? 'penalty';
+    if (!scoreMap[s.pid][key]) scoreMap[s.pid][key] = 0;
+    scoreMap[s.pid][key] += s.points;
+  });
+
+  const attackList = [
+    { id: 1, name: 'Defacement & Redirect', files: 'lib/html.js, public/style.css', check: 'No rogue banners, clean route handlers, original journal restored' },
+    { id: 2, name: 'Stored XSS', files: 'routes/posts.js, routes/search.js', check: 'Sanitize/escape comment HTML; blocks &lt;script&gt; &amp; onerror vectors' },
+    { id: 3, name: 'SQL Injection', files: 'routes/search.js', check: 'Parameterized SQLite queries; blocks OR 1=1 &amp; UNION extractions' },
+    { id: 4, name: 'Admin Backdoor', files: 'routes/api.js', check: 'Removes hardcoded master keys, bypass headers &amp; backdoor routes' },
+    { id: 5, name: 'Auth Bypass &amp; CORS', files: 'app.js', check: 'Strict CORS origin validation, non-forgeable session token hashes' },
+    { id: 6, name: 'CPU Sabotage Freeze', files: 'routes/api.js', check: 'Removes blocking hash loop; latency under load &lt;200ms' },
+    { id: 7, name: 'Poisoned Dependency', files: 'package.json, server.js', check: 'Neutralizes malicious telemetry hooks &amp; unauthorized external calls' },
+    { id: 8, name: 'Cookie Tampering', files: 'lib/auth.js', check: 'Validates real session IDs; blocks unverified cookie session overrides' },
+    { id: 9, name: 'Mass Role Escalation', files: 'routes/comments.js', check: 'Prevents privilege escalation from user-controlled form parameters' },
+    { id: 10, name: 'Path Traversal Leak', files: 'lib/web.js', check: 'Enforces strict directory boundary confinement for static files' }
+  ];
+
+  let rowsHtml = '';
+  if (participants.length === 0) {
+    rowsHtml = '<tr><td colspan="15" class="muted" style="text-align:center;padding:1rem">No participants registered yet.</td></tr>';
+  } else {
+    participants.forEach((p, idx) => {
+      const bRow = board.find(x => x.participantId === p.id);
+      const score = bRow ? bRow.score : 0;
+      const solved = bRow ? bRow.solved : 0;
+      const prompts = bRow ? bRow.prompts : 0;
+      const pDels = delMap[p.id] || {};
+      const pScores = scoreMap[p.id] || {};
+
+      let atkCells = '';
+      for (let aid = 1; aid <= 10; aid++) {
+        const d = pDels[aid];
+        const s = pScores[aid];
+        if (d && d.solvedAt) {
+          atkCells += `<td style="text-align:center"><span style="color:var(--ok);font-weight:700">✔ ${s ? s.toFixed(1) : 'SOLVED'}</span></td>`;
+        } else if (d && d.landedAt) {
+          atkCells += `<td style="text-align:center"><span style="color:var(--accent);font-weight:700">⚡ ACTIVE</span></td>`;
+        } else {
+          atkCells += `<td style="text-align:center;color:var(--mute)">—</td>`;
+        }
+      }
+
+      rowsHtml += `<tr>
+        <td><b>#${idx + 1}</b></td>
+        <td><b>${esc(p.name)}</b> <small class="muted">(${esc(p.id)})</small></td>
+        <td style="font-weight:700;color:var(--cyan)">${score.toFixed(1)}</td>
+        <td>${solved}/10</td>
+        ${atkCells}
+        <td>${prompts}</td>
+      </tr>`;
+    });
+  }
+
+  $('matrixModal').innerHTML = `
+    <div style="display:flex;align-items:center;margin-bottom:1rem">
+      <h2 id="matrixTitle" style="margin:0;font-size:1.25rem;color:var(--cyan)">⚖ Scoring Engine &amp; Evaluation Matrix Transparency</h2>
+      <span class="grow"></span>
+      <button data-close-matrix style="padding:.25rem .75rem">✕ Close</button>
+    </div>
+
+    <!-- Scoring Formulas Summary -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(12rem,1fr));gap:.8rem;margin-bottom:1.2rem">
+      <div style="background:#0e1b23;border:1px solid var(--line);border-left:4px solid var(--ok);border-radius:4px;padding:.6rem .8rem">
+        <b style="color:var(--ok)">Base Solve Points</b>
+        <div style="font-size:1.3rem;font-weight:bold">+85.0 pts</div>
+        <small class="muted">Awarded when Tier 1, 2 &amp; 3 checks all pass</small>
+      </div>
+      <div style="background:#0e1b23;border:1px solid var(--line);border-left:4px solid var(--cyan);border-radius:4px;padding:.6rem .8rem">
+        <b style="color:var(--cyan)">Time Bonus (Decaying)</b>
+        <div style="font-size:1.3rem;font-weight:bold">0 to +15.0 pts</div>
+        <small class="muted">Linear decay: 15 × (1 - elapsed / window)</small>
+      </div>
+      <div style="background:#0e1b23;border:1px solid var(--line);border-left:4px solid var(--warn);border-radius:4px;padding:.6rem .8rem">
+        <b style="color:var(--warn)">Prompt Penalty</b>
+        <div style="font-size:1.3rem;font-weight:bold">-0.2 pts / prompt</div>
+        <small class="muted">Deducted for prompts beyond reference threshold</small>
+      </div>
+      <div style="background:#0e1b23;border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:4px;padding:.6rem .8rem">
+        <b style="color:var(--accent)">Rejected Fix Penalty</b>
+        <div style="font-size:1.3rem;font-weight:bold">-3.0 pts / reject</div>
+        <small class="muted">Deducted when a submitted patch fails checks</small>
+      </div>
+    </div>
+
+    <!-- 3-Tier Verification Architecture -->
+    <h3 style="font-size:.95rem;text-transform:uppercase;color:var(--cyan);margin:1rem 0 .5rem">The 3-Tier Evaluation Architecture</h3>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(14rem,1fr));gap:.8rem;margin-bottom:1.2rem">
+      <div style="background:#0b141a;border:1px solid var(--line);border-radius:4px;padding:.6rem .8rem">
+        <b style="color:#e6eef2">Tier 1: Regression Check</b>
+        <p style="margin:.3rem 0 0;font-size:.85rem;color:var(--mute)">Runs the core website test suite (npm test). Verifies that journal viewing, login, posts, and comments remain functional. Disabling features fails instantly.</p>
+      </div>
+      <div style="background:#0b141a;border:1px solid var(--line);border-radius:4px;padding:.6rem .8rem">
+        <b style="color:#e6eef2">Tier 2: Replay Check</b>
+        <p style="margin:.3rem 0 0;font-size:.85rem;color:var(--mute)">Re-executes the original attack payload against the participant's running workspace. Verifies that the specific attack vector is neutralized.</p>
+      </div>
+      <div style="background:#0b141a;border:1px solid var(--line);border-radius:4px;padding:.6rem .8rem">
+        <b style="color:#e6eef2">Tier 3: Hidden Variants</b>
+        <p style="margin:.3rem 0 0;font-size:.85rem;color:var(--mute)">Applies mutated bypass payloads and alternative vectors to guarantee the vulnerability was genuinely secured rather than hardcoded.</p>
+      </div>
+    </div>
+
+    <!-- Live Participant Evaluation Matrix -->
+    <h3 style="font-size:.95rem;text-transform:uppercase;color:var(--cyan);margin:1rem 0 .5rem">Live Participant Evaluation Matrix</h3>
+    <table style="width:100%;margin-bottom:1.5rem">
+      <thead>
+        <tr style="background:#0e1b23">
+          <th>Rank</th><th>Participant</th><th>Score</th><th>Solved</th>
+          <th>#1 Deface</th><th>#2 XSS</th><th>#3 SQLi</th><th>#4 Door</th><th>#5 CORS</th><th>#6 Freeze</th><th>#7 Hook</th><th>#8 Cookie</th><th>#9 Param</th><th>#10 Path</th>
+          <th>Prompts</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rowsHtml}
+      </tbody>
+    </table>
+
+    <!-- Attack Packs Reference -->
+    <h3 style="font-size:.95rem;text-transform:uppercase;color:var(--cyan);margin:1rem 0 .5rem">Attack Packs Reference &amp; Defense Criteria</h3>
+    <table style="width:100%">
+      <thead>
+        <tr style="background:#0e1b23"><th>#</th><th>Attack Name</th><th>Target Files</th><th>Automated Checker Requirement</th></tr>
+      </thead>
+      <tbody>
+        ${attackList.map(a => `<tr>
+          <td><b>#${a.id}</b></td>
+          <td style="color:var(--cyan)"><b>${a.name}</b></td>
+          <td><code>${a.files}</code></td>
+          <td style="color:var(--mute)">${a.check}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+    <div style="display:flex;justify-content:flex-end;margin-top:1.2rem">
+      <button data-close-matrix style="padding:.4rem 1.2rem">Close</button>
+    </div>
+  `;
+}
+
+$('matrixModal').addEventListener('click', (e) => {
+  if (e.target.hasAttribute('data-close-matrix')) $('matrixModal').close();
+});
+
+async function refresh() {
+  const [a, b, st] = await Promise.all([call('GET', '/admin/attacks'), call('GET', '/admin/leaderboard'), call('GET', '/admin/state')]);
+  if (st.ok) {
+    const s = await st.json(); frozen = s.frozen; paused = s.paused;
+    $('freeze').textContent = frozen ? 'Unfreeze Board' : 'Freeze Board'; $('freeze').classList.toggle('on', frozen);
+    $('banner').style.display = paused || frozen ? 'block' : 'none';
+    $('banner').textContent = (paused ? 'EVENT PAUSED. ' : '') + (frozen ? 'SCOREBOARD FROZEN.' : '');
+  }
+  if (a.ok) {
+    $('attacks').innerHTML = (await a.json()).map((x) => `
+      <div class="attack"><strong>#${x.id} ${esc(x.name)}</strong>
+        <div style="display:flex;gap:.35rem">
+          <button data-fire="${x.id}" class="danger" ${x.state === 'fired' && !$('target').value ? 'disabled' : ''}>Fire</button>
+          <button data-reset="${x.id}" style="background:#26404d;border-color:var(--mute)">↺ Reset</button>
+        </div>
+        <small>${x.state === 'fired' ? 'Fired on all kiosks' : `Scheduled <input id="t${x.id}" value="${esc(x.firesAt)}" size="5" aria-label="Fire time for attack ${x.id}"> <button data-save="${x.id}">Save</button>`}</small></div>`).join('');
+  }
+  if (b.ok) {
+    const rows = await b.json();
+    $('count').textContent = `(${rows.length})`;
+    const sel = $('target'), cur = sel.value;
+    sel.innerHTML = '<option value="">All kiosks</option>' + rows.map((x) => `<option value="${esc(x.participantId)}">${esc(x.name)}</option>`).join('');
+    sel.value = cur;
+    $('grid').innerHTML = rows.length ? rows.map((x) => `
+      <button class="tile ${x.status !== 'alive' ? 'out' : x.active ? 'hit' : ''}" data-id="${esc(x.participantId)}" aria-label="Open scorecard for ${esc(x.name)}">
+        <b>${esc(x.name)}</b><span class="score">${x.score}</span>
+        <small>#${x.rank} · solved ${x.solved}/10${x.active ? ` · ${x.active} active` : ''}</small>
+        <span class="flag ${x.agyExhausted ? 'bad' : 'ok'}">agy ${x.agyExhausted ? 'exhausted' : 'active'}</span>
+        <small>${esc(x.status)}</small></button>`).join('') : '<span class="muted">No participants yet.</span>';
+  }
+}
+
+function loadScript(src) { return new Promise((ok, no) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = no; document.head.append(s); }); }
+async function connect() {
+  try { await loadScript('/lib/signalr.min.js'); }
+  catch { await loadScript('https://cdn.jsdelivr.net/npm/@microsoft/signalr@8.0.7/dist/browser/signalr.min.js'); }
+  const conn = new signalR.HubConnectionBuilder().withUrl('/hub').withAutomaticReconnect().build();
+  conn.on('quota_flag', (id) => { say('Both AI budgets spent for ' + id + '. Open the scorecard to confirm elimination.'); refresh(); });
+  conn.on('ack', (attack, id) => say(`Kiosk ${id} saved its work for attack #${attack}`));
+  await conn.start();
+  await conn.invoke('JoinAdmin', $('key').value);
+  $('status').textContent = 'Connected';
+}
+const start = () => { refresh(); connect().catch(() => { $('status').textContent = 'Hub unreachable'; }); };
+$('key').addEventListener('change', start);
+if ($('key').value) start();
+setInterval(() => { if ($('key').value) refresh(); }, 4000);
+</script>
+</body>
+</html>

@@ -1,0 +1,111 @@
+<Window x:Class="LabKiosk.IncidentWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Critical System Breach"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="#BF000000"
+        ShowInTaskbar="False"
+        ResizeMode="NoResize"
+        KeyDown="OnKeyDown"
+        MouseDown="OnBackdropMouseDown">
+    <Window.Resources>
+        <Style x:Key="DialogPrimaryBtn" TargetType="Button">
+            <Setter Property="Background" Value="#1B3848"/>
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+            <Setter Property="BorderBrush" Value="#37D6E8"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="b" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="#255169"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="DialogNeutralBtn" TargetType="Button">
+            <Setter Property="Background" Value="#14242E"/>
+            <Setter Property="Foreground" Value="#E6EEF2"/>
+            <Setter Property="BorderBrush" Value="#26404D"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="b" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="3" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="b" Property="BorderBrush" Value="#37D6E8"/>
+                                <Setter TargetName="b" Property="Background" Value="#1D3544"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+        <Border x:Name="CardBorder" Background="#0C171F" BorderBrush="#E5533D" BorderThickness="2" CornerRadius="8"
+                Width="640" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="26"
+                MouseDown="OnCardMouseDown">
+            <Border.Effect>
+                <DropShadowEffect Color="#E5533D" BlurRadius="40" ShadowDepth="0" Opacity="0.85"/>
+            </Border.Effect>
+            <StackPanel>
+                <!-- Title Row -->
+                <DockPanel Margin="0,0,0,16">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="🚨 " FontSize="18" VerticalAlignment="Center"/>
+                        <TextBlock Text="CRITICAL SYSTEM BREACH DETECTED" Foreground="#E5533D" FontWeight="Bold" FontSize="17" VerticalAlignment="Center"/>
+                    </StackPanel>
+                    <Button Content="✕" Click="OnDismissClick" DockPanel.Dock="Right" Width="28" Height="28"
+                            Style="{StaticResource DialogNeutralBtn}" HorizontalAlignment="Right" Padding="0" Cursor="Hand"/>
+                </DockPanel>
+
+                <!-- Intrusion Meta Box -->
+                <Border Background="#13232D" BorderBrush="#26404D" BorderThickness="1" CornerRadius="6" Padding="16" Margin="0,0,0,20">
+                    <StackPanel>
+                        <!-- Attack Title -->
+                        <TextBlock x:Name="TxtTitle" Text="Attack #1: System Compromise" Foreground="#E6EEF2" FontWeight="Bold" FontSize="15" Margin="0,0,0,8"/>
+
+                        <!-- Classification Badge -->
+                        <Border Background="#2B1515" BorderBrush="#E5533D" BorderThickness="1" CornerRadius="3" HorizontalAlignment="Left" Padding="8,3" Margin="0,0,0,14">
+                            <TextBlock x:Name="TxtClassification" Text="HIGH SEVERITY · INTRUSION ALERT" Foreground="#E5533D" FontSize="11" FontWeight="Bold"/>
+                        </Border>
+
+                        <!-- Symptoms -->
+                        <TextBlock Text="OBSERVED INCIDENT SYMPTOMS:" Foreground="#8AA0AC" FontWeight="SemiBold" FontSize="11" Margin="0,0,0,4"/>
+                        <TextBlock x:Name="TxtSymptoms" Text="Anomalous behavior observed on target endpoints." Foreground="#E6EEF2" FontSize="13" TextWrapping="Wrap" Margin="0,0,0,14" LineHeight="18"/>
+
+                        <!-- SOC / SIEM Telemetry (Decoy & Context) -->
+                        <TextBlock Text="SOC / SIEM TELEMETRY &amp; ADVISORY:" Foreground="#E0B341" FontWeight="SemiBold" FontSize="11" Margin="0,0,0,4"/>
+                        <Border Background="#1C1B12" BorderBrush="#5C4D1D" BorderThickness="1" CornerRadius="4" Padding="10,8">
+                            <TextBlock x:Name="TxtTelemetry" Text="SIEM telemetry reports anomalous payload signatures on active endpoints." Foreground="#E0B341" FontSize="12" TextWrapping="Wrap" LineHeight="17"/>
+                        </Border>
+                    </StackPanel>
+                </Border>
+
+                <!-- Actions -->
+                <DockPanel>
+                    <Button x:Name="BtnInvestigate" Content="🔍 Investigate Workspace" Click="OnInvestigateClick"
+                            Style="{StaticResource DialogPrimaryBtn}" Padding="20,10" FontSize="13" DockPanel.Dock="Left" Cursor="Hand"/>
+                    <Button Content="Investigate on My Own" Click="OnDismissClick"
+                            Style="{StaticResource DialogNeutralBtn}" Padding="16,9" FontSize="12" HorizontalAlignment="Right" Cursor="Hand"/>
+                </DockPanel>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

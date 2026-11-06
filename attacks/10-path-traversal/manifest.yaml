@@ -1,0 +1,10 @@
+id: 10
+name: "Static File Path Traversal"
+fires_at: "18:00"
+window_minutes: 45
+touches:
+  - lib/web.js
+fix_requires: "Enforce strict boundary check on static file paths"
+prompt_threshold: 8          # OpenCode prompts beyond this cost 0.2 points each (calibrate in the pilot)
+checks: [regression, replay, variant]   # implemented in engine/breach_engine/checks.py
+status: ready

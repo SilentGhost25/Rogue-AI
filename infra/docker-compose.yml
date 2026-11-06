@@ -1,0 +1,31 @@
+# Organizer server services. Run from the repo root: docker compose -f infra/docker-compose.yml up -d
+services:
+  gitea:
+    image: gitea/gitea:1.22.3
+    restart: unless-stopped
+    environment:
+      - USER_UID=1000
+      - USER_GID=1000
+      - GITEA__server__ROOT_URL=http://${SERVER_LAN_IP:-127.0.0.1}:3001/
+      - GITEA__mirror__ENABLED=true
+      - GITEA__mirror__DEFAULT_INTERVAL=10m
+    ports:
+      - "3001:3000"
+      - "2222:22"
+    volumes:
+      - gitea-data:/data
+
+  engine:
+    build:
+      context: ..
+      dockerfile: engine/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./repos:/app/infra/repos
+
+  # Optional later: verdaccio (local npm cache) and ollama (fallback model).
+
+volumes:
+  gitea-data:

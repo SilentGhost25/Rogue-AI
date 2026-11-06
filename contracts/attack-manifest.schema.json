@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Attack manifest",
+  "type": "object",
+  "required": [
+    "id",
+    "name",
+    "fires_at",
+    "touches",
+    "fix_requires"
+  ],
+  "properties": {
+    "id": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 7
+    },
+    "name": {
+      "type": "string"
+    },
+    "fires_at": {
+      "type": "string",
+      "pattern": "^[0-2][0-9]:[0-5][0-9]$"
+    },
+    "touches": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "fix_requires": {
+      "type": "string"
+    },
+    "window_minutes": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "prompt_threshold": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "OpenCode prompts beyond this cost 0.2 points each"
+    },
+    "benchmark": {
+      "type": "object",
+      "properties": {
+        "endpoint": {
+          "type": "string"
+        },
+        "requests": {
+          "type": "integer"
+        },
+        "concurrency": {
+          "type": "integer"
+        },
+        "baseline_p95_ms": {
+          "type": "number"
+        },
+        "reference_p95_ms": {
+          "type": "number"
+        },
+        "pass_below_ms": {
+          "type": "number"
+        }
+      }
+    }
+  }
+}

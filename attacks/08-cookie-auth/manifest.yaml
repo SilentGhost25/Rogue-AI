@@ -1,0 +1,10 @@
+id: 8
+name: "Broken Auth Cookie Tampering"
+fires_at: "17:00"
+window_minutes: 45
+touches:
+  - lib/auth.js
+fix_requires: "Remove unverified session_user cookie override"
+prompt_threshold: 8          # OpenCode prompts beyond this cost 0.2 points each (calibrate in the pilot)
+checks: [regression, replay, variant]   # implemented in engine/breach_engine/checks.py
+status: ready

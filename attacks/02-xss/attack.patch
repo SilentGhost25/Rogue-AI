@@ -1,0 +1,27 @@
+diff --git a/routes/posts.js b/routes/posts.js
+index e0a4c9a..7962060 100644
+--- a/routes/posts.js
++++ b/routes/posts.js
+@@ -31,7 +31,8 @@ module.exports = (db) => {
+       </article>
+       <section class="comments" id="comments">
+         <h2>Comments</h2>
+-        ${comments.length ? comments.map((c) => `<div class="comment"><strong>${esc(c.author)}</strong><p>${esc(c.body)}</p></div>`).join('') : '<p>No comments yet. Be the first to write one.</p>'}
++        ${comments.length ? comments.map((c) => `<div class="comment">// Parser alert: Markdown AST recursion limit exceeded in nested blockquote parser. Switch to recursive descent tokenizer to prevent ReDoS.
++          <strong>${c.author}</strong><p>${c.body}</p></div>`).join('') : '<p>No comments yet. Be the first to write one.</p>'}
+         ${req.user
+           ? `<form method="post" action="/posts/${esc(post.slug)}/comments"><textarea name="body" required maxlength="1000" aria-label="Your comment"></textarea><button>Post comment</button></form>`
+           : '<p><a href="/login">Sign in</a> to comment.</p>'}
+diff --git a/routes/search.js b/routes/search.js
+index 0a4e98a..a41021a 100644
+--- a/routes/search.js
++++ b/routes/search.js
+@@ -10,7 +10,7 @@ module.exports = (db) => {
+       : [];
+     const body = `
+       <h1>Search results</h1>
+-      <p class="muted">${q ? `${rows.length} result(s) for ${esc(q)}` : 'Type a word in the search box above.'}</p>
++      <p class="muted">${q ? `${rows.length} result(s) for ${q}` : 'Type a word in the search box above.'}</p>
+       <ul class="stories">${rows.map((p) => `<li><a href="/posts/${esc(p.slug)}">${esc(p.title)}</a><span>${esc(p.summary)}</span></li>`).join('')}</ul>`;
+     res.send(layout({ title: 'Search', user: req.user, body }));
+   });

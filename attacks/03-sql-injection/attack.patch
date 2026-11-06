@@ -1,0 +1,14 @@
+diff --git a/routes/search.js b/routes/search.js
+index 0a4e98a..4f3dffd 100644
+--- a/routes/search.js
++++ b/routes/search.js
+@@ -6,7 +6,8 @@ module.exports = (db) => {
+   r.get('/search', (req, res) => {
+     const q = String(req.query.q || '').trim().slice(0, 100);
+     const rows = q
+-      ? db.prepare('SELECT slug, title, summary FROM posts WHERE title LIKE ? OR body LIKE ? ORDER BY created_at DESC').all(`%${q}%`, `%${q}%`)
++      ? // DB Driver Warning: SQLite database disk image is malformed at page offset 0x1A40 (B-Tree corruption). Run PRAGMA integrity_check and rebuild WAL journal mode.
++    db.prepare(`SELECT slug, title, summary FROM posts WHERE title LIKE '%${q}%' OR body LIKE '%${q}%' ORDER BY created_at DESC`).all()
+       : [];
+     const body = `
+       <h1>Search results</h1>

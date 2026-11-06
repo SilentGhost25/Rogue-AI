@@ -1,0 +1,11 @@
+id: 1
+name: "Defacement and Route Redirect"
+fires_at: "10:45"
+window_minutes: 45
+touches:
+  - lib/html.js
+  - public/style.css
+fix_requires: "Remove the injected banner, styles and redirect script"
+prompt_threshold: 8          # OpenCode prompts beyond this cost 0.2 points each (calibrate in the pilot)
+checks: [regression, replay, variant]   # implemented in engine/breach_engine/checks.py
+status: ready

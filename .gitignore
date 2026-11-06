@@ -1,0 +1,14 @@
+node_modules/
+__pycache__/
+*.pyc
+bin/
+obj/
+*.db
+*.db-wal
+*.db-shm
+data/
+infra/repos/
+infra/.env
+.vs/
+dist/
+workspace/

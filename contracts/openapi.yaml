@@ -1,0 +1,80 @@
+openapi: 3.0.3
+info:
+  title: Breach Protocol control plane
+  version: 0.1.0
+  description: Frozen contract between kiosk, server and engine. Change only when the plan changes.
+paths:
+  /api/state:
+    get: { summary: Event state (clock, pause flag, attacks), responses: { "200": { description: ok } } }
+  /api/kiosk/register:
+    post:
+      summary: Register a kiosk and receive a participant id
+      requestBody: { content: { application/json: { schema: { $ref: "#/components/schemas/RegisterRequest" } } } }
+      responses: { "200": { description: ok } }
+  /api/kiosk/{id}/snapshot:
+    post:
+      summary: Upload changed files (content-hashed, about every 15 seconds)
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      requestBody: { content: { application/json: { schema: { $ref: "#/components/schemas/Snapshot" } } } }
+      responses: { "200": { description: ok } }
+  /api/kiosk/{id}/status:
+    get: { summary: Re-sync info (status, active attacks, pause flag), responses: { "200": { description: ok } } }
+  /api/kiosk/{id}/files:
+    get: { summary: Server copy of the workspace as path and sha256, responses: { "200": { description: ok } } }
+  /api/kiosk/{id}/files/fetch:
+    post: { summary: Download named files (used after an attack lands), responses: { "200": { description: ok } } }
+  /api/kiosk/{id}/attack-payload/{n}:
+    get: { summary: Files an attack changed, taken from the participant's own server copy, responses: { "200": { description: ok } } }
+  /api/kiosk/{id}/submit:
+    post: { summary: Submit Fix (final snapshot is committed as a tagged submission), responses: { "202": { description: queued } } }
+  /api/kiosk/{id}/telemetry:
+    post:
+      summary: Prompt counts and quota signals
+      requestBody: { content: { application/json: { schema: { $ref: "#/components/schemas/Telemetry" } } } }
+      responses: { "202": { description: accepted } }
+  /api/leaderboard:
+    get: { summary: Public leaderboard for the projector (top 5 scores masked while frozen), responses: { "200": { description: ok } } }
+  /api/feed:
+    get: { summary: Incident feed for the projector ticker (after=lastId), responses: { "200": { description: ok } } }
+  /admin/freeze:
+    post: { summary: Freeze or unfreeze the public scoreboard (on=true|false), responses: { "200": { description: ok } } }
+  /admin/participants/{id}/scorecard:
+    get: { summary: Deliveries, ledger, quota and GitHub compare link, responses: { "200": { description: ok } } }
+  /admin/export/ledger:
+    get: { summary: Complete score ledger as CSV, responses: { "200": { description: ok } } }
+  /admin/leaderboard:
+    get: { summary: Ranked list (asOf and attack filters planned), responses: { "200": { description: ok } } }
+  /admin/attacks/{n}/fire:
+    post:
+      summary: Fire an attack now on every kiosk, or on one kiosk with ?target=<participantId>
+      parameters: [ { name: target, in: query, required: false, schema: { type: string } } ]
+      responses: { "202": { description: scheduled } }
+  /admin/pause:
+    post: { summary: Global Pause, responses: { "200": { description: ok } } }
+  /admin/resume:
+    post: { summary: Resume after Global Pause, responses: { "200": { description: ok } } }
+  /admin/broadcast:
+    post: { summary: Broadcast a message to all kiosks, responses: { "200": { description: ok } } }
+components:
+  schemas:
+    RegisterRequest:
+      type: object
+      required: [name, kioskId]
+      properties: { name: { type: string }, kioskId: { type: string } }
+    Snapshot:
+      type: object
+      required: [files]
+      properties:
+        deleted: { type: array, items: { type: string }, description: Paths removed locally since the last upload }
+        files:
+          type: array
+          items:
+            type: object
+            required: [path, sha256, contentBase64]
+            properties: { path: { type: string }, sha256: { type: string }, contentBase64: { type: string } }
+    Telemetry:
+      type: object
+      required: [type]
+      properties:
+        type: { type: string, enum: [PROMPT, AGY_EXHAUSTED, OC_CAP_REACHED, PROVIDER_THROTTLED, QUOTA_SIGNAL] }
+        payload: { type: object }

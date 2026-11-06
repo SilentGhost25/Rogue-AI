@@ -1,0 +1,30 @@
+<UserControl x:Class="LabKiosk.Controls.CodeViewer"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:avalon="http://icsharpcode.net/sharpdevelop/avalonedit">
+    <Grid Background="#0D1820">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="170"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <TreeView x:Name="Tree" Background="#0A1218" Foreground="#E6EEF2" BorderThickness="0,0,1,0" BorderBrush="#26404D"
+                  SelectedItemChanged="OnTreeSelect" AutomationProperties.Name="Project files"/>
+
+        <Grid Grid.Column="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="30"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            <DockPanel Background="#13222B">
+                <Button x:Name="SaveButton" DockPanel.Dock="Right" Content="Save (Ctrl+S)" Padding="10,2" Margin="4" IsEnabled="False" Click="OnSave"/>
+                <TextBlock x:Name="FileLabel" Foreground="#8AA0AC" VerticalAlignment="Center" Margin="10,0" Text="Select a file to read or edit it."
+                           TextTrimming="CharacterEllipsis"/>
+            </DockPanel>
+            <avalon:TextEditor x:Name="Editor" Grid.Row="1" FontFamily="Cascadia Mono, Consolas" FontSize="13"
+                               ShowLineNumbers="True" WordWrap="False" Background="#0D1820" Foreground="#E6EEF2"
+                               LineNumbersForeground="#6F8C99" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+                               IsReadOnly="True" AutomationProperties.Name="Code editor"/>
+        </Grid>
+    </Grid>
+</UserControl>

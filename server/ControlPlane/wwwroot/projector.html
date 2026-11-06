@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ROGUE AI: Breach Protocol</title>
+<style>
+  :root { --bg:#05090d; --ink:#eaf6fa; --mute:#6f8c99; --cyan:#37d6e8; --pink:#ff3d81; --lime:#b6ff3b; --line:#14313d; }
+  * { box-sizing: border-box; }
+  html, body { height:100%; }
+  body { margin:0; background:radial-gradient(1200px 600px at 80% -10%, #0e2a36 0%, var(--bg) 60%); color:var(--ink);
+         font:clamp(15px,1.9vw,26px)/1.3 "Segoe UI", system-ui, sans-serif; display:grid; grid-template-rows:auto auto 1fr auto; padding:1.5vw 3vw 0; overflow:hidden; }
+  header { display:flex; align-items:baseline; gap:1.2em; }
+  h1 { margin:0; font-size:2em; letter-spacing:.14em; text-transform:uppercase; text-shadow:0 0 18px rgba(55,214,232,.55); }
+  h1 b { color:var(--pink); text-shadow:0 0 18px rgba(255,61,129,.6); }
+  .sub { color:var(--mute); } .grow { flex:1; }
+  #sound { font:inherit; font-size:.6em; background:transparent; color:var(--cyan); border:1px solid var(--cyan); border-radius:4px; padding:.2em .7em; cursor:pointer; }
+  #banner { display:none; margin:.5em 0; padding:.35em .9em; border:2px solid var(--pink); color:var(--pink); text-align:center; letter-spacing:.2em; font-weight:800; animation:pulse 1.6s infinite; }
+  @keyframes pulse { 50% { box-shadow:0 0 22px rgba(255,61,129,.7); } }
+  #board { overflow:hidden; margin-top:.6em; }
+  .row { display:grid; grid-template-columns:2.2em 1fr 4.2em 3.6em 5em; gap:.5em; align-items:center; padding:.18em .6em; border-bottom:1px solid var(--line); transition:transform .5s ease, background .5s; }
+  .row.head { color:var(--mute); font-size:.7em; text-transform:uppercase; letter-spacing:.14em; }
+  .row .rank { color:var(--cyan); font-weight:800; } .row .score { text-align:right; font-weight:800; color:var(--lime); font-variant-numeric:tabular-nums; }
+  .row .hidden { color:var(--pink); letter-spacing:.2em; } .row.out { opacity:.45; text-decoration:line-through; }
+  .row.top1 { background:linear-gradient(90deg, rgba(55,214,232,.18), transparent); } .row .num { text-align:right; color:var(--mute); }
+  .row.flash { background:rgba(182,255,59,.25); }
+  footer { margin:0 -3vw; padding:.45em 3vw; background:#0b1a22; border-top:2px solid var(--cyan); white-space:nowrap; overflow:hidden; }
+  #ticker { display:inline-block; padding-left:100%; animation:slide 40s linear infinite; }
+  @keyframes slide { to { transform:translateX(-100%); } }
+  .t-attack { color:var(--pink); font-weight:700; } .t-solve { color:var(--lime); font-weight:700; } .t-out { color:var(--mute); }
+  .sep { color:var(--mute); margin:0 1.2em; }
+  @media (prefers-reduced-motion: reduce) { #ticker { animation:none; padding-left:0; } #banner { animation:none; } }
+</style>
+</head>
+<body>
+<header><h1>Rogue <b>AI</b></h1><span class="sub">The Breach Protocol</span><span class="grow"></span><button id="sound">Enable sound</button></header>
+<div id="banner" role="status">FINAL HOUR SCOREBOARD FROZEN</div>
+<main id="board" aria-label="Leaderboard"></main>
+<footer><span id="ticker">Waiting for the first incident...</span></footer>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+
+// ---- Web Audio synthesizer: fanfare on solves, siren on attacks (needs one click to unlock) ----
+let ctx = null;
+$('sound').onclick = () => { ctx = ctx || new (window.AudioContext || window.webkitAudioContext)(); ctx.resume(); $('sound').textContent = 'Sound on'; tone([523, 659], 0.12); };
+function tone(freqs, len, type = 'triangle', gain = 0.12) {
+  if (!ctx) return; let t = ctx.currentTime;
+  freqs.forEach((f) => { const o = ctx.createOscillator(), g = ctx.createGain(); o.type = type; o.frequency.value = f;
+    g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.0001, t + len); o.connect(g).connect(ctx.destination); o.start(t); o.stop(t + len); t += len * 0.9; });
+}
+const fanfare = () => tone([523, 659, 784, 1047, 784, 1047], 0.16);
+const siren = () => tone([880, 660, 880, 660, 880, 660], 0.22, 'sawtooth', 0.08);
+
+let lastId = null, prevRanks = new Map();
+async function board() {
+  try {
+    const d = await (await fetch('/api/leaderboard')).json();
+    $('banner').style.display = d.frozen || d.paused ? 'block' : 'none';
+    $('banner').textContent = d.paused ? 'EVENT PAUSED' : 'FINAL HOUR SCOREBOARD FROZEN';
+    const rows = d.rows.slice(0, 14);
+    $('board').innerHTML = '<div class="row head"><span>#</span><span>Defender</span><span class="num">Score</span><span class="num">Solved</span><span class="num">Active</span></div>' +
+      rows.map((r) => {
+        const moved = prevRanks.has(r.name) && prevRanks.get(r.name) !== r.rank;
+        return `<div class="row ${r.rank === 1 ? 'top1' : ''} ${r.status !== 'alive' ? 'out' : ''} ${moved ? 'flash' : ''}"><span class="rank">${r.rank}</span><span>${esc(r.name)}</span>` +
+          `<span class="score">${r.score == null ? '<span class="hidden">???</span>' : r.score}</span><span class="num">${esc(r.solvedOf)}</span><span class="num">${r.active || ''}</span></div>`;
+      }).join('');
+    prevRanks = new Map(d.rows.map((r) => [r.name, r.rank]));
+  } catch { $('banner').style.display = 'block'; $('banner').textContent = 'WAITING FOR THE SERVER'; }
+}
+async function feed() {
+  try {
+    const d = await (await fetch('/api/feed?after=' + (lastId ?? 0))).json();
+    const first = lastId === null; lastId = d.lastId;
+    if (d.events.length) {
+      const html = d.events.map((e) => `<span class="t-${e.kind}">${esc(e.text)}</span>`).join('<span class="sep">//</span>');
+      $('ticker').innerHTML = html;
+      if (!first) { if (d.events.some((e) => e.kind === 'solve')) fanfare(); if (d.events.some((e) => e.kind === 'attack')) siren(); }
+    }
+  } catch { /* try again on the next tick */ }
+}
+board(); feed(); setInterval(board, 4000); setInterval(feed, 2500);
+</script>
+</body>
+</html>

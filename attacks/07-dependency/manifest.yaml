@@ -1,0 +1,11 @@
+id: 7
+name: "Poisoned Dependency Hook"
+fires_at: "16:30"
+window_minutes: 45
+touches:
+  - package.json
+  - server.js
+fix_requires: "Remove the rogue package and its boot hook"
+prompt_threshold: 8          # OpenCode prompts beyond this cost 0.2 points each (calibrate in the pilot)
+checks: [regression, replay, variant]   # implemented in engine/breach_engine/checks.py
+status: ready
