@@ -13,13 +13,16 @@ public sealed class KioskSettings
     public string SiteTemplatePath { get; set; } = "";          // default: site-template next to the exe
     public string KioskId { get; set; } = Environment.MachineName;
     public string DisplayName { get; set; } = Environment.MachineName;
+    public bool Onboarded { get; set; } = false;
+    public string GitHubHandle { get; set; } = "";
+    public string GoogleAccount { get; set; } = "";
 
     public string NodePath { get; set; } = "node";
     public string AgyPath { get; set; } = @"%LOCALAPPDATA%\agy\bin\agy.exe";
     public string OpenCodePath { get; set; } = "opencode";
     public string OpenCodeModel { get; set; } = "";             // e.g. a free OpenCode Zen model id; empty keeps the default
     public int OpenCodePort { get; set; } = 4096;
-    public int OpenCodeCap { get; set; } = 200;                  // starting cap: 200 prompts
+    public int OpenCodeCap { get; set; } = 30;                   // starting cap: 30 prompts
 
     public static KioskSettings Load()
     {

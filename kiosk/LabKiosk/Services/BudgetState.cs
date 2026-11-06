@@ -5,7 +5,7 @@ public sealed class BudgetState
 {
     public bool AgyExhausted { get; private set; }
     public int OpenCodePrompts { get; private set; }
-    public int OpenCodeCap { get; set; } = 200;
+    public int OpenCodeCap { get; set; } = 30;
     public bool OpenCodeCapReached => OpenCodePrompts >= OpenCodeCap;
     public bool BothSpent => AgyExhausted && OpenCodeCapReached;
 

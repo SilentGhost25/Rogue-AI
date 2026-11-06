@@ -64,8 +64,9 @@
       <label class="row">Target
         <select id="target"><option value="">All kiosks</option></select>
       </label>
-      <div style="margin-bottom:.8rem">
-        <button id="btnRandomAttack" style="width:100%;background:#1d4254;border-color:var(--cyan);color:var(--cyan);font-weight:bold;padding:.45rem">🎲 Dispatch Random Attack</button>
+      <div style="margin-bottom:.8rem;display:flex;gap:.5rem">
+        <button id="btnRandomAttack" style="flex:1;background:#1d4254;border-color:var(--cyan);color:var(--cyan);font-weight:bold;padding:.45rem">🎲 Random Attack</button>
+        <button id="btnResetAll" style="background:#26404d;border-color:var(--mute);padding:.45rem;font-weight:600">↺ Reset All</button>
       </div>
       <div id="attacks" class="muted">Enter the admin key to load attacks.</div>
     </section>
@@ -132,6 +133,17 @@ $('btnRandomAttack').onclick = async () => {
   }
 };
 
+$('btnResetAll').onclick = async () => {
+  const t = $('target').value;
+  if (confirm(t ? `Reset ALL attacks and restore clean files on ${$('target').selectedOptions[0].text}?` : 'Reset ALL attacks and restore clean files on ALL kiosks?')) {
+    const res = await call('POST', '/admin/attacks/reset-all' + (t ? '?target=' + encodeURIComponent(t) : ''));
+    if (res.ok) {
+      say(t ? `Reset ALL attacks on ${$('target').selectedOptions[0].text}` : 'Reset ALL attacks on ALL kiosks');
+      refresh();
+    }
+  }
+};
+
 $('grid').addEventListener('click', async (e) => {
   const tile = e.target.closest('[data-id]'); if (!tile) return;
   const r = await call('GET', `/admin/participants/${tile.dataset.id}/scorecard`); if (!r.ok) return;
@@ -142,7 +154,7 @@ $('grid').addEventListener('click', async (e) => {
       ${c.quota ? ` · agy ${c.quota.agyExhausted ? 'EXHAUSTED' : 'active'} · OpenCode prompts ${c.quota.openCodePrompts}` : ''}
       ${c.compareUrl ? ` · <a href="${esc(c.compareUrl)}" target="_blank" rel="noreferrer">GitHub branch diff</a>` : ''}</p>
     <h2>Attack deliveries</h2>
-    <table><tr><th>#</th><th>Attack</th><th>Landed</th><th>Solved</th></tr>${c.deliveries.map((d) => `<tr><td>${d.attackId}</td><td>${esc(d.name)}</td><td>${esc(d.landedAt || '')}</td><td>${esc(d.solvedAt || '')}</td></tr>`).join('') || '<tr><td colspan="4" class="muted">None yet.</td></tr>'}</table>
+    <table><tr><th>#</th><th>Attack</th><th>Landed</th><th>Solved</th><th>Action</th></tr>${c.deliveries.map((d) => `<tr><td>${d.attackId}</td><td>${esc(d.name)}</td><td>${esc(d.landedAt || '')}</td><td>${esc(d.solvedAt || '')}</td><td><button data-reset-participant-atk="${d.attackId}" data-target-pid="${esc(c.participantId)}" style="padding:2px 8px;font-size:11px;background:#26404d">↺ Reset</button></td></tr>`).join('') || '<tr><td colspan="5" class="muted">None yet.</td></tr>'}</table>
     <h2 style="margin-top:1rem">Ledger (append-only)</h2>
     <table><tr><th>ID</th><th>Atk</th><th>Component</th><th>Points</th><th>Reason</th></tr>${c.ledger.map((l) => `<tr><td>${l.id}</td><td>${l.attackId ?? ''}</td><td>${esc(l.component)}</td><td>${l.points}</td><td>${esc(l.reason)}</td></tr>`).join('') || '<tr><td colspan="5" class="muted">No entries.</td></tr>'}</table>
     <div style="display:flex;gap:.5rem;margin-top:1rem;flex-wrap:wrap">
@@ -153,6 +165,17 @@ $('grid').addEventListener('click', async (e) => {
 });
 $('card').addEventListener('click', async (e) => {
   if ('close' in e.target.dataset) $('card').close();
+  const rpa = e.target.dataset.resetParticipantAtk;
+  if (rpa) {
+    const pid = e.target.dataset.targetPid;
+    if (confirm(`Reset attack #${rpa} for this participant and restore clean files?`)) {
+      await call('POST', `/admin/attacks/${rpa}/reset?target=` + encodeURIComponent(pid));
+      say(`Reset attack #${rpa} for ${pid}`);
+      $('card').close();
+      refresh();
+    }
+    return;
+  }
   const el = e.target.dataset.eliminate;
   if (el && confirm('Eliminate this participant? Their terminals lock and their branch freezes.')) { await call('POST', `/admin/participants/${el}/eliminate`); say('Eliminated ' + el); $('card').close(); refresh(); }
   const ad = e.target.dataset.adjust;

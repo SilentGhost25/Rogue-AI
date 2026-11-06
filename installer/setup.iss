@@ -103,6 +103,52 @@ begin
   Result := Exec('cmd.exe', '/c git --version', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0);
 end;
 
+function CheckOpencodeInstalled: boolean;
+var
+  ResultCode: Integer;
+begin
+  Result := Exec('cmd.exe', '/c opencode --version', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0);
+end;
+
+function CheckAgyInstalled: boolean;
+var
+  UserProfile, AgyExe: string;
+begin
+  UserProfile := GetEnv('USERPROFILE');
+  AgyExe := UserProfile + '\AppData\Local\agy\bin\agy.exe';
+  Result := FileExists(AgyExe);
+end;
+
+procedure ProvisionCliTools;
+var
+  AppDir, NodeDir, NpmCmd, UserProfile, LocalAppData, AgyDir, BundledAgy: string;
+  ResultCode: Integer;
+begin
+  AppDir := ExpandConstant('{app}');
+  NodeDir := AppDir + '\node';
+  NpmCmd := NodeDir + '\npm.cmd';
+  UserProfile := GetEnv('USERPROFILE');
+  LocalAppData := GetEnv('LOCALAPPDATA');
+
+  // 1. Provision OpenCode if not present
+  if not CheckOpencodeInstalled then
+  begin
+    if FileExists(NpmCmd) then
+    begin
+      Exec('cmd.exe', '/c ""' + NpmCmd + '"" install -g opencode', NodeDir, SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    end;
+  end;
+
+  // 2. Provision agy if bundled in {app}\tools\agy
+  AgyDir := LocalAppData + '\agy\bin';
+  BundledAgy := AppDir + '\tools\agy\agy.exe';
+  if FileExists(BundledAgy) and (not FileExists(AgyDir + '\agy.exe')) then
+  begin
+    ForceDirectories(AgyDir);
+    Exec('cmd.exe', '/c copy /y ""' + BundledAgy + '"" ""' + AgyDir + '\agy.exe""', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  end;
+end;
+
 function GetServerUrl: string;
 begin
   if (SelectedRole = 'organizer') or (SelectedRole = 'both') then
@@ -144,7 +190,7 @@ begin
                  '  "OpenCodePath": "opencode",' + #13#10 +
                  '  "OpenCodeModel": "",' + #13#10 +
                  '  "OpenCodePort": 4096,' + #13#10 +
-                 '  "OpenCodeCap": 200' + #13#10 +
+                 '  "OpenCodeCap": 30' + #13#10 +
                  '}';
 
   JsonFile := ExpandConstant('{app}\kiosk.json');
@@ -233,6 +279,7 @@ begin
   begin
     WriteKioskJson;
     ConfigureAgySettings;
+    ProvisionCliTools;
 
     // Verify prerequisites and advise the user if anything is missing
     if not CheckWebView2Installed then

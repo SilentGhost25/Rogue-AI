@@ -19,6 +19,17 @@ public partial class App : Application
         }
         else
         {
+            var s = KioskSettings.Load();
+            if (!s.Onboarded || string.IsNullOrWhiteSpace(s.DisplayName) || s.DisplayName == Environment.MachineName)
+            {
+                var onboard = new OnboardingWindow(s);
+                if (onboard.ShowDialog() != true)
+                {
+                    Shutdown();
+                    return;
+                }
+            }
+
             var main = new MainWindow();
             MainWindow = main;
             main.Show();

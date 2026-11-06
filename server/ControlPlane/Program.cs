@@ -195,6 +195,15 @@ app.MapPost("/admin/attacks/{n:int}/reset", async (int n, string? target, HttpRe
     return ok ? Results.Ok(new { reset = true, attackId = n, target }) : Results.BadRequest();
 });
 
+app.MapPost("/admin/attacks/reset-all", async (string? target, HttpRequest r, AttackDispatcher d, WorkspaceStore s) =>
+{
+    if (!IsAdmin(r)) return Results.Unauthorized();
+    if (target is not null && !KnownParticipant(target)) return Results.NotFound();
+    db.Log("ADMIN_ACTION", target, null, JsonSerializer.Serialize(new { action = "reset_all", target }));
+    var count = await d.ResetAllAsync(target, s);
+    return Results.Ok(new { resetAll = true, count, target });
+});
+
 app.MapPost("/admin/attacks/random", async (string? target, HttpRequest r, AttackDispatcher d) =>
 {
     if (!IsAdmin(r)) return Results.Unauthorized();

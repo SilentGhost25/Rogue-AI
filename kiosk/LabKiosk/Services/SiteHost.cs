@@ -72,7 +72,7 @@ public sealed class SiteHost : IDisposable
         if (Ignored(path)) return;
         // Many editors write several times per save: wait for things to settle, then reload.
         _debounce?.Dispose();
-        _debounce = new System.Threading.Timer(_ => _ = ReloadWhenHealthyAsync(), null, 700, Timeout.Infinite);
+        _debounce = new System.Threading.Timer(_ => _ = ReloadWhenHealthyAsync(), null, 150, Timeout.Infinite);
     }
 
     /// <summary>Ask for a reload after the site has restarted (used after an attack lands and after a verdict).</summary>
@@ -83,8 +83,8 @@ public sealed class SiteHost : IDisposable
         if (Interlocked.Exchange(ref _reloading, 1) == 1) return;
         try
         {
-            await Task.Delay(600); // give `node --watch` time to restart the process
-            for (var i = 0; i < 30; i++)
+            await Task.Delay(150); // give `node --watch` time to restart the process
+            for (var i = 0; i < 40; i++)
             {
                 try
                 {
@@ -93,7 +93,7 @@ public sealed class SiteHost : IDisposable
                 }
                 catch (HttpRequestException) { }
                 catch (TaskCanceledException) { }
-                await Task.Delay(300);
+                await Task.Delay(75);
             }
             Problem?.Invoke("The website is not running. Check your last change.");
         }

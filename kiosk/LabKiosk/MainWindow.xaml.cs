@@ -213,6 +213,8 @@ public partial class MainWindow : Window
             // 6. Real terminals on the same workspace.
             await StartTerminalsAsync();
 
+            BtnProfile.Content = $"👤 {_s.DisplayName}";
+
             if (_activeAttacks.Count > 0)
                 Status($"Active breach detected: #{string.Join(", #", _activeAttacks)}. Fix the code, then submit.");
             else
@@ -761,54 +763,13 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void OnGoogleAccountClick(object sender, RoutedEventArgs e)
+    private void OnProfileClick(object sender, RoutedEventArgs e)
     {
-        var result = MessageBox.Show(
-            "Do you want to switch or sign in with your own Google account?\n\n" +
-            "This will clear cached login credentials and restart Antigravity AI so you can authenticate your account in the browser.\n\n" +
-            "Proceed?",
-            "Antigravity AI - Google Account",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Question);
-
-        if (result != MessageBoxResult.Yes) return;
-
-        try
+        var onboard = new OnboardingWindow(_s);
+        if (onboard.ShowDialog() == true)
         {
-            var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-            var geminiDir = Path.Combine(home, ".gemini");
-            var accountsFile = Path.Combine(geminiDir, "google_accounts.json");
-            var credsFile = Path.Combine(geminiDir, "oauth_creds.json");
-
-            if (File.Exists(accountsFile)) File.Delete(accountsFile);
-            if (File.Exists(credsFile)) File.Delete(credsFile);
-
-            Status("Google account cache cleared. Restarting Antigravity terminal...");
-
-            TermAgy.Dispose();
-            var assets = Path.Combine(AppContext.BaseDirectory, "Assets", "terminal");
-            await TermAgy.InitializeAsync(assets);
-
-            ConfigureAgy(_s.WorkspacePath);
-            var agy = ExeResolver.Resolve(_s.AgyPath);
-            if (agy is not null)
-            {
-                var (exe, args) = ExeResolver.ForLaunch(agy, "--dangerously-skip-permissions");
-                TermAgy.Launch(new LaunchSpec(exe, args, _s.WorkspacePath, new Dictionary<string, string?>
-                {
-                    ["GEMINI_API_KEY"] = null,
-                    ["GOOGLE_API_KEY"] = null,
-                    ["GOOGLE_GENAI_USE_VERTEXAI"] = null,
-                    ["COLORTERM"] = "truecolor",
-                }));
-            }
-
-            TabAgy.IsChecked = true;
-            Status("Antigravity AI restarted. Please log in with your Google account.");
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show($"Failed to reset Google account: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            BtnProfile.Content = $"👤 {_s.DisplayName}";
+            Status($"Identity updated to {_s.DisplayName}");
         }
     }
 

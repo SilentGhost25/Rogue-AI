@@ -15,6 +15,7 @@ public sealed class SnapshotSync : IDisposable
     private readonly ApiClient _api;
     private readonly string _participantId, _root;
     private readonly Dictionary<string, string> _known = new();   // path -> hash the server is known to have
+    private readonly Dictionary<string, (long Length, DateTime LastWrite)> _statCache = new();
     private readonly SemaphoreSlim _gate = new(1, 1);
     private Timer? _timer;
     private volatile bool _held;
@@ -24,7 +25,19 @@ public sealed class SnapshotSync : IDisposable
     public bool Held => _held;
     public void Hold() => _held = true;
     public void Release() => _held = false;
-    public void MarkSynced(string rel, string hash) { lock (_known) _known[rel] = hash; }
+    public void MarkSynced(string rel, string hash)
+    {
+        lock (_known)
+        {
+            _known[rel] = hash;
+            var path = Path.Combine(_root, rel);
+            if (File.Exists(path))
+            {
+                var fi = new FileInfo(path);
+                _statCache[rel] = (fi.Length, fi.LastWriteTimeUtc);
+            }
+        }
+    }
 
     public void Start(TimeSpan interval) => _timer = new Timer(async _ => await TryFlushAsync(), null, interval, interval);
 
@@ -44,10 +57,26 @@ public sealed class SnapshotSync : IDisposable
             {
                 var rel = Path.GetRelativePath(_root, file).Replace('\\', '/');
                 present.Add(rel);
+
+                var fi = new FileInfo(file);
+                lock (_known)
+                {
+                    if (_statCache.TryGetValue(rel, out var stat) &&
+                        stat.Length == fi.Length &&
+                        stat.LastWrite == fi.LastWriteTimeUtc &&
+                        _known.ContainsKey(rel))
+                    {
+                        continue; // File completely unchanged since last hash
+                    }
+                }
+
                 byte[] bytes;
                 try { bytes = await File.ReadAllBytesAsync(file); } catch (IOException) { continue; } // editor still writing; next tick
                 var hash = Convert.ToHexString(SHA256.HashData(bytes));
                 bool same; lock (_known) same = _known.TryGetValue(rel, out var prev) && prev == hash;
+
+                lock (_known) { _statCache[rel] = (fi.Length, fi.LastWriteTimeUtc); }
+
                 if (same) continue;
                 changed.Add(new SnapshotFileDto(rel, hash, Convert.ToBase64String(bytes)));
                 pending[rel] = hash;
@@ -59,7 +88,11 @@ public sealed class SnapshotSync : IDisposable
             lock (_known)
             {
                 foreach (var (k, v) in pending) _known[k] = v;   // remember only after a successful upload
-                foreach (var d in deleted) _known.Remove(d);
+                foreach (var d in deleted)
+                {
+                    _known.Remove(d);
+                    _statCache.Remove(d);
+                }
             }
         }
         finally { _gate.Release(); }

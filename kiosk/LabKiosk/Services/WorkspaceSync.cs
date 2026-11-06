@@ -14,14 +14,29 @@ public sealed class WorkspaceSync(ApiClient api, string participantId, string ro
     public async Task<int> PullAsync(string tag)
     {
         var remote = await api.ListFilesAsync(participantId);
-        var differing = new List<string>();
-        foreach (var r in remote)
+        var differing = new System.Collections.Concurrent.ConcurrentBag<string>();
+
+        await Parallel.ForEachAsync(remote, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, async (r, _) =>
         {
             var local = SafeLocal(r.Path);
-            if (local is null) continue;
-            if (!File.Exists(local) || !Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(local))).Equals(r.Sha256, StringComparison.OrdinalIgnoreCase))
+            if (local is null) return;
+            if (!File.Exists(local))
+            {
                 differing.Add(r.Path);
-        }
+                return;
+            }
+            try
+            {
+                var bytes = await File.ReadAllBytesAsync(local);
+                var hash = Convert.ToHexString(SHA256.HashData(bytes));
+                if (!hash.Equals(r.Sha256, StringComparison.OrdinalIgnoreCase))
+                    differing.Add(r.Path);
+            }
+            catch
+            {
+                differing.Add(r.Path);
+            }
+        });
 
         var written = 0;
         foreach (var batch in differing.Chunk(40))

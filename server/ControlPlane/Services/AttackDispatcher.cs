@@ -91,6 +91,18 @@ public sealed class AttackDispatcher(
         return true;
     }
 
+    /// <summary>Resets ALL attacks across all participants, restoring all original template files and resetting attack states.</summary>
+    public async Task<int> ResetAllAsync(string? target, WorkspaceStore store, CancellationToken ct = default)
+    {
+        var allAttacks = db.Query("SELECT id FROM attacks ORDER BY id", r => r.GetInt32(0));
+        var count = 0;
+        foreach (var id in allAttacks)
+        {
+            if (await ResetAsync(id, target, store, ct)) count++;
+        }
+        return count;
+    }
+
     /// <summary>Randomly picks an un-fired/un-delivered attack and fires it.</summary>
     public async Task<int?> FireRandomAsync(string? target, CancellationToken ct = default)
     {

@@ -97,6 +97,8 @@
                 <!-- Right Side Actions & Meters -->
                 <Button x:Name="SubmitButton" DockPanel.Dock="Right" Content="Submit Fix (F5)" Padding="20,7" Margin="10,9"
                         Style="{StaticResource SubmitBtn}" Click="OnSubmitFix" AutomationProperties.Name="Submit fix"/>
+                <Button x:Name="BtnProfile" DockPanel.Dock="Right" Content="👤 Profile" Padding="10,6" Margin="6,10"
+                        Style="{StaticResource ActionBtn}" Click="OnProfileClick" ToolTip="Review participant identity &amp; accounts"/>
                 <Button x:Name="AdminButton" DockPanel.Dock="Right" Content="&#x2699; Admin Console" Padding="12,6" Margin="6,10"
                         Style="{StaticResource ActionBtn}" Click="OnAdminConsole" AutomationProperties.Name="Open organizer console"/>
                 <Border x:Name="SolvedBadge" DockPanel.Dock="Right" Visibility="Collapsed" Margin="6,10,6,10" Padding="14,2"
@@ -106,7 +108,7 @@
                 </Border>
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0">
                     <TextBlock x:Name="AgyMeter" Text="agy: ready" Foreground="{StaticResource Cyan}" FontWeight="SemiBold" Margin="0,0,14,0"/>
-                    <TextBlock x:Name="OcMeter" Text="OpenCode: 0 / 200" Foreground="{StaticResource Ink}"/>
+                    <TextBlock x:Name="OcMeter" Text="OpenCode: 0 / 30" Foreground="{StaticResource Ink}"/>
                 </StackPanel>
 
                 <!-- Center View Switcher: Combination Buttons -->
@@ -175,7 +177,7 @@
                             <RadioButton x:Name="TabAgy" Content="agy (Antigravity AI)" GroupName="agent" IsChecked="True" Margin="0,0,18,0" Foreground="{StaticResource Ink}" FontWeight="SemiBold" Checked="OnTabChanged"/>
                             <RadioButton x:Name="TabOc" Content="OpenCode AI" GroupName="agent" Foreground="{StaticResource Ink}" FontWeight="SemiBold" Checked="OnTabChanged"/>
                         </StackPanel>
-                        <Button x:Name="BtnGoogleAccount" Content="&#x1F464; Google Account" DockPanel.Dock="Right" Padding="8,3" FontSize="11" Click="OnGoogleAccountClick" Style="{StaticResource ViewBtn}" ToolTip="Sign in or switch your Google account"/>
+                        <Button x:Name="BtnGoogleAccount" Content="&#x1F464; Profile &amp; Accounts" DockPanel.Dock="Right" Padding="8,3" FontSize="11" Click="OnProfileClick" Style="{StaticResource ViewBtn}" ToolTip="Review participant identity and linked accounts"/>
                     </DockPanel>
                 </Border>
                 <Grid Grid.Row="1">
