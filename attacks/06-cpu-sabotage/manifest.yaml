@@ -3,7 +3,7 @@ name: "CPU Sabotage"
 title: "CPU Sabotage"
 codename: "HEAVY_LOOP"
 band: 4
-fires_at: "15:00"
+fires_at: "10:30"
 touches:
   - routes/report.js
 fix_requires: "Remove artificial CPU hashing spinloop"
@@ -14,10 +14,11 @@ weights:
   quality: 15
   resource: 10
 dispatch: { mode: manual, time: "15:00:00", imminent_seconds: 10 }
+dispatch: { mode: manual, time: "15:00:00", imminent_seconds: 10 }
 scoring:
   base_points: 8500
   speed_bonus_max: 1500
-  speed_bonus_window_seconds: 1800
+  speed_bonus_window_seconds: 900
   late_solve_multiplier: 0.70
 payload: { path: "payload/", format: full, conflict_files: ["routes/report.js"] }
 tests:

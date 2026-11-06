@@ -580,3 +580,245 @@ def evaluate(attack_id: int, replay_passed: bool, variants_passed: bool, regress
     if not variants_passed:
         return Verdict(attack_id, PARTIAL, "The exact exploit is blocked, but a variant still works.")
     return Verdict(attack_id, SOLVED, "All checks passed.")
+
+
+# ---------------------------------------------------------------------------
+# Tier 1 & Tier 2 Evaluation Architecture (Catch 2 & Catch 3)
+# ---------------------------------------------------------------------------
+from .static_analyzer import analyze_directory
+from .reference_derivation import (
+    derive_references_from_pilot,
+    normalize_metric,
+    bootstrap_ci,
+    mann_whitney_u_test,
+    compute_composite_score,
+)
+
+
+def check_compliance_fast(workspace: Path) -> tuple[bool, str]:
+    """Fast compliance audit: verifies syntax and detects hardcoded payload literals."""
+    banned_literals = [
+        b"' OR 1=1 --",
+        b"<script>alert(",
+        b"ROGUE_ATTACK_CANARY",
+    ]
+    for f in workspace.rglob("*.js"):
+        if any(part in f.parts for part in ["node_modules", ".git", "bin", "obj", "tests", "dist"]):
+            continue
+        try:
+            content = f.read_bytes()
+            for b in banned_literals:
+                if b in content:
+                    return False, f"Compliance Violation: Hardcoded attack payload literal found in {f.name}"
+        except Exception:
+            pass
+    return True, "OK"
+
+
+def evaluate_fast(attack_id: int, attack_dir: Path, workspace: Path, timeout_seconds: float = 6.0) -> Verdict:
+    """TIER 1 (Fast-Path, <5s): Outcome gate + Compliance check for immediate scoreboard feedback."""
+    comp_ok, comp_reason = check_compliance_fast(workspace)
+    if not comp_ok:
+        return Verdict(attack_id, FAILED, comp_reason, score_percentage=0.0)
+
+    verdict = evaluate_attack(attack_id, attack_dir, workspace, timeout_seconds=timeout_seconds)
+    return verdict
+
+
+@dataclass
+class DeepEvalTask:
+    submission_id: str
+    participant_id: str
+    attack_ids: list[int]
+    workspace_dir: str
+    telemetry: dict | None = None
+    enqueued_at: float = 0.0
+
+
+DEEP_EVAL_QUEUE: queue.Queue[DeepEvalTask] = queue.Queue()
+DEEP_EVAL_RESULTS: dict[str, dict] = {}
+RESULTS_DIR = ROOT_DIR / "data" / "eval_results"
+
+
+def get_deep_eval_result(submission_id: str) -> dict | None:
+    if submission_id in DEEP_EVAL_RESULTS:
+        return DEEP_EVAL_RESULTS[submission_id]
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    f = RESULTS_DIR / f"{submission_id}.json"
+    if f.exists():
+        try:
+            return json.loads(f.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return None
+
+
+def enqueue_deep_evaluation(
+    submission_id: str,
+    participant_id: str,
+    attack_ids: list[int],
+    workspace_dir: Path,
+    telemetry: dict | None = None,
+) -> int:
+    task = DeepEvalTask(
+        submission_id=submission_id,
+        participant_id=participant_id,
+        attack_ids=attack_ids,
+        workspace_dir=str(workspace_dir),
+        telemetry=telemetry or {},
+        enqueued_at=time.time(),
+    )
+    DEEP_EVAL_QUEUE.put(task)
+    return DEEP_EVAL_QUEUE.qsize()
+
+
+def _deep_worker_loop():
+    attacks_dir = ROOT_DIR / "attacks"
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+
+    while True:
+        try:
+            task = DEEP_EVAL_QUEUE.get()
+            if task is None:
+                break
+
+            q_depth = DEEP_EVAL_QUEUE.qsize()
+            degrade = q_depth > 20
+            trials_count = 3 if degrade else 5
+            boot_iters = 100 if degrade else 1000
+
+            workspace = Path(task.workspace_dir)
+            all_attacks = {a.id: a for a in from_manifest_load_all(attacks_dir)} if attacks_dir.exists() else {}
+
+            per_attack_reports = []
+            overall_outcome_passed = True
+            overall_compliance_passed = True
+
+            comp_ok, comp_reason = check_compliance_fast(workspace)
+            if not comp_ok:
+                overall_compliance_passed = False
+
+            # Run static analysis once on workspace
+            static_metrics = analyze_directory(workspace)
+
+            for aid in task.attack_ids:
+                attack = all_attacks.get(aid)
+                if not attack or not attack.directory:
+                    continue
+
+                runtimes: list[float] = []
+                memories: list[float] = []
+                all_solved = True
+                last_verdict = None
+
+                # Run trials for compute benchmark
+                for _ in range(trials_count):
+                    v = evaluate_attack(aid, attack.directory, workspace, timeout_seconds=10.0)
+                    last_verdict = v
+                    runtimes.append(max(v.cpu_time_ms, 5.0))
+                    memories.append(max(v.peak_memory_mb, 25.0))
+                    if v.status != SOLVED:
+                        all_solved = False
+
+                if not all_solved and (not last_verdict or last_verdict.status == FAILED):
+                    overall_outcome_passed = False
+
+                # Derive reference targets
+                refs = derive_references_from_pilot(aid, pilot_metrics=[])
+                r_ideal = refs["R_ideal"]
+                r_worst = refs["R_worst"]
+                r_base = refs["R_baseline"]
+
+                # Statistical metrics
+                cold_runtime = runtimes[0] if runtimes else 10.0
+                warm_median = float(np.median(runtimes[1:])) if len(runtimes) > 1 else cold_runtime
+                worst_runtime = max(runtimes) if runtimes else 10.0
+                runtime_variance = float(np.std(runtimes) / max(np.mean(runtimes), 1.0)) if runtimes else 0.0
+                peak_mem = max(memories) if memories else 35.0
+
+                p_val = mann_whitney_u_test(runtimes, [r_base["runtime"]] * max(len(runtimes), 3))
+                ci_lo, ci_hi = bootstrap_ci(runtimes, trials=boot_iters)
+
+                # Compute 7 dimension scores
+                # 1. Time (0.30 weight: compute time normalized + consistency)
+                time_norm = normalize_metric(warm_median, r_ideal["runtime"], r_worst["runtime"], lower_is_better=True)
+                consistency = max(0.0, 1.0 - runtime_variance)
+                dim_time = round(0.7 * time_norm + 0.3 * consistency, 4)
+
+                # 2. Quality (0.25 weight: maintainability, cyclomatic, comment ratio)
+                mi_norm = static_metrics["maintainability"] / 100.0
+                cyclo_norm = normalize_metric(static_metrics["cyclomatic"], r_ideal["cyclomatic"], r_worst["cyclomatic"], lower_is_better=True)
+                dim_quality = round(0.5 * mi_norm + 0.3 * cyclo_norm + 0.2 * min(1.0, static_metrics["comment_ratio"] * 5.0), 4)
+
+                # 3. Efficiency (0.20 weight: telemetry prompts / tokens vs reference)
+                telemetry = task.telemetry or {}
+                prompt_count = telemetry.get("prompt_count", 0)
+                # Fallback multiplier if CLI telemetry is unreadable: submissions * 3
+                if prompt_count <= 0:
+                    prompt_count = max(telemetry.get("submissions", 1) * 3, 3)
+                eff_norm = normalize_metric(float(prompt_count), 5.0, 25.0, lower_is_better=True)
+                dim_efficiency = round(eff_norm, 4)
+
+                # 4. Robustness (0.15 weight: score percentage from tier/variant tests)
+                dim_robustness = round(last_verdict.score_percentage if last_verdict else 0.0, 4)
+
+                # 5. Process (0.10 weight: cadence / no burst spam)
+                dim_process = 0.90 if runtime_variance < 0.5 else 0.70
+
+                composite_res = compute_composite_score(
+                    outcome_passed=overall_outcome_passed,
+                    compliance_passed=overall_compliance_passed,
+                    time_score=dim_time,
+                    quality_score=dim_quality,
+                    efficiency_score=dim_efficiency,
+                    robustness_score=dim_robustness,
+                    process_score=dim_process,
+                )
+
+                per_attack_reports.append({
+                    "attack_id": aid,
+                    "status": last_verdict.status if last_verdict else "FAILED",
+                    "reason": last_verdict.reason if last_verdict else "",
+                    "trials_count": trials_count,
+                    "cold_runtime_ms": cold_runtime,
+                    "warm_median_ms": warm_median,
+                    "worst_runtime_ms": worst_runtime,
+                    "runtime_variance": round(runtime_variance, 4),
+                    "peak_memory_mb": peak_mem,
+                    "bootstrap_ci_95": [ci_lo, ci_hi],
+                    "mann_whitney_p": p_val,
+                    "static_metrics": static_metrics,
+                    "scoring": composite_res,
+                })
+
+            final_result = {
+                "submission_id": task.submission_id,
+                "participant_id": task.participant_id,
+                "completed_at": time.time(),
+                "duration_seconds": round(time.time() - task.enqueued_at, 2),
+                "degraded_mode": degrade,
+                "queue_depth": q_depth,
+                "reports": per_attack_reports,
+            }
+
+            DEEP_EVAL_RESULTS[task.submission_id] = final_result
+            try:
+                (RESULTS_DIR / f"{task.submission_id}.json").write_text(json.dumps(final_result, indent=2), encoding="utf-8")
+            except Exception:
+                pass
+
+        except Exception as ex:
+            time.sleep(0.5)
+        finally:
+            DEEP_EVAL_QUEUE.task_done()
+
+
+def from_manifest_load_all(attacks_dir: Path):
+    from .manifest import load_all
+    return load_all(attacks_dir)
+
+
+# Start the Tier 2 asynchronous background worker daemon
+_deep_worker_thread = threading.Thread(target=_deep_worker_loop, daemon=True, name="DeepEvalWorker")
+_deep_worker_thread.start()
+

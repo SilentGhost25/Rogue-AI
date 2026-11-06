@@ -3,7 +3,7 @@ name: "Warm-up"
 title: "Warm-up"
 codename: "HELLO_WORLD"
 band: 1
-fires_at: "09:15"
+fires_at: "09:05"
 touches:
   - views/index.ejs
 fix_requires: "Fix title spelling"
@@ -14,8 +14,9 @@ weights:
   quality: 15
   resource: 10
 dispatch:
+dispatch:
   mode: manual
-  time: "09:15:00"
+  time: "09:05:00"
   imminent_seconds: 10
 scoring:
   base_points: 500

@@ -85,15 +85,51 @@
               <th title="Attack 6: Timing Attack / Signature">#6</th>
               <th title="Attack 7: SSRF">#7</th>
               <th title="Attack 8: IDOR">#8</th>
+              <th>Gates (Out/Comp)</th>
               <th>Diagnostic Verdict / Reason</th>
+              <th>Breakdown</th>
             </tr>
           </thead>
           <tbody id="eval-list">
-            <tr><td colspan="16" class="muted">Loading participant evaluations...</td></tr>
+            <tr><td colspan="18" class="muted">Loading participant evaluations...</td></tr>
           </tbody>
         </table>
       </div>
     </section>
+
+    <!-- Modal for 7-Dimension Framework Inspection -->
+    <div id="eval-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeEvalModal()">
+      <div class="modal-box">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #334155; padding-bottom:12px; margin-bottom:16px;">
+          <div>
+            <h2 id="modal-desk-title" style="margin:0; font-size:20px; color:#f8fafc;">Desk Evaluation Audit</h2>
+            <div id="modal-desk-sub" style="font-size:12px; color:#94a3b8; margin-top:4px;">Participant Framework Metrics &amp; Benchmarks</div>
+          </div>
+          <button class="btn secondary sm" onclick="closeEvalModal()">&times; Close</button>
+        </div>
+
+        <div style="margin-bottom:16px;">
+          <h3 style="font-size:13px; text-transform:uppercase; color:#94a3b8; margin-bottom:8px;">Hard Gates (Outcome &amp; Compliance)</h3>
+          <div style="display:flex; gap:12px;" id="modal-gates-container">
+            <!-- Injected dynamically -->
+          </div>
+        </div>
+
+        <div style="margin-bottom:16px;">
+          <h3 style="font-size:13px; text-transform:uppercase; color:#94a3b8; margin-bottom:8px;">The 7 Scoring Dimensions</h3>
+          <div class="metric-grid" id="modal-dimensions-container">
+            <!-- Injected dynamically -->
+          </div>
+        </div>
+
+        <div>
+          <h3 style="font-size:13px; text-transform:uppercase; color:#94a3b8; margin-bottom:8px;">Attack Statuses &amp; Test Diagnostics</h3>
+          <div id="modal-attacks-list" style="max-height:240px; overflow-y:auto; border:1px solid #334155; border-radius:8px; padding:8px; background:#0f172a;">
+            <!-- Injected dynamically -->
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- Section 3: Active Kiosks and Console Log -->
     <div class="grid-two">

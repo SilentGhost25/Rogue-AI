@@ -459,7 +459,45 @@ app.MapPost("/api/kiosk/{id}/submit", (string id, HttpRequest httpReq, Database 
         try
         {
             var client = http.CreateClient("engine");
-            var evalRes = await client.PostAsJsonAsync("/evaluate", new { participant_id = id, submission_id = sid, attack_ids = activeAttacks });
+
+            // Catch 4: Extract CLI telemetry with fallback (submissions * 3)
+            int promptCount = 0;
+            int tokenUsage = 0;
+            int subAttempts = 1;
+            using (var c = db.Open())
+            {
+                using (var tCmd = c.CreateCommand())
+                {
+                    tCmd.CommandText = "SELECT prompt_count, token_usage FROM telemetry_latest WHERE participant_id = $p";
+                    tCmd.Parameters.AddWithValue("$p", id);
+                    using var tr = tCmd.ExecuteReader();
+                    if (tr.Read())
+                    {
+                        promptCount = tr.GetInt32(0);
+                        tokenUsage = tr.GetInt32(1);
+                    }
+                }
+                using (var sCmd = c.CreateCommand())
+                {
+                    sCmd.CommandText = "SELECT COUNT(*) FROM score_ledger WHERE participant_id = $p AND component = 'penalty'";
+                    sCmd.Parameters.AddWithValue("$p", id);
+                    var cnt = Convert.ToInt32(sCmd.ExecuteScalar());
+                    subAttempts = Math.Max(1, cnt + 1);
+                }
+            }
+
+            if (promptCount <= 0)
+            {
+                promptCount = subAttempts * 3; // Fallback multiplier
+            }
+
+            var telemetryPayload = new { prompt_count = promptCount, token_usage = tokenUsage, submissions = subAttempts };
+            var evalRes = await client.PostAsJsonAsync("/evaluate", new { 
+                participant_id = id, 
+                submission_id = sid, 
+                attack_ids = activeAttacks,
+                telemetry = telemetryPayload
+            });
             if (evalRes.IsSuccessStatusCode)
             {
                 var body = await evalRes.Content.ReadFromJsonAsync<EvaluationResponse>();
@@ -524,7 +562,7 @@ app.MapPost("/api/kiosk/{id}/submit", (string id, HttpRequest httpReq, Database 
     return Results.Accepted(value: new { submissionId = sid, status = "evaluating" });
 });
 
-app.MapPost("/api/kiosk/{id}/telemetry", async (string id, TelemetryRequest req, HttpRequest httpReq, Database db, IHubContext<BreachHub> hub) =>
+var handleTelemetry = async (string id, TelemetryRequest req, HttpRequest httpReq, Database db, IHubContext<BreachHub> hub) =>
 {
     var token = httpReq.Headers["X-Kiosk-Token"].ToString();
     if (string.IsNullOrWhiteSpace(token) || !db.ValidateDeskToken(token, id))
@@ -550,8 +588,39 @@ app.MapPost("/api/kiosk/{id}/telemetry", async (string id, TelemetryRequest req,
         cmd.ExecuteNonQuery();
         await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, id);
     }
+    else if (req.Type == "CLI_METRICS" && req.Payload.HasValue)
+    {
+        try
+        {
+            var pRoot = req.Payload.Value;
+            var promptCount = pRoot.TryGetProperty("prompt_count", out var pc) ? pc.GetInt32() : 0;
+            var tokenUsage = pRoot.TryGetProperty("token_usage", out var tu) ? tu.GetInt32() : 0;
+            var cadence = pRoot.TryGetProperty("cadence", out var cd) ? cd.GetDouble() : 0.0;
+
+            using var c = db.Open();
+            using var cmd = c.CreateCommand();
+            cmd.CommandText = @"INSERT INTO telemetry_latest (participant_id, prompt_count, token_usage, cadence, updated_at)
+                                VALUES ($p, $pc, $tu, $cd, $t)
+                                ON CONFLICT(participant_id) DO UPDATE SET
+                                prompt_count = excluded.prompt_count,
+                                token_usage = excluded.token_usage,
+                                cadence = excluded.cadence,
+                                updated_at = excluded.updated_at";
+            cmd.Parameters.AddWithValue("$p", id);
+            cmd.Parameters.AddWithValue("$pc", promptCount);
+            cmd.Parameters.AddWithValue("$tu", tokenUsage);
+            cmd.Parameters.AddWithValue("$cd", cadence);
+            cmd.Parameters.AddWithValue("$t", DateTime.UtcNow.ToString("O"));
+            cmd.ExecuteNonQuery();
+            await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, id);
+        }
+        catch { }
+    }
     return Results.Accepted();
-});
+};
+
+app.MapPost("/api/kiosk/{id}/telemetry", handleTelemetry);
+app.MapPost("/api/desk/{id}/telemetry", handleTelemetry);
 
 // ---- Admin API (X-Admin-Key header; Loopback only) ---------------------------
 app.MapPost("/admin/attacks/{n:int}/fire", (int n, string? targetId, HttpRequest r, Database db, AttackDispatcher d) =>

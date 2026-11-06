@@ -3,7 +3,7 @@ name: "Privilege Escalation"
 title: "Privilege Escalation"
 codename: "GHOST_KEYS"
 band: 3
-fires_at: "13:30"
+fires_at: "10:15"
 touches:
   - routes/user.js
 fix_requires: "Enforce session ownership check on user endpoints"
@@ -14,10 +14,11 @@ weights:
   quality: 15
   resource: 10
 dispatch: { mode: manual, time: "13:30:00", imminent_seconds: 10 }
+dispatch: { mode: manual, time: "13:30:00", imminent_seconds: 10 }
 scoring:
   base_points: 8500
   speed_bonus_max: 1500
-  speed_bonus_window_seconds: 1800
+  speed_bonus_window_seconds: 900
   late_solve_multiplier: 0.70
 payload: { path: "payload/", format: full, conflict_files: ["routes/user.js"] }
 tests:

@@ -3,7 +3,7 @@ name: "SQL Injection"
 title: "SQL Injection"
 codename: "QUERY_DRIFT"
 band: 2
-fires_at: "11:00"
+fires_at: "09:45"
 touches:
   - routes/search.js
 fix_requires: "Parameterize SQL query"
@@ -14,10 +14,11 @@ weights:
   quality: 15
   resource: 10
 dispatch: { mode: manual, time: "11:00:00", imminent_seconds: 10 }
+dispatch: { mode: manual, time: "11:00:00", imminent_seconds: 10 }
 scoring:
   base_points: 8500
   speed_bonus_max: 1500
-  speed_bonus_window_seconds: 1800
+  speed_bonus_window_seconds: 900
   late_solve_multiplier: 0.70
 payload:
   path: "payload/"

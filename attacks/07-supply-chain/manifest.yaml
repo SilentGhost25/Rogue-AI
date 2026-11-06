@@ -3,7 +3,7 @@ name: "Supply Chain Compromise"
 title: "Supply Chain Compromise"
 codename: "TROJAN_DEP"
 band: 4
-fires_at: "16:15"
+fires_at: "10:45"
 touches:
   - server.js
 fix_requires: "Remove malicious dependency rogue-logger"
@@ -14,10 +14,11 @@ weights:
   quality: 15
   resource: 10
 dispatch: { mode: manual, time: "16:15:00", imminent_seconds: 10 }
+dispatch: { mode: manual, time: "16:15:00", imminent_seconds: 10 }
 scoring:
   base_points: 8500
   speed_bonus_max: 1500
-  speed_bonus_window_seconds: 1800
+  speed_bonus_window_seconds: 900
   late_solve_multiplier: 0.70
 payload:
   path: "payload/"

@@ -49,6 +49,9 @@ public partial class Database
             CREATE TABLE IF NOT EXISTS telemetry_events (
               id INTEGER PRIMARY KEY AUTOINCREMENT, participant_id TEXT NOT NULL, type TEXT NOT NULL,
               payload_json TEXT NOT NULL, created_at TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS telemetry_latest (
+              participant_id TEXT PRIMARY KEY, prompt_count INTEGER NOT NULL DEFAULT 0,
+              token_usage INTEGER NOT NULL DEFAULT 0, cadence REAL NOT NULL DEFAULT 0.0, updated_at TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS quota_state (
               participant_id TEXT PRIMARY KEY, agy_exhausted INTEGER NOT NULL DEFAULT 0,
               oc_cap_reached INTEGER NOT NULL DEFAULT 0, oc_prompts INTEGER NOT NULL DEFAULT 0);

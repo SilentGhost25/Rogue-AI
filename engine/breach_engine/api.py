@@ -9,7 +9,14 @@ from pydantic import BaseModel
 from . import EVALUATOR_VERSION
 from .manifest import load_all
 from .patching import apply_attack
-from .evaluator import evaluate, evaluate_attack
+from .evaluator import (
+    evaluate,
+    evaluate_attack,
+    evaluate_fast,
+    enqueue_deep_evaluation,
+    get_deep_eval_result,
+    DEEP_EVAL_QUEUE,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 ATTACKS_DIR = ROOT / "attacks"
@@ -28,6 +35,7 @@ class EvaluateRequest(BaseModel):
     participant_id: str
     submission_id: str
     attack_ids: list[int]
+    telemetry: dict | None = None
 
 
 def resolve_workspace(participant_id: str) -> Path | None:
@@ -88,7 +96,9 @@ def apply(req: ApplyRequest):
 
 
 @app.post("/evaluate")
+@app.post("/evaluate/fast")
 def run_evaluation(req: EvaluateRequest):
+    """TIER 1 (Fast-Path): Synchronous check (<5s) returning immediate verdict to live scoreboard and enqueuing Tier 2."""
     workspace = resolve_workspace(req.participant_id)
     if not workspace:
         raise HTTPException(404, "participant workspace not found")
@@ -102,14 +112,44 @@ def run_evaluation(req: EvaluateRequest):
             verdicts.append({"attack_id": aid, "status": "FAILED", "reason": f"Attack #{aid} manifest not found."})
             continue
 
-        verdict = evaluate_attack(aid, attack.directory, workspace)
+        verdict = evaluate_fast(aid, attack.directory, workspace, timeout_seconds=6.0)
         verdicts.append(verdict.__dict__)
+
+    # Asynchronously enqueue Tier 2 Deep-Path evaluation
+    q_depth = enqueue_deep_evaluation(
+        submission_id=req.submission_id,
+        participant_id=req.participant_id,
+        attack_ids=req.attack_ids,
+        workspace_dir=workspace,
+        telemetry=req.telemetry,
+    )
 
     return {
         "submission_id": req.submission_id,
         "evaluator": EVALUATOR_VERSION,
-        "verdicts": verdicts
+        "verdicts": verdicts,
+        "tier1": True,
+        "deep_eval_queued": True,
+        "queue_depth": q_depth,
     }
+
+
+@app.get("/evaluation/{submission_id}")
+def get_evaluation(submission_id: str):
+    """Retrieves the Tier 2 Deep Evaluation result for a given submission."""
+    res = get_deep_eval_result(submission_id)
+    if not res:
+        return {
+            "submission_id": submission_id,
+            "status": "computing",
+            "queue_depth": DEEP_EVAL_QUEUE.qsize(),
+        }
+    return {
+        "submission_id": submission_id,
+        "status": "completed",
+        "result": res,
+    }
+
 
 
 if __name__ == "__main__":

@@ -14,6 +14,7 @@ public partial class MainWindow : Window
     private bool _uiInitialized = false;
     private HubClient? _hub;
     private SnapshotSync? _sync;
+    private TelemetryCollector? _telemetry;
     private ClockSync? _clock;
     private string? _participantId;
     private int? _lastAppliedAttackId;
@@ -47,6 +48,7 @@ public partial class MainWindow : Window
         {
             _landingTimerCts?.Cancel();
             _sync?.Dispose();
+            _telemetry?.Dispose();
             CodeView?.Dispose();
             _ = _clock?.DisposeAsync();
             _ = _hub?.DisposeAsync();
@@ -201,6 +203,8 @@ public partial class MainWindow : Window
             // Stop existing sync or connection if retrying
             _sync?.Dispose();
             _sync = null;
+            _telemetry?.Dispose();
+            _telemetry = null;
             if (_hub != null)
             {
                 try { await _hub.DisposeAsync(); } catch { }
@@ -218,10 +222,12 @@ public partial class MainWindow : Window
                 _participantId = await _api.RegisterAsync(_settings.DisplayName, _settings.KioskId, _settings.DeskId, _settings.Password);
             }
 
-            // 5. Start continuous snapshot sync (every 15s) and clock sync
+            // 5. Start continuous snapshot sync (every 15s), telemetry collector, and clock sync
             _clock = new ClockSync(_api);
             _sync = new SnapshotSync(_api, _participantId, _settings.WorkspacePath);
             _sync.Start(TimeSpan.FromSeconds(15));
+            _telemetry = new TelemetryCollector(_api, _participantId, _settings.DeskId ?? "DESK");
+            _telemetry.Start(TimeSpan.FromSeconds(20));
 
             // 6. Connect to SignalR Hub
             _hub = new HubClient(_config.ServerUrl, _participantId, _api.Token ?? _config.DeskToken ?? "");
