@@ -1,6 +1,8 @@
 param(
     [switch]$HostMode,
-    [switch]$Both
+    [switch]$Both,
+    [switch]$Participant,
+    [string]$ServerUrl
 )
 
 $ErrorActionPreference = "Stop"
@@ -22,9 +24,61 @@ if (-not $env:BREACH_ADMIN_KEY) {
 }
 
 Write-Host "==========================================================" -ForegroundColor Cyan
-Write-Host "  ROGUE AI -- THE BREACH PROTOCOL (All-In-One Launcher)   " -ForegroundColor Yellow
+Write-Host "  ROGUE AI -- THE BREACH PROTOCOL (Dynamic LAN Launcher)  " -ForegroundColor Yellow
 Write-Host "==========================================================" -ForegroundColor Cyan
 Write-Host "Project Root: $RogueRoot" -ForegroundColor Gray
+
+# -------------------------------------------------------------
+# DYNAMIC LAN DETECTION (Robust across all Windows environments)
+# -------------------------------------------------------------
+$detectedIps = [System.Collections.Generic.List[string]]::new()
+
+# Method 1: Dns Host Addresses
+try {
+    $hostAddrs = [System.Net.Dns]::GetHostAddresses([System.Net.Dns]::GetHostName()) | 
+        Where-Object { $_.AddressFamily -eq 'InterNetwork' -and $_.IPAddressToString -notlike '127.*' -and $_.IPAddressToString -notlike '169.254.*' }
+    foreach ($a in $hostAddrs) {
+        $ip = $a.IPAddressToString
+        if (-not $detectedIps.Contains($ip)) { $detectedIps.Add($ip) }
+    }
+} catch { }
+
+# Method 2: Route print default gateway interface
+try {
+    $routeOut = route print 0.0.0.0 2>$null | Select-String "0.0.0.0"
+    foreach ($line in $routeOut) {
+        $parts = -split ($line -replace '^\s+', '')
+        if ($parts.Count -ge 4 -and $parts[3] -match '^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$') {
+            $rip = $parts[3]
+            if ($rip -notlike "127.*" -and $rip -notlike "169.254.*" -and -not $detectedIps.Contains($rip)) {
+                $detectedIps.Insert(0, $rip) # Put gateway route interface first
+            }
+        }
+    }
+} catch { }
+
+# Method 3: NetIPAddress filtering out hypervisors/virtual adapters
+try {
+    $netIps = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object { 
+        $_.IPAddress -notlike "127.*" -and 
+        $_.IPAddress -notlike "169.254.*" -and 
+        $_.InterfaceAlias -notmatch "vEthernet|Virtual|Loopback|VMware|Host-Only" 
+    }
+    $wifi = $netIps | Where-Object { $_.InterfaceAlias -match "Wi-Fi|Wireless" } | Select-Object -First 1
+    if ($wifi -and $detectedIps.Contains($wifi.IPAddress)) {
+        $detectedIps.Remove($wifi.IPAddress)
+        $detectedIps.Insert(0, $wifi.IPAddress)
+    }
+} catch { }
+
+$primaryLanIp = if ($detectedIps.Count -gt 0) { $detectedIps[0] } else { "127.0.0.1" }
+
+Write-Host "`n[+] Dynamic Network Detection:" -ForegroundColor Green
+Write-Host "    Primary LAN IP:   http://$primaryLanIp:5080" -ForegroundColor White
+if ($detectedIps.Count -gt 1) {
+    Write-Host "    Other Interfaces: $(($detectedIps | Select-Object -Skip 1) -join ', ')" -ForegroundColor DarkGray
+}
+Write-Host "    Auto-Discovery:   UDP Broadcast on port 5082 (Active)" -ForegroundColor Cyan
 
 # 1. Initialize Breach Workspace
 $WorkspaceDir = "C:\BreachWorkspace"
@@ -49,23 +103,21 @@ try {
     Write-Host "[!] Note: Using local fallback workspace: $WorkspaceDir" -ForegroundColor Yellow
 }
 
-# Detect LAN IP for multi-device connectivity
-$lanIp = "127.0.0.1"
-$availableIps = @()
-try {
-    $availableIps = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object { 
-        $_.IPAddress -notlike "127.*" -and 
-        $_.IPAddress -notlike "169.254.*" -and 
-        $_.InterfaceAlias -notmatch "vEthernet|Virtual|Loopback|VMware|Host-Only" 
+# If participant-only mode requested without host services
+if ($Participant) {
+    $kioskExe = "$RogueRoot\kiosk\LabKiosk\bin\Debug\net9.0-windows\LabKiosk.exe"
+    if (!(Test-Path $kioskExe)) {
+        $kioskExe = "$RogueRoot\kiosk\LabKiosk\bin\SelfContained\LabKiosk.exe"
     }
-    # Prefer Wi-Fi adapter if present
-    $wifi = $availableIps | Where-Object { $_.InterfaceAlias -match "Wi-Fi|Wireless" } | Select-Object -First 1
-    if ($wifi) {
-        $lanIp = $wifi.IPAddress
-    } elseif ($availableIps.Count -gt 0) {
-        $lanIp = $availableIps[0].IPAddress
+    if (!(Test-Path $kioskExe)) {
+        Write-Host "[*] Building LabKiosk application..." -ForegroundColor Cyan
+        dotnet build "$RogueRoot\kiosk\LabKiosk\LabKiosk.csproj" -c Debug | Out-Null
     }
-} catch { }
+    $targetUrl = if ($ServerUrl) { $ServerUrl } else { "http://$primaryLanIp:5080" }
+    Write-Host "[*] Launching Participant Kiosk (Connecting dynamically to $targetUrl)..." -ForegroundColor Green
+    Start-Process -FilePath $kioskExe -ArgumentList "--server `"$targetUrl`""
+    exit 0
+}
 
 try {
 # 2. Check and Start Target Website (Port 3000)
@@ -119,7 +171,7 @@ if ($isServerRunning) {
 }
 
 # Wait for services to be ready
-Write-Host "[*] Verifying all background services..." -ForegroundColor Cyan
+Write-Host "[*] Verifying background services..." -ForegroundColor Cyan
 $ready = $false
 for ($i = 0; $i -lt 15; $i++) {
     Start-Sleep -Milliseconds 600
@@ -138,14 +190,19 @@ if ($ready) {
 
 # 5. Launch Kiosk App or Host Mode
 $kioskExe = "$RogueRoot\kiosk\LabKiosk\bin\Debug\net9.0-windows\LabKiosk.exe"
+if (!(Test-Path $kioskExe)) {
+    $kioskExe = "$RogueRoot\kiosk\LabKiosk\bin\SelfContained\LabKiosk.exe"
+}
 
 if ($HostMode) {
     Write-Host "`n==========================================================" -ForegroundColor Green
-    Write-Host " ROGUE AI: ORGANIZER COMMAND CENTER ONLINE" -ForegroundColor Green
+    Write-Host " ROGUE AI: ORGANIZER COMMAND CENTER ONLINE (DYNAMIC LAN)  " -ForegroundColor Green
     Write-Host "==========================================================" -ForegroundColor Green
     Write-Host "Local Admin URL:      http://127.0.0.1:5080/admin/" -ForegroundColor Cyan
-    Write-Host "LAN Admin URL:        http://${lanIp}:5080/admin/" -ForegroundColor Cyan
-    Write-Host "Participant Download: http://${lanIp}:5080/download" -ForegroundColor Magenta
+    Write-Host "LAN Admin URL:        http://${primaryLanIp}:5080/admin/" -ForegroundColor Cyan
+    Write-Host "Participant Download: http://${primaryLanIp}:5080/download" -ForegroundColor Magenta
+    Write-Host "Direct Setup Link:    http://${primaryLanIp}:5080/RogueAI-Setup.exe" -ForegroundColor Magenta
+    Write-Host "UDP LAN Discovery:    Broadcasting on port 5082 (Zero-Config)" -ForegroundColor Green
     Write-Host "Credentials:          admin / admin123456" -ForegroundColor Yellow
     Write-Host "==========================================================" -ForegroundColor Green
 
@@ -153,18 +210,17 @@ if ($HostMode) {
     Start-Process "http://127.0.0.1:5080/admin/"
 
     Write-Host "`n[+] Control Plane and Evaluation Engine are active." -ForegroundColor Green
-    Write-Host "[*] Participant kiosks can now connect to: http://${lanIp}:5080" -ForegroundColor Cyan
-    if ($availableIps.Count -gt 1) {
-        Write-Host "[*] Additional network interfaces detected:" -ForegroundColor DarkGray
-        foreach ($ip in $availableIps) {
-            Write-Host "    -> http://$($ip.IPAddress):5080/download ($($ip.InterfaceAlias))" -ForegroundColor DarkGray
+    Write-Host "[*] Participant kiosks will automatically detect and connect to this host." -ForegroundColor Cyan
+    if ($detectedIps.Count -gt 1) {
+        Write-Host "[*] Additional network interfaces available:" -ForegroundColor DarkGray
+        foreach ($ip in ($detectedIps | Select-Object -Skip 1)) {
+            Write-Host "    -> http://${ip}:5080/download" -ForegroundColor DarkGray
         }
     }
     Write-Host "[*] Press ENTER in this window to stop all services..." -ForegroundColor Yellow
     try {
         [void][System.Console]::ReadLine()
     } catch {
-        # Fallback if non-interactive
         Start-Sleep -Seconds 86400
     }
 } else {
