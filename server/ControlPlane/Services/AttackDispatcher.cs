@@ -67,4 +67,132 @@ public sealed class AttackDispatcher(
             }
         });
     }
+
+    /// <summary>Resets an attack by restoring clean files, deleting delivery state, and notifying kiosks.</summary>
+    public async Task<bool> ResetAsync(int attackId, string? target, WorkspaceStore store, CancellationToken ct = default)
+    {
+        var touches = attackId switch
+        {
+            1 => new List<string> { "lib/html.js", "public/style.css" },
+            2 => new List<string> { "routes/posts.js", "routes/search.js" },
+            3 => new List<string> { "routes/search.js" },
+            4 => new List<string> { "routes/api.js" },
+            5 => new List<string> { "app.js" },
+            6 => new List<string> { "routes/api.js" },
+            7 => new List<string> { "package.json", "server.js" },
+            8 => new List<string> { "lib/auth.js" },
+            9 => new List<string> { "routes/comments.js" },
+            10 => new List<string> { "lib/web.js" },
+            _ => new List<string>()
+        };
+
+        var participants = new List<string>();
+        if (!string.IsNullOrEmpty(target))
+        {
+            participants.Add(target);
+        }
+        else
+        {
+            using var c = db.Open();
+            using var cmd = c.CreateCommand();
+            cmd.CommandText = "SELECT id FROM participants";
+            using var r = cmd.ExecuteReader();
+            while (r.Read()) participants.Add(r.GetString(0));
+        }
+
+        foreach (var pid in participants)
+        {
+            store.RestoreFiles(pid, touches);
+            using (var c = db.Open())
+            using (var cmd = c.CreateCommand())
+            {
+                cmd.CommandText = "DELETE FROM attack_deliveries WHERE attack_id = $a AND participant_id = $p";
+                cmd.Parameters.AddWithValue("$a", attackId);
+                cmd.Parameters.AddWithValue("$p", pid);
+                cmd.ExecuteNonQuery();
+            }
+            db.Log("ATTACK_RESET", pid, attackId);
+            await hub.Clients.Group($"p:{pid}").SendAsync(HubEvents.AttackReset, attackId, ct);
+        }
+
+        if (string.IsNullOrEmpty(target))
+        {
+            using (var c = db.Open())
+            using (var cmd = c.CreateCommand())
+            {
+                cmd.CommandText = "UPDATE attacks SET state = 'scheduled' WHERE id = $i";
+                cmd.Parameters.AddWithValue("$i", attackId);
+                cmd.ExecuteNonQuery();
+            }
+            await hub.Clients.All.SendAsync(HubEvents.AttackReset, attackId, ct);
+        }
+
+        return true;
+    }
+
+    /// <summary>Resets ALL attacks across all participants, restoring all original template files and resetting attack states.</summary>
+    public async Task<int> ResetAllAsync(string? target, WorkspaceStore store, CancellationToken ct = default)
+    {
+        var allAttacks = new List<int>();
+        using (var c = db.Open())
+        using (var cmd = c.CreateCommand())
+        {
+            cmd.CommandText = "SELECT id FROM attacks ORDER BY id";
+            using var r = cmd.ExecuteReader();
+            while (r.Read()) allAttacks.Add(r.GetInt32(0));
+        }
+
+        var count = 0;
+        foreach (var id in allAttacks)
+        {
+            if (await ResetAsync(id, target, store, ct)) count++;
+        }
+        return count;
+    }
+
+    /// <summary>Randomly picks an un-fired/un-delivered attack and fires it.</summary>
+    public async Task<int?> FireRandomAsync(string? target, CancellationToken ct = default)
+    {
+        var allAttacks = new List<int>();
+        using (var c = db.Open())
+        using (var cmd = c.CreateCommand())
+        {
+            cmd.CommandText = "SELECT id FROM attacks ORDER BY id";
+            using var r = cmd.ExecuteReader();
+            while (r.Read()) allAttacks.Add(r.GetInt32(0));
+        }
+        if (allAttacks.Count == 0) return null;
+
+        List<int> candidates;
+        if (!string.IsNullOrEmpty(target))
+        {
+            var activeOrSolved = new HashSet<int>();
+            using (var c = db.Open())
+            using (var cmd = c.CreateCommand())
+            {
+                cmd.CommandText = "SELECT attack_id FROM attack_deliveries WHERE participant_id = $p";
+                cmd.Parameters.AddWithValue("$p", target);
+                using var r = cmd.ExecuteReader();
+                while (r.Read()) activeOrSolved.Add(r.GetInt32(0));
+            }
+            candidates = allAttacks.Where(a => !activeOrSolved.Contains(a)).ToList();
+        }
+        else
+        {
+            candidates = new List<int>();
+            using (var c = db.Open())
+            using (var cmd = c.CreateCommand())
+            {
+                cmd.CommandText = "SELECT id FROM attacks WHERE state <> 'fired' ORDER BY id";
+                using var r = cmd.ExecuteReader();
+                while (r.Read()) candidates.Add(r.GetInt32(0));
+            }
+        }
+
+        if (candidates.Count == 0) candidates = allAttacks;
+
+        var chosen = candidates[Random.Shared.Next(candidates.Count)];
+        await FireAsync(chosen, target, ct);
+        return chosen;
+    }
 }

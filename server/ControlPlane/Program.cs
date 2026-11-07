@@ -270,7 +270,7 @@ app.MapPost("/api/kiosk/register", async (RegisterRequest req, HttpRequest httpR
         upd.Parameters.AddWithValue("$t", DateTime.UtcNow.ToString("O"));
         upd.Parameters.AddWithValue("$id", id);
         upd.ExecuteNonQuery();
-        db.Log("KIOSK_UPDATED", id, payloadJson: JsonSerializer.Serialize(new { name = req.Name, deskId = desk, ip = remoteIp }));
+        db.Log("KIOSK_UPDATED", id, payloadJson: JsonSerializer.Serialize(new { name = req.Name, deskId = desk, ip = remoteIp, github = req.GitHubHandle, google = req.GoogleAccount }));
         await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, id);
     }
     else
@@ -286,7 +286,7 @@ app.MapPost("/api/kiosk/register", async (RegisterRequest req, HttpRequest httpR
         ins.Parameters.AddWithValue("$ip", remoteIp);
         ins.Parameters.AddWithValue("$t", DateTime.UtcNow.ToString("O"));
         ins.ExecuteNonQuery();
-        db.Log("KIOSK_REGISTERED", id, payloadJson: JsonSerializer.Serialize(new { name = req.Name, deskId = desk, ip = remoteIp }));
+        db.Log("KIOSK_REGISTERED", id, payloadJson: JsonSerializer.Serialize(new { name = req.Name, deskId = desk, ip = remoteIp, github = req.GitHubHandle, google = req.GoogleAccount }));
         await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, id);
     }
 
@@ -1082,6 +1082,33 @@ app.MapPost("/api/admin/attacks/{id:int}/fire-arena", async (int id, HttpRequest
     catch (InvalidOperationException ex) { return Results.Conflict(new { error = ex.Message }); }
 });
 
+app.MapPost("/api/admin/attacks/{id:int}/reset", async (int id, HttpRequest r, Database db, AttackDispatcher dispatcher, WorkspaceStore store) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+    var target = r.Query["target"].ToString();
+    var ok = await dispatcher.ResetAsync(id, string.IsNullOrEmpty(target) ? null : target, store);
+    return Results.Ok(new { success = ok, attackId = id });
+});
+
+app.MapPost("/api/admin/attacks/reset-all", async (HttpRequest r, Database db, AttackDispatcher dispatcher, WorkspaceStore store) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+    var target = r.Query["target"].ToString();
+    var count = await dispatcher.ResetAllAsync(string.IsNullOrEmpty(target) ? null : target, store);
+    return Results.Ok(new { success = true, resetCount = count });
+});
+
+app.MapPost("/api/admin/attacks/fire-random", async (HttpRequest r, Database db, AttackDispatcher dispatcher) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+    var target = r.Query["target"].ToString();
+    var chosen = await dispatcher.FireRandomAsync(string.IsNullOrEmpty(target) ? null : target);
+    return Results.Ok(new { success = chosen.HasValue, attackId = chosen });
+});
+
 app.MapGet("/admin/attacks/dispatch-status", (HttpRequest r, Database db, RogueAgentOrchestrator orch) =>
 {
     var authErr = AuthorizeAdmin(r, db);
@@ -1160,7 +1187,7 @@ app.MapPost("/api/kiosk/{id}/hint/{attackId:int}/{level:int}", (string id, int a
 
 app.Run();
 
-public sealed record RegisterRequest(string Name, string KioskId, string? DeskId = null, string? Password = null);
+public sealed record RegisterRequest(string Name, string KioskId, string? DeskId = null, string? Password = null, string? GitHubHandle = null, string? GoogleAccount = null);
 public sealed record EnrollRequest(string Token, string KioskId, string Name);
 public sealed record TelemetryRequest(string Type, JsonElement? Payload);
 public sealed record BroadcastRequest(string Message);

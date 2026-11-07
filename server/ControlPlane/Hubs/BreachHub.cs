@@ -85,6 +85,7 @@ public static class HubEvents
 {
     public const string BreachImminent = "BREACH_IMMINENT";
     public const string AttackLanded = "ATTACK_LANDED";
+    public const string AttackReset = "ATTACK_RESET";
     public const string Broadcast = "BROADCAST";
     public const string Paused = "PAUSED";
     public const string Resumed = "RESUMED";

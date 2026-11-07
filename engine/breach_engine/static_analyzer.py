@@ -337,3 +337,4 @@ def analyze_directory(dir_path: Path, touches: list[str] | None = None) -> dict[
         "comment_ratio": avg_comment,
         "max_function_length": max_fn,
     }
+

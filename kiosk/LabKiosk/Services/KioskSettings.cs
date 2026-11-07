@@ -13,13 +13,36 @@ public sealed class KioskSettings
     public string? DeskId { get; set; }
     public string? DeskToken { get; set; }
     public string? Password { get; set; }
+    public bool Onboarded { get; set; } = false;
+    public string GitHubHandle { get; set; } = "";
+    public string GoogleAccount { get; set; } = "";
+    public string DataPath { get; set; } = @"%LOCALAPPDATA%\BreachKiosk";
+    public string SiteTemplatePath { get; set; } = "";
+    public string NodePath { get; set; } = "node";
+    public string AgyPath { get; set; } = @"%LOCALAPPDATA%\agy\bin\agy.exe";
+    public string OpenCodePath { get; set; } = "opencode";
+    public string OpenCodeModel { get; set; } = "";
+    public int OpenCodePort { get; set; } = 4096;
+    public int OpenCodeCap { get; set; } = 30;
 
     public static KioskSettings Load()
     {
         var path = Path.Combine(AppContext.BaseDirectory, "kiosk.json");
-        return File.Exists(path)
+        var s = File.Exists(path)
             ? JsonSerializer.Deserialize<KioskSettings>(File.ReadAllText(path), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new()
             : new();
+
+        s.WorkspacePath = Environment.ExpandEnvironmentVariables(s.WorkspacePath ?? @"C:\BreachWorkspace");
+        s.DataPath = Environment.ExpandEnvironmentVariables(s.DataPath ?? @"%LOCALAPPDATA%\BreachKiosk");
+        s.AgyPath = Environment.ExpandEnvironmentVariables(s.AgyPath ?? @"%LOCALAPPDATA%\agy\bin\agy.exe");
+        s.OpenCodePath = Environment.ExpandEnvironmentVariables(s.OpenCodePath ?? "opencode");
+        s.NodePath = Environment.ExpandEnvironmentVariables(s.NodePath ?? "node");
+
+        var bundledNode = Path.Combine(AppContext.BaseDirectory, "node", "node.exe");
+        if ((s.NodePath == "node" || !File.Exists(s.NodePath)) && File.Exists(bundledNode))
+            s.NodePath = bundledNode;
+
+        return s;
     }
 
     public void Save()

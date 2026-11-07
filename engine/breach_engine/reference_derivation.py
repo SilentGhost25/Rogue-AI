@@ -178,3 +178,4 @@ def compute_composite_score(
         "composite_score": composite,
         "certified": gated,
     }
+

@@ -219,7 +219,7 @@ public partial class MainWindow : Window
             }
             else
             {
-                _participantId = await _api.RegisterAsync(_settings.DisplayName, _settings.KioskId, _settings.DeskId, _settings.Password);
+                _participantId = await _api.RegisterAsync(_settings.DisplayName, _settings.KioskId, _settings.DeskId, _settings.Password, _settings.GitHubHandle, _settings.GoogleAccount);
             }
 
             // 5. Start continuous snapshot sync (every 15s), telemetry collector, and clock sync
@@ -234,6 +234,7 @@ public partial class MainWindow : Window
 
             _hub.Imminent += async (attackId, seconds, landAtUtcStr) =>
             {
+                Dispatcher.InvokeAsync(() => Sfx.Siren());
                 await Dispatcher.InvokeAsync(() =>
                 {
                     StatusText.Text = $"⚠ IMMINENT BREACH #{attackId} in {seconds}s! Saving workspace & pre-buffering payload...";
@@ -304,6 +305,7 @@ public partial class MainWindow : Window
             {
                 if (status == "SOLVED")
                 {
+                    Sfx.Fanfare();
                     VerdictBadge.Visibility = Visibility.Visible;
                     VerdictBadge.Background = (System.Windows.Media.SolidColorBrush)FindResource("Ok");
                     VerdictBadgeText.Text = "SOLVED";

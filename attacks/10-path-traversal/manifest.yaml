@@ -1,0 +1,24 @@
+id: 10
+title: "Static File Path Traversal"
+name: "Static File Path Traversal"
+codename: "PATH_TRAVERSAL"
+band: 3
+fires_at: "18:00"
+window_minutes: 45
+dispatch: { mode: manual, time: "18:00:00", imminent_seconds: 10 }
+payload: { path: "payload/", format: full }
+tests:
+  path: "tests/"
+  tiers:
+    - { id: tier1_traversal_blocked, weight: 60 }
+    - { id: tier2_static_functional, weight: 40 }
+touches:
+  - lib/web.js
+fix_requires: "Enforce strict boundary check on static file paths"
+weights:
+  speed: 30
+  performance: 25
+  prompt_efficiency: 20
+  quality: 15
+  resource: 10
+status: ready

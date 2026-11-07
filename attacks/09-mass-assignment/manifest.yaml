@@ -1,0 +1,24 @@
+id: 9
+title: "Parameter Pollution & Mass Assignment"
+name: "Parameter Pollution & Mass Assignment"
+codename: "MASS_ASSIGN"
+band: 2
+fires_at: "17:30"
+window_minutes: 45
+dispatch: { mode: manual, time: "17:30:00", imminent_seconds: 10 }
+payload: { path: "payload/", format: full }
+tests:
+  path: "tests/"
+  tiers:
+    - { id: tier1_mass_assign_blocked, weight: 60 }
+    - { id: tier2_comments_functional, weight: 40 }
+touches:
+  - routes/comments.js
+fix_requires: "Do not permit user role escalation from comment body parameters"
+weights:
+  speed: 30
+  performance: 25
+  prompt_efficiency: 20
+  quality: 15
+  resource: 10
+status: ready

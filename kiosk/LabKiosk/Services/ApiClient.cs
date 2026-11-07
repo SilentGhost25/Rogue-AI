@@ -28,9 +28,9 @@ public sealed class ApiClient
         return (body!.ParticipantId, body.DeskId);
     }
 
-    public async Task<string> RegisterAsync(string name, string kioskId, string? deskId = null, string? password = null)
+    public async Task<string> RegisterAsync(string name, string kioskId, string? deskId = null, string? password = null, string? gitHubHandle = null, string? googleAccount = null)
     {
-        var res = await _http.PostAsJsonAsync("/api/kiosk/register", new { name, kioskId, deskId, password });
+        var res = await _http.PostAsJsonAsync("/api/kiosk/register", new { name, kioskId, deskId, password, gitHubHandle, googleAccount });
         res.EnsureSuccessStatusCode();
         var body = await res.Content.ReadFromJsonAsync<RegisterResponse>();
         if (!string.IsNullOrEmpty(body?.Token))

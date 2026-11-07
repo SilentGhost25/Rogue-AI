@@ -123,3 +123,4 @@ public sealed class TelemetryCollector : IDisposable
         _timer?.Dispose();
     }
 }
+

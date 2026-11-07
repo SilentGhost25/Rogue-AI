@@ -141,8 +141,8 @@ public class RogueAgentOrchestratorTests : IDisposable
 
         var hub = new DummyHubContext();
         var orch = new RogueAgentOrchestrator(hub, _db, new SystemClock(), NullLogger<RogueAgentOrchestrator>.Instance, config);
-        Assert.Equal(8, orch.Attacks.Count);
-        for (int i = 0; i < 8; i++)
+        Assert.Equal(11, orch.Attacks.Count);
+        for (int i = 0; i < 11; i++)
         {
             Assert.Equal(i, orch.Attacks[i].Id);
         }

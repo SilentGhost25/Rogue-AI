@@ -342,14 +342,12 @@ if (!eventStartTime) {
   eventStartTime = Date.now().toString();
   localStorage.setItem('rogue_event_start', eventStartTime);
 }
-const EVENT_DURATION_MS = 2 * 60 * 60 * 1000; // 2 hours in ms
 
 function updateEventTimer() {
   const timerEl = document.getElementById('event-timer');
   if (!timerEl) return;
-  const elapsed = Date.now() - parseInt(eventStartTime, 10);
-  const remainingMs = Math.max(0, EVENT_DURATION_MS - elapsed);
-  const totalSeconds = Math.floor(remainingMs / 1000);
+  const elapsedMs = Math.max(0, Date.now() - parseInt(eventStartTime, 10));
+  const totalSeconds = Math.floor(elapsedMs / 1000);
 
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
@@ -357,14 +355,7 @@ function updateEventTimer() {
 
   const pad = n => String(n).padStart(2, '0');
   timerEl.textContent = `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
-
-  if (remainingMs <= 0) {
-    timerEl.style.color = '#ef4444';
-  } else if (remainingMs < 15 * 60 * 1000) {
-    timerEl.style.color = '#f59e0b';
-  } else {
-    timerEl.style.color = '#38bdf8';
-  }
+  timerEl.style.color = '#38bdf8';
 }
 
 async function init() {

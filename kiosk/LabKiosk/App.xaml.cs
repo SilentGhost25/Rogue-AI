@@ -42,7 +42,20 @@ public partial class App : Application
             return;
         }
 #endif
+        var settings = KioskSettings.Load();
+        if (!settings.Onboarded || string.IsNullOrWhiteSpace(settings.DisplayName) || settings.DisplayName == Environment.MachineName)
+        {
+            var onboard = new OnboardingWindow(settings);
+            if (onboard.ShowDialog() != true)
+            {
+                Shutdown();
+                return;
+            }
+            config = KioskConfig.FromArgs(args);
+        }
+
         var mainWin = new MainWindow(config);
+        MainWindow = mainWin;
         mainWin.Show();
     }
 

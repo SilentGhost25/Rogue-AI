@@ -9,10 +9,24 @@ public sealed class WorkspaceStore
     private static readonly string[] BlockedSegments = { "node_modules", ".git", ".breach-backup" };
     private const long MaxFileBytes = 2 * 1024 * 1024;
     private readonly string _root;
+    private readonly string _template;
 
     public WorkspaceStore(IConfiguration config)
     {
         _root = Path.GetFullPath(config["Breach:WorkspacesPath"] ?? "data/workspaces");
+        var configuredTemplate = config["Breach:SiteTemplatePath"];
+        if (!string.IsNullOrEmpty(configuredTemplate) && Directory.Exists(configuredTemplate))
+        {
+            _template = Path.GetFullPath(configuredTemplate);
+        }
+        else if (Directory.Exists("site"))
+        {
+            _template = Path.GetFullPath("site");
+        }
+        else
+        {
+            _template = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "site"));
+        }
         Directory.CreateDirectory(_root);
     }
 
@@ -54,6 +68,24 @@ public sealed class WorkspaceStore
             written++;
         }
         return (written, rejected);
+    }
+
+    /// <summary>Restores specific relative paths in a participant workspace back to the clean site template.</summary>
+    public bool RestoreFiles(string participantId, IEnumerable<string> relPaths)
+    {
+        var dir = PathFor(participantId);
+        if (!Directory.Exists(dir)) return false;
+        foreach (var rel in relPaths)
+        {
+            var src = Path.Combine(_template, rel.Replace('/', Path.DirectorySeparatorChar));
+            var dst = ResolveSafe(participantId, rel);
+            if (dst is not null && File.Exists(src))
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(dst)!);
+                File.Copy(src, dst, overwrite: true);
+            }
+        }
+        return true;
     }
 }
 

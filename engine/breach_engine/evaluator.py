@@ -390,9 +390,13 @@ def evaluate_attack(attack_id: int, attack_dir: Path, workspace: Path, timeout_s
 
         # Build sanitized, leak-proof environment
         port = find_free_port()
+        sys_root = os.environ.get("SystemRoot") or os.environ.get("SYSTEMROOT", "C:\\WINDOWS")
         env = {
-            "SYSTEMROOT": os.environ.get("SYSTEMROOT", "C:\\WINDOWS"),
+            "SystemRoot": sys_root,
+            "SYSTEMROOT": sys_root,
+            "windir": os.environ.get("windir", sys_root),
             "PATH": os.environ.get("PATH", ""),
+            "PATHEXT": os.environ.get("PATHEXT", ".COM;.EXE;.BAT;.CMD"),
             "TEMP": os.environ.get("TEMP", "C:\\Windows\\Temp"),
             "TMP": os.environ.get("TMP", "C:\\Windows\\Temp"),
             "PORT": str(port),
