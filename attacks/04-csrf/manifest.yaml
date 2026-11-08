@@ -7,7 +7,8 @@ sequence_slot: 4
 fires_at: "10:45"
 touches:
   - routes/traffic.js
-fix_requires: "Enforce operator authorization on traffic signal overrides"
+  - routes/power.js
+fix_requires: "Enforce operator authorization across both traffic overrides and power allocation endpoints"
 weights:
   speed: 30
   performance: 25
@@ -20,13 +21,14 @@ scoring:
   speed_bonus_max: 1500
   speed_bonus_window_seconds: 900
   late_solve_multiplier: 0.70
-payload: { path: "payload/", format: full, conflict_files: ["routes/traffic.js"] }
+payload: { path: "payload/", format: full, conflict_files: ["routes/traffic.js", "routes/power.js"] }
 tests:
   path: "tests/"
   tiers:
-    - { id: tier1_blocked_cross_origin, weight: 60 }
-    - { id: tier2_legit_still_works,    weight: 40 }
+    - { id: tier1_blocked, weight: 40 }
+    - { id: tier2_sibling_blocked, weight: 30 }
+    - { id: tier3_operator_works, weight: 30 }
 hints: { path: "hints.yaml" }
 narrative:
-  landed: "OPEN_GATE has stripped operator authorization from traffic signal overrides. Any caller can disrupt grid intersections."
+  landed: "OPEN_GATE has stripped operator authorization from municipal dispatch APIs. Both traffic signals and power distribution routes are exposed."
   broadcast_title: "ATTACK 4: MISSING AUTH CHECK"

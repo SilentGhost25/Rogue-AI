@@ -116,3 +116,4 @@ module.exports = function (db) {
 
   return r;
 };
+

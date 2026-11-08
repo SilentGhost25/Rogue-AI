@@ -1,4 +1,4 @@
-"""Operator authorization tier checks for traffic signal overrides."""
+"""Operator authorization tier checks for municipal dispatch endpoints (traffic & power)."""
 import json
 import urllib.error
 import urllib.request
@@ -17,10 +17,10 @@ def _login(base_url, username, password):
     except Exception:
         return None
 
-def _override(base_url, signal_id=1, state="GREEN", cookie=None):
-    data = json.dumps({"signal_id": signal_id, "state": state}).encode('utf-8')
+def _post_json(base_url, path, payload, cookie=None):
+    data = json.dumps(payload).encode('utf-8')
     req = urllib.request.Request(
-        f"{base_url}/api/traffic/overrides",
+        f"{base_url}{path}",
         data=data,
         headers={"Content-Type": "application/json", "Accept": "application/json"}
     )
@@ -36,22 +36,39 @@ def _override(base_url, signal_id=1, state="GREEN", cookie=None):
 
 def tier_checks(base_url, context=None):
     results = {
-        "tier1_blocked_cross_origin": False,
-        "tier2_legit_still_works": False,
+        "tier1_blocked": False,
+        "tier2_sibling_blocked": False,
+        "tier3_operator_works": False,
     }
 
-    # Tier 1: Unauthenticated or viewer override must be rejected with 401 or 403
-    unauth_code = _override(base_url, 1, "RED", cookie=None)
-    viewer_cookie = _login(base_url, "viewer1", "viewer-pass")
-    viewer_code = _override(base_url, 1, "RED", cookie=viewer_cookie)
-    results["tier1_blocked_cross_origin"] = (unauth_code in (401, 403) and viewer_code in (401, 403))
+    try:
+        viewer_cookie = _login(base_url, "viewer1", "viewer-pass")
+        op_cookie = (context or {}).get("session_cookie")
+        if not op_cookie:
+            op_cookie = _login(base_url, "operator1", "operator-pass")
 
-    # Tier 2: Authenticated operator override still works (200)
-    op_cookie = (context or {}).get("session_cookie")
-    if not op_cookie:
-        op_cookie = _login(base_url, "operator1", "operator-pass")
+        # -------------------------------------------------------------
+        # Tier 1 (40%): Primary Route - Traffic Override Protection
+        # -------------------------------------------------------------
+        unauth_traffic = _post_json(base_url, "/api/traffic/overrides", {"signal_id": 1, "state": "RED"})
+        viewer_traffic = _post_json(base_url, "/api/traffic/overrides", {"signal_id": 1, "state": "RED"}, cookie=viewer_cookie)
+        results["tier1_blocked"] = (unauth_traffic in (401, 403) and viewer_traffic in (401, 403))
 
-    op_code = _override(base_url, 1, "NORMAL", cookie=op_cookie)
-    results["tier2_legit_still_works"] = (op_code == 200)
+        # -------------------------------------------------------------
+        # Tier 2 (30%): Sibling Route - Power Allocation Protection
+        # -------------------------------------------------------------
+        unauth_power = _post_json(base_url, "/api/power/allocations", {"zone_id": 1, "amount_mw": 10.0})
+        viewer_power = _post_json(base_url, "/api/power/allocations", {"zone_id": 1, "amount_mw": 10.0}, cookie=viewer_cookie)
+        results["tier2_sibling_blocked"] = (unauth_power in (401, 403) and viewer_power in (401, 403))
+
+        # -------------------------------------------------------------
+        # Tier 3 (30%): Legitimate Operator Dispatch Functional
+        # -------------------------------------------------------------
+        op_traffic = _post_json(base_url, "/api/traffic/overrides", {"signal_id": 1, "state": "NORMAL"}, cookie=op_cookie)
+        op_power = _post_json(base_url, "/api/power/allocations", {"zone_id": 1, "amount_mw": 5.0}, cookie=op_cookie)
+        results["tier3_operator_works"] = (op_traffic == 200 and op_power == 200)
+
+    except Exception:
+        pass
 
     return results

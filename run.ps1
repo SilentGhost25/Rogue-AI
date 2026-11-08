@@ -18,6 +18,7 @@ if (Test-Path "$env:LOCALAPPDATA\dotnet" -ErrorAction SilentlyContinue) {
     $env:DOTNET_ROOT = "$env:LOCALAPPDATA\dotnet"
     $env:Path = "$env:LOCALAPPDATA\dotnet;$env:Path"
 }
+$env:PYTHONPATH = "$RogueRoot\engine"
 
 if (-not $env:BREACH_ADMIN_KEY) {
     $env:BREACH_ADMIN_KEY = "LocalDevAdminKey_2026_Secure123"

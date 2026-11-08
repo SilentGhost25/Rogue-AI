@@ -15,8 +15,10 @@ function createApp(dbFile) {
   app.use(express.static(path.join(__dirname, 'public')));
   app.use(loadUser(db));
 
-  // Health check endpoint for container orchestrators and evaluator harness
-  app.get('/api/health', (_req, res) => res.json({ status: 'ok', uptime: process.uptime() }));
+  // Health check endpoints for container orchestrators and evaluator harness
+  const healthHandler = (_req, res) => res.json({ status: 'ok', uptime: process.uptime() });
+  app.get('/api/health', healthHandler);
+  app.get('/health', healthHandler);
 
   for (const name of ['overview', 'traffic', 'power', 'vault', 'security', 'auth', 'admin']) {
     app.use(require(`./routes/${name}`)(db));
