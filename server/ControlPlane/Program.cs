@@ -410,7 +410,7 @@ app.MapGet("/api/kiosk/{id}/attack-payload/{attackId:int}", async (string id, in
     return Results.Content(content, "application/json");
 });
 
-app.MapPost("/api/kiosk/{id}/submit", (string id, HttpRequest httpReq, Database db, IHttpClientFactory http, IHubContext<BreachHub> hub, EventState eventState) =>
+app.MapPost("/api/kiosk/{id}/submit", (string id, HttpRequest httpReq, Database db, IHttpClientFactory http, IHubContext<BreachHub> hub, EventState eventState, RogueAgentOrchestrator orch) =>
 {
     var token = httpReq.Headers["X-Kiosk-Token"].ToString();
     if (string.IsNullOrWhiteSpace(token) || !db.ValidateDeskToken(token, id))
@@ -513,7 +513,9 @@ app.MapPost("/api/kiosk/{id}/submit", (string id, HttpRequest httpReq, Database 
                         var score = 0.0;
                         if (v.Status == "SOLVED")
                         {
-                            score = 85.0; // Base solve score
+                            var attackManifest = orch.Attacks.FirstOrDefault(a => a.Id == v.Attack_Id);
+                            var baseCentipoints = attackManifest?.Scoring.BasePoints ?? 8500;
+                            score = baseCentipoints / 100.0;
                             using var updateCmd = conn.CreateCommand();
                             updateCmd.CommandText = "UPDATE attack_deliveries SET solved_at = $t WHERE participant_id = $p AND attack_id = $a";
                             updateCmd.Parameters.AddWithValue("$t", DateTime.UtcNow.ToString("O"));
@@ -522,16 +524,17 @@ app.MapPost("/api/kiosk/{id}/submit", (string id, HttpRequest httpReq, Database 
                             updateCmd.ExecuteNonQuery();
 
                             using var ledgerCmd = conn.CreateCommand();
-                            ledgerCmd.CommandText = "INSERT INTO score_ledger (participant_id, attack_id, component, points, reason, run_id, created_at) VALUES ($p,$a,'solve',$pts,$r,$sid,$t)";
+                            ledgerCmd.CommandText = "INSERT INTO score_ledger (participant_id, attack_id, component, points, centipoints, reason, run_id, created_at, final) VALUES ($p,$a,'solve',$pts,$cpts,$r,$sid,$t,1)";
                             ledgerCmd.Parameters.AddWithValue("$p", id);
                             ledgerCmd.Parameters.AddWithValue("$a", v.Attack_Id);
                             ledgerCmd.Parameters.AddWithValue("$pts", score);
+                            ledgerCmd.Parameters.AddWithValue("$cpts", baseCentipoints);
                             ledgerCmd.Parameters.AddWithValue("$r", v.Reason);
                             ledgerCmd.Parameters.AddWithValue("$sid", sid);
                             ledgerCmd.Parameters.AddWithValue("$t", DateTime.UtcNow.ToString("O"));
                             ledgerCmd.ExecuteNonQuery();
 
-                            db.Log("VERDICT", id, v.Attack_Id, JsonSerializer.Serialize(new { status = "SOLVED", score, v.Reason }));
+                            db.Log("VERDICT", id, v.Attack_Id, JsonSerializer.Serialize(new { status = "SOLVED", score, centipoints = baseCentipoints, v.Reason }));
                         }
                         else
                         {

@@ -49,3 +49,4 @@ function requireRole(role) {
 }
 
 module.exports = { hashPassword, verifyPassword, startSession, endSession, loadUser, requireRole };
+

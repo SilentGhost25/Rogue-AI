@@ -234,7 +234,7 @@ public partial class MainWindow : Window
 
             _hub.Imminent += async (attackId, seconds, landAtUtcStr) =>
             {
-                Dispatcher.InvokeAsync(() => Sfx.Siren());
+                _ = Dispatcher.InvokeAsync(() => Sfx.Siren());
                 await Dispatcher.InvokeAsync(() =>
                 {
                     StatusText.Text = $"⚠ IMMINENT BREACH #{attackId} in {seconds}s! Saving workspace & pre-buffering payload...";
@@ -342,7 +342,7 @@ public partial class MainWindow : Window
             StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Alert");
 
             // Prompt user to confirm or update organizer host IP
-            Dispatcher.InvokeAsync(async () =>
+            _ = Dispatcher.InvokeAsync(async () =>
             {
                 var dlg = new ServerConfigDialog(_config.ServerUrl, _config.DeskId) { Owner = this };
                 if (dlg.ShowDialog() == true)
