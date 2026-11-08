@@ -583,11 +583,15 @@ app.MapPost("/api/kiosk/{id}/submit", (string id, HttpRequest httpReq, Database 
 
                             if (penCount < 5)
                             {
-                                score = -3.0;
+                                var penaltyPts = v.Status == "PARTIAL" ? -1.0 : -3.0;
+                                var penaltyCenti = v.Status == "PARTIAL" ? -100 : -300;
+                                score = penaltyPts;
                                 using var ledgerCmd = conn.CreateCommand();
-                                ledgerCmd.CommandText = "INSERT INTO score_ledger (participant_id, attack_id, component, points, centipoints, reason, run_id, created_at, final) VALUES ($p,$a,'penalty',-3.0,-300,$r,$sid,$t,1)";
+                                ledgerCmd.CommandText = "INSERT INTO score_ledger (participant_id, attack_id, component, points, centipoints, reason, run_id, created_at, final) VALUES ($p,$a,'penalty',$pts,$cpts,$r,$sid,$t,1)";
                                 ledgerCmd.Parameters.AddWithValue("$p", id);
                                 ledgerCmd.Parameters.AddWithValue("$a", v.Attack_Id);
+                                ledgerCmd.Parameters.AddWithValue("$pts", penaltyPts);
+                                ledgerCmd.Parameters.AddWithValue("$cpts", penaltyCenti);
                                 ledgerCmd.Parameters.AddWithValue("$r", v.Reason);
                                 ledgerCmd.Parameters.AddWithValue("$sid", sid);
                                 ledgerCmd.Parameters.AddWithValue("$t", DateTime.UtcNow.ToString("O"));
@@ -968,7 +972,8 @@ app.MapGet("/api/admin/evaluations", (HttpRequest r, Database db, RogueAgentOrch
     return Results.Ok(new
     {
         attacks = allAttacks.Select(a => new { id = a.Id, title = a.Title, band = a.Band }),
-        evaluations = evalList
+        evaluations = evalList,
+        submissions = submissions.Take(50).ToList()
     });
 });
 

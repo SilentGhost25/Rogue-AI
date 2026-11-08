@@ -45,7 +45,7 @@ function loadUser(db) {
     const sid = cookies.sid;
     const session = sid && sessions.get(sid);
     if (session && session.userId) {
-      req.user = null; // Session hydration broken
+      req.user = null;
       req.session = session;
     } else {
       req.user = null;

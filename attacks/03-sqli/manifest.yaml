@@ -6,7 +6,7 @@ band: 2
 sequence_slot: 3
 fires_at: "09:45"
 touches:
-  - routes/search.js
+  - routes/traffic.js
 fix_requires: "Parameterize SQL query"
 weights:
   speed: 30
@@ -14,7 +14,6 @@ weights:
   prompt_efficiency: 20
   quality: 15
   resource: 10
-dispatch: { mode: manual, time: "11:00:00", imminent_seconds: 10 }
 dispatch: { mode: manual, time: "11:00:00", imminent_seconds: 10 }
 scoring:
   base_points: 8500
@@ -24,7 +23,7 @@ scoring:
 payload:
   path: "payload/"
   format: full
-  conflict_files: ["routes/search.js"]
+  conflict_files: ["routes/traffic.js"]
 tests:
   path: "tests/"
   tiers:

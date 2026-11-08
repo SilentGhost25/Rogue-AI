@@ -71,7 +71,7 @@ module.exports = function (db) {
     res.send(layout({ title: 'Overview', user: req.user, active: 'overview', body }));
   });
 
-  // REST API: Overview status (requires operator or admin role)
+  // REST API: Overview metrics telemetry
   r.get('/api/overview', (req, res) => {
     const signals = db.prepare('SELECT COUNT(*) AS count FROM traffic_signals').get().count;
     const power = db.prepare('SELECT SUM(current_load_mw) AS total_load, SUM(capacity_mw) AS total_cap FROM power_zones').get();

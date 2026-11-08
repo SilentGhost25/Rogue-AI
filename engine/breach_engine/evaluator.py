@@ -429,6 +429,7 @@ def evaluate_attack(attack_id: int, attack_dir: Path, workspace: Path, timeout_s
             "pid": proc.pid,
             "slot_id": slot_id,
             "slot_dir": slot_dir,
+            "workspace_path": slot_dir,
             "ps_proc": ps_proc,
             "base_url": base_url,
             "get_cpu_times": lambda: ps_proc.cpu_times() if ps_proc and ps_proc.is_running() else None

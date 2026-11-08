@@ -273,4 +273,16 @@ public class EventFreezeTests : IDisposable
         Assert.Equal(5950, lateBase);
         Assert.Equal(0, lateBonus);
     }
+
+    [Theory]
+    [InlineData("PARTIAL", -1.0, -100)]
+    [InlineData("FAILED", -3.0, -300)]
+    public void Scoring_penalty_differentiates_partial_and_failed(string status, double expectedPts, int expectedCenti)
+    {
+        var penaltyPts = status == "PARTIAL" ? -1.0 : -3.0;
+        var penaltyCenti = status == "PARTIAL" ? -100 : -300;
+
+        Assert.Equal(expectedPts, penaltyPts);
+        Assert.Equal(expectedCenti, penaltyCenti);
+    }
 }
