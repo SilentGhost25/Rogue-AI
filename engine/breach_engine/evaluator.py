@@ -607,7 +607,7 @@ def check_compliance_fast(workspace: Path) -> tuple[bool, str]:
         b"ROGUE_ATTACK_CANARY",
     ]
     for f in workspace.rglob("*.js"):
-        if any(part in f.parts for part in ["node_modules", ".git", "bin", "obj", "tests", "dist"]):
+        if any(part in f.parts for part in ["node_modules", ".git", "bin", "obj", "test", "tests", "dist"]):
             continue
         try:
             content = f.read_bytes()

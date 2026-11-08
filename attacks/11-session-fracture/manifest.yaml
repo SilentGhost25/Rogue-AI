@@ -26,9 +26,9 @@ payload: { path: "payload/", format: full, conflict_files: ["lib/auth.js", "rout
 tests:
   path: "tests/"
   tiers:
-    - { id: tier1_correct_identity, weight: 70 }
-    - { id: tier2_role_enforced, weight: 20 }
-    - { id: tier3_no_regression, weight: 10 }
+    - { id: tier1_correct_identity, weight: 30 }
+    - { id: tier2_role_enforced, weight: 60 }
+    - { id: tier3_session_lifecycle, weight: 10 }
 hints: { path: "hints.yaml" }
 narrative:
   landed: "User session state is fractured. Actions return unauthorized or bleed across roles."

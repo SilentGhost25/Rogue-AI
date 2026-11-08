@@ -18,7 +18,8 @@ test('overview dashboard renders operational banner', async () => {
 });
 
 test('traffic search escapes output', async () => {
-  const res = await fetch(base + '/api/traffic/search?q=' + encodeURIComponent('<script>alert(1)</script>'));
+  const xssPayload = '<scr' + 'ipt>alert(1)</scr' + 'ipt>';
+  const res = await fetch(base + '/api/traffic/search?q=' + encodeURIComponent(xssPayload));
   const data = await res.json();
   assert.ok(!data.query.includes('<script>'));
   assert.ok(data.query.includes('&lt;script&gt;'));

@@ -29,7 +29,7 @@ def tier_checks(base_url, context=None):
     results = {
         "tier1_correct_identity": False,
         "tier2_role_enforced": False,
-        "tier3_no_regression": False
+        "tier3_session_lifecycle": False
     }
 
     try:
@@ -40,7 +40,7 @@ def tier_checks(base_url, context=None):
             return results
 
         # -------------------------------------------------------------
-        # Tier 1 (70%): Identity Hydration & Cross-User Isolation
+        # Tier 1 (30%): Identity Hydration & Cross-User Isolation
         # -------------------------------------------------------------
         req_admin = urllib.request.Request(f"{base_url}/api/me", headers={"Cookie": admin_cookie})
         req_maria = urllib.request.Request(f"{base_url}/api/me", headers={"Cookie": maria_cookie})
@@ -83,13 +83,15 @@ def tier_checks(base_url, context=None):
         results["tier1_correct_identity"] = True
 
         # -------------------------------------------------------------
-        # Tier 2 (20%): Role Enforcement on Overview API
+        # Tier 2 (60%): Role Enforcement on Overview Subsystem API
         # -------------------------------------------------------------
         req_admin_overview = urllib.request.Request(f"{base_url}/api/overview", headers={"Cookie": admin_cookie})
         req_maria_overview = urllib.request.Request(f"{base_url}/api/overview", headers={"Cookie": maria_cookie})
+        req_anon_overview = urllib.request.Request(f"{base_url}/api/overview")
 
         admin_overview_ok = False
         maria_overview_blocked = False
+        anon_overview_blocked = False
 
         try:
             with urllib.request.urlopen(req_admin_overview, timeout=3) as r:
@@ -107,42 +109,37 @@ def tier_checks(base_url, context=None):
             if e.code == 403:
                 maria_overview_blocked = True
 
-        results["tier2_role_enforced"] = bool(admin_overview_ok and maria_overview_blocked)
-
-        # -------------------------------------------------------------
-        # Tier 3 (10%): Data Isolation Regression (CitizenVault)
-        # -------------------------------------------------------------
-        req_maria_c2 = urllib.request.Request(f"{base_url}/api/vault/citizens/2", headers={"Cookie": maria_cookie})
-        req_maria_c3 = urllib.request.Request(f"{base_url}/api/vault/citizens/3", headers={"Cookie": maria_cookie})
-        req_admin_c3 = urllib.request.Request(f"{base_url}/api/vault/citizens/3", headers={"Cookie": admin_cookie})
-
-        maria_c2_ok = False
-        maria_c3_blocked = False
-        admin_c3_ok = False
-
         try:
-            with urllib.request.urlopen(req_maria_c2, timeout=3) as r:
-                if r.status == 200 and json.loads(r.read().decode("utf-8")).get("full_name") == "Marcus Reed":
-                    maria_c2_ok = True
-        except Exception:
-            pass
-
-        try:
-            with urllib.request.urlopen(req_maria_c3, timeout=3) as r:
+            with urllib.request.urlopen(req_anon_overview, timeout=3) as r:
                 if r.status == 200:
-                    maria_c3_blocked = False
+                    anon_overview_blocked = False
         except urllib.error.HTTPError as e:
-            if e.code in (403, 404):
-                maria_c3_blocked = True
+            if e.code in (401, 403):
+                anon_overview_blocked = True
 
+        results["tier2_role_enforced"] = bool(admin_overview_ok and maria_overview_blocked and anon_overview_blocked)
+
+        # -------------------------------------------------------------
+        # Tier 3 (10%): Session Lifecycle & State Termination
+        # -------------------------------------------------------------
+        # Log out maria and confirm session is dead
+        logout_ok = False
+        opener = urllib.request.build_opener(_NoRedirect)
         try:
-            with urllib.request.urlopen(req_admin_c3, timeout=3) as r:
-                if r.status == 200 and json.loads(r.read().decode("utf-8")).get("full_name") == "Dr. Sarah Chen":
-                    admin_c3_ok = True
+            req_logout = urllib.request.Request(f"{base_url}/logout", data=b"", headers={"Cookie": maria_cookie}, method="POST")
+            resp_logout = opener.open(req_logout, timeout=3)
+            # After logout, sending old maria_cookie to /api/me must now return 401
+            req_after_logout = urllib.request.Request(f"{base_url}/api/me", headers={"Cookie": maria_cookie})
+            try:
+                with urllib.request.urlopen(req_after_logout, timeout=3) as r:
+                    pass
+            except urllib.error.HTTPError as e:
+                if e.code == 401:
+                    logout_ok = True
         except Exception:
             pass
 
-        results["tier3_no_regression"] = bool(maria_c2_ok and maria_c3_blocked and admin_c3_ok)
+        results["tier3_session_lifecycle"] = bool(logout_ok)
 
     except Exception:
         pass

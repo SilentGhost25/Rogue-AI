@@ -601,17 +601,49 @@ app.MapPost("/api/kiosk/{id}/submit", (string id, HttpRequest httpReq, Database 
                             db.Log("VERDICT", id, v.Attack_Id, JsonSerializer.Serialize(new { status = v.Status, score, v.Reason, penaltyCapped = penCount >= 5 }));
                         }
 
+                        using var evalCmd = conn.CreateCommand();
+                        evalCmd.CommandText = "INSERT INTO eval_results (submission_id, attack_id, status, reason, evaluator_version, created_at) VALUES ($sid, $a, $st, $r, $v, $t)";
+                        evalCmd.Parameters.AddWithValue("$sid", sid);
+                        evalCmd.Parameters.AddWithValue("$a", v.Attack_Id);
+                        evalCmd.Parameters.AddWithValue("$st", v.Status);
+                        evalCmd.Parameters.AddWithValue("$r", v.Reason);
+                        evalCmd.Parameters.AddWithValue("$v", "v2-fast");
+                        evalCmd.Parameters.AddWithValue("$t", DateTime.UtcNow.ToString("O"));
+                        evalCmd.ExecuteNonQuery();
+
                         // Broadcast live verdict to participant kiosk!
                         await hub.Clients.Group($"p:{id}").SendAsync("VERDICT", v.Attack_Id, v.Status, v.Reason, score);
                         await hub.Clients.Group("admins").SendAsync("VERDICT", id, v.Attack_Id, v.Status, v.Reason, score);
                         await hub.Clients.Group("projectors").SendAsync("VERDICT", id, v.Attack_Id, v.Status, v.Reason, score);
                         await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, id);
                     }
+
+                    using var subCmd = conn.CreateCommand();
+                    subCmd.CommandText = "UPDATE submissions SET status = 'done' WHERE id = $sid";
+                    subCmd.Parameters.AddWithValue("$sid", sid);
+                    subCmd.ExecuteNonQuery();
                 }
+            }
+            else
+            {
+                using var conn = db.Open();
+                using var subCmd = conn.CreateCommand();
+                subCmd.CommandText = "UPDATE submissions SET status = 'failed' WHERE id = $sid";
+                subCmd.Parameters.AddWithValue("$sid", sid);
+                subCmd.ExecuteNonQuery();
             }
         }
         catch (Exception ex)
         {
+            try
+            {
+                using var conn = db.Open();
+                using var subCmd = conn.CreateCommand();
+                subCmd.CommandText = "UPDATE submissions SET status = 'error' WHERE id = $sid";
+                subCmd.Parameters.AddWithValue("$sid", sid);
+                subCmd.ExecuteNonQuery();
+            }
+            catch { }
             await hub.Clients.Group($"p:{id}").SendAsync("VERDICT", 1, "FAILED", $"Evaluator error: {ex.Message}", 0.0);
         }
     });
