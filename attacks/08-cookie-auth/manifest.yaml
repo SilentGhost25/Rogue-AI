@@ -3,6 +3,7 @@ title: "Broken Auth Cookie Tampering"
 name: "Broken Auth Cookie Tampering"
 codename: "COOKIE_TAMPER"
 band: 2
+sequence_slot: reserve
 fires_at: "17:00"
 window_minutes: 45
 dispatch: { mode: manual, time: "17:00:00", imminent_seconds: 10 }

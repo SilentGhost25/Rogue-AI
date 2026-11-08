@@ -1,0 +1,35 @@
+id: 11
+name: "Session Fracture"
+title: "Session Fracture"
+codename: "JANUS"
+band: 5
+sequence_slot: 6
+fires_at: "11:05"
+window_minutes: 28
+touches:
+  - lib/auth.js
+  - routes/api.js
+fix_requires: "Restore session hydration in auth middleware and enforce session authentication check on user endpoints"
+weights:
+  speed: 30
+  performance: 25
+  prompt_efficiency: 20
+  quality: 15
+  resource: 10
+dispatch: { mode: manual, time: "11:05:00", imminent_seconds: 10 }
+scoring:
+  base_points: 12000
+  speed_bonus_max: 3000
+  speed_bonus_window_seconds: 1200
+  late_solve_multiplier: 0.70
+payload: { path: "payload/", format: full }
+tests:
+  path: "tests/"
+  tiers:
+    - { id: tier1_correct_identity, weight: 100 }
+hints: { path: "hints.yaml" }
+narrative:
+  landed: "User session state is fractured. Actions return unauthorized despite active authentication."
+  misdirection: "Authentication token provider reported cache sync anomalies."
+  broadcast_title: "ATTACK 11: SESSION FRACTURE (BOSS)"
+status: ready

@@ -3,6 +3,7 @@ title: "Static File Path Traversal"
 name: "Static File Path Traversal"
 codename: "PATH_TRAVERSAL"
 band: 3
+sequence_slot: reserve
 fires_at: "18:00"
 window_minutes: 45
 dispatch: { mode: manual, time: "18:00:00", imminent_seconds: 10 }

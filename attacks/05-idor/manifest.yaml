@@ -2,7 +2,8 @@ id: 5
 name: "Privilege Escalation"
 title: "Privilege Escalation"
 codename: "GHOST_KEYS"
-band: 3
+band: 4
+sequence_slot: 2
 fires_at: "10:15"
 touches:
   - routes/user.js

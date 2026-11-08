@@ -410,12 +410,16 @@ app.MapGet("/api/kiosk/{id}/attack-payload/{attackId:int}", async (string id, in
     return Results.Content(content, "application/json");
 });
 
-app.MapPost("/api/kiosk/{id}/submit", (string id, HttpRequest httpReq, Database db, IHttpClientFactory http, IHubContext<BreachHub> hub) =>
+app.MapPost("/api/kiosk/{id}/submit", (string id, HttpRequest httpReq, Database db, IHttpClientFactory http, IHubContext<BreachHub> hub, EventState eventState) =>
 {
     var token = httpReq.Headers["X-Kiosk-Token"].ToString();
     if (string.IsNullOrWhiteSpace(token) || !db.ValidateDeskToken(token, id))
     {
         return Results.StatusCode(403);
+    }
+    if (eventState.Frozen)
+    {
+        return Results.Conflict(new { error = "Leaderboard is frozen. Submissions are closed.", code = "FREEZE" });
     }
     var sid = "s" + Guid.NewGuid().ToString("N")[..10];
     using (var c = db.Open())
@@ -1014,19 +1018,51 @@ app.MapGet("/admin/backup/status", (HttpRequest r, Database db, IConfiguration c
 });
 
 // RogueAgentOrchestrator Admin and Hint endpoints
+app.MapGet("/api/event/status", (EventState s) => Results.Ok(new { frozen = s.Frozen, paused = s.Paused }));
+
+app.MapGet("/api/admin/event/status", (HttpRequest r, Database db, EventState s) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+    return Results.Ok(new { frozen = s.Frozen, paused = s.Paused });
+});
+
+app.MapPost("/api/admin/event/freeze", async (HttpRequest r, Database db, EventState s, IHubContext<BreachHub> hub) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+    s.SetFreeze(true);
+    db.Log("EVENT_FROZEN", payloadJson: "{\"frozen\":true}");
+    await hub.Clients.All.SendAsync(HubEvents.ScoreboardFrozen, new { frozen = true });
+    await hub.Clients.All.SendAsync(HubEvents.EventFrozen, new { frozen = true });
+    return Results.Ok(new { frozen = true });
+});
+
+app.MapPost("/api/admin/event/unfreeze", async (HttpRequest r, Database db, EventState s, IHubContext<BreachHub> hub) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+    s.SetFreeze(false);
+    db.Log("EVENT_UNFROZEN", payloadJson: "{\"frozen\":false}");
+    await hub.Clients.All.SendAsync(HubEvents.ScoreboardUnfrozen, new { frozen = false });
+    await hub.Clients.All.SendAsync(HubEvents.EventUnfrozen, new { frozen = false });
+    return Results.Ok(new { frozen = false });
+});
+
 app.MapGet("/api/admin/attacks", (HttpRequest r, Database db, RogueAgentOrchestrator orch) =>
 {
     var authErr = AuthorizeAdmin(r, db);
     if (authErr != null) return authErr;
     var list = orch.Attacks.Select(a => new
     {
-        id        = a.Id,
-        title     = a.Title,
-        codename  = a.Codename,
-        band      = a.Band,
-        mode      = a.Dispatch.Mode,
-        scheduled = a.Dispatch.Time,
-        state     = db.GetDispatchState(a.Id).ToString()
+        id           = a.Id,
+        title        = a.Title,
+        codename     = a.Codename,
+        band         = a.Band,
+        sequenceSlot = a.SequenceSlot,
+        mode         = a.Dispatch.Mode,
+        scheduled    = a.Dispatch.Time,
+        state        = db.GetDispatchState(a.Id).ToString()
     });
     return Results.Ok(list);
 });

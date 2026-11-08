@@ -30,14 +30,22 @@
     <!-- Section 1: Attack Dispatcher -->
     <section class="card">
       <div class="card-header">
-        <h2>Attack Dispatch State Machine</h2>
-        <button id="refresh-btn" class="btn secondary sm">Refresh</button>
+        <div>
+          <h2>Attack Dispatch State Machine</h2>
+          <div class="muted" style="font-size:12px; margin-top:2px;">3-Hour Competition Ladder &amp; Reserve Attacks</div>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button id="freeze-btn" class="btn warning sm" onclick="toggleFreeze()">❄ Freeze Submissions</button>
+          <button id="fire-boss-btn" class="btn danger sm" onclick="fireBossAttack()">🔥 Fire Boss Attack</button>
+          <button id="refresh-btn" class="btn secondary sm">Refresh</button>
+        </div>
       </div>
       <div class="table-responsive">
         <table class="data-table">
           <thead>
             <tr>
               <th>#</th>
+              <th>Slot</th>
               <th>Attack Title</th>
               <th>Codename</th>
               <th>Band</th>
@@ -48,7 +56,7 @@
             </tr>
           </thead>
           <tbody id="attack-list">
-            <tr><td colspan="8" class="muted">Loading attacks...</td></tr>
+            <tr><td colspan="9" class="muted">Loading attacks...</td></tr>
           </tbody>
         </table>
       </div>

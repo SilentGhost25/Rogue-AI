@@ -3,6 +3,7 @@ name: "Missing Auth Check"
 title: "Missing Auth Check"
 codename: "OPEN_GATE"
 band: 3
+sequence_slot: 4
 fires_at: "10:00"
 touches:
   - routes/api.js

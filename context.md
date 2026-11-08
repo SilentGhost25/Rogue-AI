@@ -72,6 +72,15 @@ ROGUE AI: The Breach Protocol is a live cybersecurity competition platform where
 10. **Day 10 Go/No-Go Checklist:** Defined with 7 objective gates; if any fail, predetermined degraded paths are executed.
 11. **Ephemeral Testing Protocol:** Standalone verification scripts created to test code during development must be deleted immediately after execution to keep the repository clean. Official test suites remain in `server/ControlPlane.Tests`, `engine/tests`, and `site/test`.
 12. **Multi-Tier Partial Credit Support:** Evaluator inspects test script exports for `tier_checks()`. If present, applies tier weights proportionally against base points; otherwise falls back to binary ternary logic.
+13. **Event Duration & Format (3-Hour Master Schedule):** Total runtime 3 hours (180 min). Active schedule consists of 6 core attacks + Attack 0 onboarding warm-up drill.
+14. **Non-Monotonic Attack Sequence:** Slot 1: Attack 1 (Reflected XSS, B1), Slot 2: Attack 5 (IDOR, B4), Slot 3: Attack 3 (SQL Injection, B2), Slot 4: Attack 4 (CSRF, B3), Slot 5: Attack 7 (Supply Chain, B4), Slot 6: Attack 11 (Boss - Session Fracture, B5).
+15. **Onboarding Live Pipeline Canary:** Attack 0 (Warm-up) is fired during the 20-minute onboarding window as a live readiness clearance drill to verify end-to-end SignalR delivery, payload buffer/extraction, evaluator execution, and ledger persistence across all kiosks before the competition clock starts.
+16. **Boss Attack Specification (Attack 11: Session Fracture):** Admin-discretion fire at T+2h05 or later, 28-minute allocation, Tier 1 only in-schedule (broken session hydration exposing latent unauthenticated `/api/notes/:id`). Tier 2/3 available as post-event bonus.
+17. **Leaderboard Freeze Policy:** Freeze enforced at 02:25. Submissions POSTed after freeze are rejected with HTTP 409 `FREEZE`. In-flight submissions already received are fully evaluated and recorded in the score ledger.
+18. **Dynamic Flex Buffers:** Inter-slot gaps are dynamic buffers (36 min net buffer) absorbing delays without extending total competition duration.
+19. **Stable Attack IDs vs. Sequence Slots:** Attack directories and IDs (`00` to `11`) remain permanently stable. The `sequence_slot` field (`1`..`6`, `onboarding`, `reserve`) dictates active schedule order.
+20. **Reserve Pool:** Attacks 2 (Stored XSS), 6 (CPU Sabotage), 8 (Cookie Auth), 9 (Mass Assignment), and 10 (Path Traversal) remain in repo with `sequence_slot: reserve` for manual drills or extended formats.
+21. **Git Architecture (Option A):** Kiosks never handle git credentials or PATs. The server owns Git and pushes desk snapshots under organizer credentials.
 
 ---
 

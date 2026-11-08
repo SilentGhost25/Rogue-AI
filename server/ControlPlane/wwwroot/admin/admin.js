@@ -48,9 +48,21 @@ async function refreshAttacks() {
       const isImminent = state === 'ArenaImminent';
       const isLanded = state === 'ArenaLanded';
 
+      let slotTag = '';
+      if (a.sequenceSlot === 'onboarding') {
+        slotTag = '<span class="badge info">Canary</span>';
+      } else if (a.sequenceSlot === 'reserve') {
+        slotTag = '<span class="badge muted">Reserve</span>';
+      } else if (a.sequenceSlot) {
+        slotTag = `<span class="badge primary">Slot ${escapeHtml(a.sequenceSlot)}</span>`;
+      } else {
+        slotTag = '<span class="badge muted">--</span>';
+      }
+
       return `
         <tr>
           <td class="bold font-mono">#${a.id}</td>
+          <td>${slotTag}</td>
           <td class="bold">${escapeHtml(a.title)}</td>
           <td><code class="tag">${escapeHtml(a.codename || '')}</code></td>
           <td>Band ${a.band}</td>
@@ -336,7 +348,53 @@ function escapeHtml(str) {
     .replace(/'/g, '&#39;');
 }
 
-// 2-Hour Event Countdown Timer
+let isFrozen = false;
+
+async function checkEventStatus() {
+  try {
+    const status = await api('/api/admin/event/status');
+    isFrozen = !!status.frozen;
+    const freezeBtn = document.getElementById('freeze-btn');
+    if (freezeBtn) {
+      freezeBtn.textContent = isFrozen ? '▶ Unfreeze Submissions' : '❄ Freeze Submissions';
+      freezeBtn.className = isFrozen ? 'btn success sm' : 'btn warning sm';
+    }
+  } catch (err) {
+    // Non-fatal
+  }
+}
+
+async function toggleFreeze() {
+  try {
+    const targetEndpoint = isFrozen ? '/api/admin/event/unfreeze' : '/api/admin/event/freeze';
+    const res = await api(targetEndpoint, { method: 'POST' });
+    isFrozen = !!res.frozen;
+    logMessage(isFrozen ? '❄ [FREEZE] Submissions are now closed (FROZEN).' : '▶ [UNFREEZE] Submissions are now open.');
+    await checkEventStatus();
+  } catch (err) {
+    alert(`Failed to toggle freeze: ${err.message}`);
+    logMessage(`[ERROR] Toggle freeze: ${err.message}`);
+  }
+}
+
+async function fireBossAttack() {
+  const bossId = 11;
+  if (!confirm('⚠️ WARNING: You are about to FIRE BOSS ATTACK (#11: Session Fracture) to the entire arena!\n\nThis will trigger the Band 5 session fracture incident on all kiosks.\nProceed?')) {
+    return;
+  }
+  try {
+    const res = await api(`/api/admin/attacks/${bossId}/fire-arena`, { method: 'POST' });
+    const landAt = res.landAtUtc || new Date().toISOString();
+    logMessage(`☠️🔥 [BOSS ATTACK FIRED] Attack #11 (Session Fracture) dispatched to all kiosks! Land target: ${landAt}`);
+    await refreshAttacks();
+    await refreshEvaluations();
+  } catch (err) {
+    alert(`Failed to fire Boss Attack: ${err.message}`);
+    logMessage(`[ERROR] Fire Boss Attack: ${err.message}`);
+  }
+}
+
+// Event Elapsed Timer
 let eventStartTime = localStorage.getItem('rogue_event_start');
 if (!eventStartTime) {
   eventStartTime = Date.now().toString();
@@ -398,10 +456,12 @@ async function init() {
   updateEventTimer();
 
   // Initial load & periodic poll
+  checkEventStatus();
   refreshAttacks();
   refreshEvaluations();
   refreshKiosks();
   setInterval(() => {
+    checkEventStatus();
     refreshAttacks();
     refreshEvaluations();
     refreshKiosks();

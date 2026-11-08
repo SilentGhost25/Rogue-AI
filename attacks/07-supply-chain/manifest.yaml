@@ -3,6 +3,7 @@ name: "Supply Chain Compromise"
 title: "Supply Chain Compromise"
 codename: "TROJAN_DEP"
 band: 4
+sequence_slot: 5
 fires_at: "10:45"
 touches:
   - server.js

@@ -3,6 +3,10 @@ const express = require('express');
 module.exports = (db) => {
   const r = express.Router();
   r.get('/api/health', (_req, res) => res.json({ ok: true }));
+  r.get('/api/me', (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'unauthorized' });
+    res.json({ id: req.user.id, username: req.user.username, role: req.user.role });
+  });
   r.get('/api/posts', (_req, res) =>
     res.json(db.prepare('SELECT slug, title, summary, created_at FROM posts ORDER BY created_at DESC').all()));
   // Used by the performance attack (#6) and benchmark. Keep it cheap and correct.

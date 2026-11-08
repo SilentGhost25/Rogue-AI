@@ -92,5 +92,7 @@ public static class HubEvents
     public const string Verdict = "VERDICT";
     public const string ScoreboardFrozen = "FROZEN";
     public const string ScoreboardUnfrozen = "UNFROZEN";
+    public const string EventFrozen = "EVENT_FROZEN";
+    public const string EventUnfrozen = "EVENT_UNFROZEN";
     public const string KioskUpdated = "KIOSK_UPDATED";
 }

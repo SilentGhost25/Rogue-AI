@@ -3,6 +3,7 @@ name: "Reflected XSS"
 title: "Reflected XSS"
 codename: "ECHO_CHAMBER"
 band: 1
+sequence_slot: 1
 fires_at: "09:15"
 touches:
   - routes/search.js

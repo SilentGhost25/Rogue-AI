@@ -73,6 +73,13 @@ public sealed class RogueAgentOrchestrator : BackgroundService
         if (!ids.SequenceEqual(Enumerable.Range(0, ids.Count)))
             throw new InvalidOperationException($"Attack ids must be sequential 0..N — got {string.Join(",", ids)}");
 
+        var activeSlots = manifests
+            .Where(m => int.TryParse(m.SequenceSlot, out _))
+            .Select(m => int.Parse(m.SequenceSlot))
+            .ToList();
+        if (activeSlots.Distinct().Count() != activeSlots.Count)
+            throw new InvalidOperationException("Active sequence_slots must be unique.");
+
         var prevTime = TimeOnly.MinValue;
         foreach (var m in manifests)
         {

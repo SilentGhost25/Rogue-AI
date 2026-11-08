@@ -3,6 +3,7 @@ name: "CPU Sabotage"
 title: "CPU Sabotage"
 codename: "HEAVY_LOOP"
 band: 4
+sequence_slot: reserve
 fires_at: "10:30"
 touches:
   - routes/report.js

@@ -24,6 +24,9 @@ public sealed class AttackManifest
     [YamlMember(Alias = "band")]
     public int Band { get; set; } = 1;
 
+    [YamlMember(Alias = "sequence_slot")]
+    public string SequenceSlot { get; set; } = "reserve";
+
     [YamlMember(Alias = "dispatch")]
     public AttackDispatch Dispatch { get; set; } = new();
 
