@@ -6,8 +6,8 @@ band: 4
 sequence_slot: 2
 fires_at: "10:15"
 touches:
-  - routes/user.js
-fix_requires: "Enforce session ownership check on user endpoints"
+  - routes/vault.js
+fix_requires: "Enforce clearance authorization checks on CitizenVault endpoints"
 weights:
   speed: 30
   performance: 25
@@ -15,13 +15,12 @@ weights:
   quality: 15
   resource: 10
 dispatch: { mode: manual, time: "13:30:00", imminent_seconds: 10 }
-dispatch: { mode: manual, time: "13:30:00", imminent_seconds: 10 }
 scoring:
   base_points: 8500
   speed_bonus_max: 1500
   speed_bonus_window_seconds: 900
   late_solve_multiplier: 0.70
-payload: { path: "payload/", format: full, conflict_files: ["routes/user.js"] }
+payload: { path: "payload/", format: full, conflict_files: ["routes/vault.js"] }
 tests:
   path: "tests/"
   tiers:
@@ -30,5 +29,5 @@ tests:
     - { id: tier3_no_regression,   weight: 20 }
 hints: { path: "hints.yaml" }
 narrative:
-  landed: "GHOST_KEYS has forged a session. Someone else's data is now yours to lose."
+  landed: "GHOST_KEYS has stripped clearance checks on CitizenVault. Classified records are exposed to any caller."
   broadcast_title: "ATTACK 5: PRIVILEGE ESCALATION"

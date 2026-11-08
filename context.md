@@ -81,6 +81,17 @@ ROGUE AI: The Breach Protocol is a live cybersecurity competition platform where
 19. **Stable Attack IDs vs. Sequence Slots:** Attack directories and IDs (`00` to `11`) remain permanently stable. The `sequence_slot` field (`1`..`6`, `onboarding`, `reserve`) dictates active schedule order.
 20. **Reserve Pool:** Attacks 2 (Stored XSS), 6 (CPU Sabotage), 8 (Cookie Auth), 9 (Mass Assignment), and 10 (Path Traversal) remain in repo with `sequence_slot: reserve` for manual drills or extended formats.
 21. **Git Architecture (Option A):** Kiosks never handle git credentials or PATs. The server owns Git and pushes desk snapshots under organizer credentials.
+22. **AEGIS Municipal Defense MVP (Option C Scope Lock):**
+    - Smart-city cyber-defense architecture replacing legacy notes site: 3 interconnected services (`TrafficGrid`, `PowerCore`, `CitizenVault`), plus `Security Center` and `City Overview`.
+    - Zero new npm dependencies: pure CommonJS, built-in `node:sqlite`, native template literals in `lib/html.js`, zero client packaging steps.
+    - Zero changes required to Control Plane, WPF LabKiosk, or Python Evaluation Engine harness.
+    - Retargeted 5-attack active ladder:
+      - **Slot 0 (Canary Warmup):** `00-warmup` (Masthead title typo in `lib/html.js`)
+      - **Slot 1 (Reflected XSS):** `01-reflected-xss` (Query injection in `routes/traffic.js`)
+      - **Slot 2 (Privilege Escalation / IDOR):** `05-idor` (Clearance bypass on `routes/vault.js`)
+      - **Slot 3 (Operator Authorization):** `04-csrf` (Missing role enforcement on `routes/traffic.js`)
+      - **Boss (Session Fracture Climax):** `11-session-fracture` (Identity corruption in `lib/auth.js` and `routes/overview.js`)
+    - Evaluator health check contract satisfied via `/api/health`.
 
 ---
 
@@ -122,11 +133,11 @@ ROGUE AI: The Breach Protocol is a live cybersecurity competition platform where
 |---|---|---|
 | Test Suite / Target | Command | Result |
 |---|---|---|
-| **ControlPlane Tests** | `$env:DOTNET_ROOT = "$env:LOCALAPPDATA\dotnet"; $env:Path = "$env:DOTNET_ROOT;$env:Path"; dotnet test server/ControlPlane.Tests` | **29 Passed, 0 Failed, 0 Skipped** (100% green, includes restart recovery, overdue broadcast, in-countdown re-arm, unique index, and dual admin auth) |
-| **LabKiosk Build** | `$env:DOTNET_ROOT = "$env:LOCALAPPDATA\dotnet"; $env:Path = "$env:DOTNET_ROOT;$env:Path"; dotnet build kiosk/LabKiosk` | **0 Warnings, 0 Errors** (Process-isolated WebView2, durable applied-marker, remote KioskConfig) |
-| **Engine Tests** | `cd engine && python -m unittest discover -s tests -t .` | **10 Passed, 0 Failed** |
+| **ControlPlane Tests** | `$env:DOTNET_ROOT = "$env:LOCALAPPDATA\dotnet"; $env:Path = "$env:DOTNET_ROOT;$env:Path"; dotnet test server/ControlPlane.Tests` | **36 Passed, 0 Failed, 0 Skipped** (100% green, includes restart recovery, overdue broadcast, in-countdown re-arm, unique index, dual admin auth, and 5 leaderboard freeze lifecycle tests) |
+| **LabKiosk Build** | `$env:DOTNET_ROOT = "$env:LOCALAPPDATA\dotnet"; $env:Path = "$env:DOTNET_ROOT;$env:Path"; dotnet build kiosk/LabKiosk` | **0 Warnings, 0 Errors** (Process-isolated WebView2, durable applied-marker, remote KioskConfig, siren dispatch clean) |
+| **Engine Tests** | `cd engine && python -m unittest discover -s tests -t .` | **17 Passed, 0 Failed** (evaluator, static analyzer, reference derivation, manifest sequence, patching, scoring) |
 | **Sandbox Security Tests** | `python tests/security/test_sandbox_escape.py` | **5 Passed, 0 Failed** |
-| **Harbour Notes Site** | `cd site && npm test` | **6 Passed, 0 Failed** |
+| **AEGIS Municipal Defense Site** | `cd site && npm test` | **7 Passed, 0 Failed** |
 
 ---
 

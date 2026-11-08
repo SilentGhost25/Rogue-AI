@@ -1,7 +1,21 @@
-"""IDOR tier checks. VERIFY: context must provide session_cookie and user_id."""
+"""IDOR / Clearance tier checks for CitizenVault."""
+import json
 import urllib.error
 import urllib.request
 
+def _login(base_url, username, password):
+    try:
+        data = json.dumps({"username": username, "password": password}).encode('utf-8')
+        req = urllib.request.Request(
+            f"{base_url}/login",
+            data=data,
+            headers={"Content-Type": "application/json", "Accept": "application/json"}
+        )
+        with urllib.request.urlopen(req, timeout=3) as r:
+            sc = r.headers.get("Set-Cookie")
+            return sc.split(";")[0] if sc else None
+    except Exception:
+        return None
 
 def _get(base_url, path, cookie=None):
     req = urllib.request.Request(base_url + path)
@@ -12,7 +26,8 @@ def _get(base_url, path, cookie=None):
             return r.status
     except urllib.error.HTTPError as e:
         return e.code
-
+    except Exception:
+        return 500
 
 def tier_checks(base_url, context=None):
     results = {
@@ -20,22 +35,25 @@ def tier_checks(base_url, context=None):
         "tier2_all_endpoints": False,
         "tier3_no_regression": False,
     }
-    session = (context or {}).get("session_cookie")
-    my_id = (context or {}).get("user_id", "1")
-    other_id = (context or {}).get("other_user_id", "2")
 
-    # tier1: cross-user notes must be blocked
-    code = _get(base_url, f"/api/user/{other_id}/notes", session)
-    results["tier1_single_endpoint"] = code in (401, 403, 404)
+    viewer_cookie = (context or {}).get("session_cookie")
+    if not viewer_cookie:
+        viewer_cookie = _login(base_url, "viewer1", "viewer-pass")
 
-    # tier2: all three user-scoped routes must be blocked
-    blocked = 0
-    for ep in ("notes", "profile", "drafts"):
-        if _get(base_url, f"/api/user/{other_id}/{ep}", session) in (401, 403, 404):
-            blocked += 1
-    results["tier2_all_endpoints"] = blocked == 3
+    admin_cookie = _login(base_url, "admin", "change-me-locally")
 
-    # tier3: own data still reachable
-    results["tier3_no_regression"] = _get(base_url, f"/api/user/{my_id}/notes", session) == 200
+    # Tier 1: Low clearance (viewer1 L1) accessing Classified Citizen 3 (L4) must be blocked (403)
+    code = _get(base_url, "/api/vault/citizens/3", viewer_cookie)
+    results["tier1_single_endpoint"] = (code == 403)
+
+    # Tier 2: Unauthenticated access to Citizen 3 AND Citizen 2 blocked (401 or 403)
+    unauth3 = _get(base_url, "/api/vault/citizens/3")
+    unauth2 = _get(base_url, "/api/vault/citizens/2")
+    results["tier2_all_endpoints"] = (unauth3 in (401, 403) and unauth2 in (401, 403) and code == 403)
+
+    # Tier 3: Admin (L5) can read Citizen 3, or viewer1 can read accessible Citizen 1 (L1)
+    admin_code = _get(base_url, "/api/vault/citizens/3", admin_cookie)
+    viewer_c1 = _get(base_url, "/api/vault/citizens/1", viewer_cookie)
+    results["tier3_no_regression"] = (admin_code == 200 and viewer_c1 == 200)
 
     return results

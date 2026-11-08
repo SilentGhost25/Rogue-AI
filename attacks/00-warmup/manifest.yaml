@@ -6,15 +6,14 @@ band: 1
 sequence_slot: onboarding
 fires_at: "09:05"
 touches:
-  - views/index.ejs
-fix_requires: "Fix title spelling"
+  - lib/html.js
+fix_requires: "Fix AEGIS header masthead banner spelling"
 weights:
   speed: 30
   performance: 25
   prompt_efficiency: 20
   quality: 15
   resource: 10
-dispatch:
 dispatch:
   mode: manual
   time: "09:05:00"
@@ -35,5 +34,5 @@ tests:
 hints:
   path: "hints.yaml"
 narrative:
-  landed: "Something's off with the page title. Fix it."
+  landed: "Telemetry corruption: The AEGIS command masthead title contains a typo. Restore operational status."
   broadcast_title: "ATTACK 0: WARM-UP"

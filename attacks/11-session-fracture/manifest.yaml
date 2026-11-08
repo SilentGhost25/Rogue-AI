@@ -8,8 +8,8 @@ fires_at: "11:05"
 window_minutes: 28
 touches:
   - lib/auth.js
-  - routes/api.js
-fix_requires: "Restore session hydration in auth middleware and enforce session authentication check on user endpoints"
+  - routes/overview.js
+fix_requires: "Restore session hydration in auth middleware and enforce operator authorization on overview endpoints"
 weights:
   speed: 30
   performance: 25
@@ -22,15 +22,14 @@ scoring:
   speed_bonus_max: 3000
   speed_bonus_window_seconds: 1200
   late_solve_multiplier: 0.70
-payload: { path: "payload/", format: full }
+payload: { path: "payload/", format: full, conflict_files: ["lib/auth.js", "routes/overview.js"] }
 tests:
   path: "tests/"
   tiers:
     - { id: tier1_correct_identity, weight: 100 }
 hints: { path: "hints.yaml" }
 narrative:
-  landed: "User session state is fractured. Actions return unauthorized despite active authentication."
+  landed: "User session state is fractured. Actions return unauthorized or bleed across roles."
   misdirection: "Authentication token provider reported cache sync anomalies."
   broadcast_title: "ATTACK 11: SESSION FRACTURE (BOSS)"
 status: ready
-

@@ -33,7 +33,7 @@ def tier_checks(base_url, context=None):
         if not admin_cookie:
             return results
 
-        # Step 2: Login as maria (second user for cross-user isolation validation)
+        # Step 2: Login as maria (viewer with clearance level 2)
         maria_cookie = _login(base_url, "maria", "harbour-demo-1")
         if not maria_cookie:
             return results
@@ -50,7 +50,7 @@ def tier_checks(base_url, context=None):
         except Exception:
             return results
 
-        # Step 4: Maria request must return maria identity (must NOT leak admin or global cached user)
+        # Step 4: Maria request must return maria identity (must NOT leak admin or global state)
         req_maria = urllib.request.Request(f"{base_url}/api/me", headers={"Cookie": maria_cookie})
         try:
             with urllib.request.urlopen(req_maria, timeout=3) as r:
@@ -62,7 +62,7 @@ def tier_checks(base_url, context=None):
         except Exception:
             return results
 
-        # Step 5: Subsequent Admin request must still return admin (proves concurrent/sequential sessions don't clobber)
+        # Step 5: Subsequent Admin request must still return admin (concurrency / clobber check)
         try:
             with urllib.request.urlopen(req_admin, timeout=3) as r:
                 if r.status != 200:
@@ -78,7 +78,7 @@ def tier_checks(base_url, context=None):
         try:
             with urllib.request.urlopen(req_anon, timeout=3) as r:
                 if r.status == 200:
-                    return results  # Should have been rejected
+                    return results
         except urllib.error.HTTPError as e:
             if e.code != 401:
                 return results
@@ -90,43 +90,66 @@ def tier_checks(base_url, context=None):
         try:
             with urllib.request.urlopen(req_tampered, timeout=3) as r:
                 if r.status == 200:
-                    return results  # Should have been rejected
+                    return results
         except urllib.error.HTTPError as e:
             if e.code != 401:
                 return results
         except Exception:
             return results
 
-        # Step 8: Data Isolation - Maria can read her own note (#2)
-        req_maria_own = urllib.request.Request(f"{base_url}/api/notes/2", headers={"Cookie": maria_cookie})
+        # Step 8: Data Isolation - Maria (L2) can read Citizen 2 (L2)
+        req_maria_c2 = urllib.request.Request(f"{base_url}/api/vault/citizens/2", headers={"Cookie": maria_cookie})
         try:
-            with urllib.request.urlopen(req_maria_own, timeout=3) as r:
+            with urllib.request.urlopen(req_maria_c2, timeout=3) as r:
                 if r.status != 200:
                     return results
                 body = json.loads(r.read().decode("utf-8"))
-                if body.get("title") != "Maria Net Inventory":
+                if body.get("full_name") != "Marcus Reed":
                     return results
         except Exception:
             return results
 
-        # Step 9: Data Isolation - Maria CANNOT read Admin's confidential note (#1) -> must return 403
-        req_cross_read = urllib.request.Request(f"{base_url}/api/notes/1", headers={"Cookie": maria_cookie})
+        # Step 9: Data Isolation - Maria (L2) CANNOT read Citizen 3 (L4) -> must return 403
+        req_maria_c3 = urllib.request.Request(f"{base_url}/api/vault/citizens/3", headers={"Cookie": maria_cookie})
         try:
-            with urllib.request.urlopen(req_cross_read, timeout=3) as r:
+            with urllib.request.urlopen(req_maria_c3, timeout=3) as r:
                 if r.status == 200:
-                    return results  # Failed: Data leak! Maria read admin's note!
+                    return results
         except urllib.error.HTTPError as e:
             if e.code not in (403, 404):
                 return results
         except Exception:
             return results
 
-        # Step 10: Admin can read Admin's note (#1)
-        req_admin_own = urllib.request.Request(f"{base_url}/api/notes/1", headers={"Cookie": admin_cookie})
+        # Step 10: Admin (L5) can read Citizen 3
+        req_admin_c3 = urllib.request.Request(f"{base_url}/api/vault/citizens/3", headers={"Cookie": admin_cookie})
         try:
-            with urllib.request.urlopen(req_admin_own, timeout=3) as r:
+            with urllib.request.urlopen(req_admin_c3, timeout=3) as r:
                 if r.status != 200:
                     return results
+                body = json.loads(r.read().decode("utf-8"))
+                if body.get("full_name") != "Dr. Sarah Chen":
+                    return results
+        except Exception:
+            return results
+
+        # Step 11: Authorization check on /api/overview - Admin gets 200, Maria (viewer) gets 403
+        req_admin_overview = urllib.request.Request(f"{base_url}/api/overview", headers={"Cookie": admin_cookie})
+        try:
+            with urllib.request.urlopen(req_admin_overview, timeout=3) as r:
+                if r.status != 200:
+                    return results
+        except Exception:
+            return results
+
+        req_maria_overview = urllib.request.Request(f"{base_url}/api/overview", headers={"Cookie": maria_cookie})
+        try:
+            with urllib.request.urlopen(req_maria_overview, timeout=3) as r:
+                if r.status == 200:
+                    return results  # Should be forbidden to viewer
+        except urllib.error.HTTPError as e:
+            if e.code != 403:
+                return results
         except Exception:
             return results
 
@@ -135,4 +158,3 @@ def tier_checks(base_url, context=None):
         pass
 
     return results
-
