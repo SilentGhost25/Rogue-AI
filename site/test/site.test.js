@@ -45,3 +45,26 @@ test('stats api', async () => {
   const j = await (await fetch(base + '/api/stats')).json();
   assert.ok(j.posts >= 5);
 });
+
+test('notes api enforces ownership authorization', async () => {
+  // 1. Unauthenticated gets 403
+  assert.equal((await fetch(base + '/api/notes/2')).status, 403);
+
+  // 2. Login as maria
+  const res = await fetch(base + '/login', {
+    method: 'POST', redirect: 'manual',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: 'username=maria&password=harbour-demo-1',
+  });
+  const cookie = res.headers.get('set-cookie').split(';')[0];
+
+  // 3. Maria can read Maria's note (#2)
+  const ownRes = await fetch(base + '/api/notes/2', { headers: { cookie } });
+  assert.equal(ownRes.status, 200);
+  const ownNote = await ownRes.json();
+  assert.equal(ownNote.title, 'Maria Net Inventory');
+
+  // 4. Maria cannot read Admin's note (#1)
+  const adminRes = await fetch(base + '/api/notes/1', { headers: { cookie } });
+  assert.equal(adminRes.status, 403);
+});

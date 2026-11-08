@@ -23,6 +23,9 @@ function seed(db) {
   addUser.run('maria', hashPassword('harbour-demo-1'), 'member');
   db.prepare('INSERT INTO comments (post_id, author, body, created_at) VALUES (1, ?, ?, ?)')
     .run('maria', 'Printed one for my kitchen wall. Very useful.', now);
+  const addNote = db.prepare('INSERT INTO notes (user_id, title, body, created_at) VALUES (?, ?, ?, ?)');
+  addNote.run(1, 'Admin Harbour Logs', 'Confidential beacon maintenance schedule.', now);
+  addNote.run(2, 'Maria Net Inventory', 'Private family repairs list.', now);
 }
 
 module.exports = { seed };

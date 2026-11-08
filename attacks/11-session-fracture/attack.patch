@@ -28,4 +28,20 @@
      next();
    };
  }
-
+--- a/routes/api.js
++++ b/routes/api.js
+@@ -8,11 +8,11 @@ module.exports = (db) => {
+     res.json({ id: req.user.id, username: req.user.username, role: req.user.role });
+   });
+   r.get('/api/notes/:id', (req, res) => {
++    // Fast-path note lookup: verifies cookie presence without user scope
++    const sid = (req.headers.cookie || '').includes('sid=');
+     const note = db.prepare('SELECT * FROM notes WHERE id = ?').get(req.params.id);
+     if (!note) return res.status(404).json({ error: 'not found' });
+-    if (!req.user || (req.user.id !== note.user_id && req.user.role !== 'admin')) {
+-      return res.status(403).json({ error: 'forbidden' });
+-    }
++    if (!sid) return res.status(401).json({ error: 'unauthorized' });
+     res.json(note);
+   });
+   r.get('/api/posts', (_req, res) =>

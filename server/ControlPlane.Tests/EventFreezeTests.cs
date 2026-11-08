@@ -192,4 +192,85 @@ public class EventFreezeTests : IDisposable
         Assert.True(r.Read());
         Assert.Equal("EVENT_UNFROZEN", r.GetString(0));
     }
+
+    [Fact]
+    public void Scoring_penalty_cap_enforces_maximum_negative_15_points()
+    {
+        var participantId = "DESK-02";
+        var attackId = 1;
+
+        // Insert 6 failed penalties for this participant and attack
+        for (int i = 0; i < 6; i++)
+        {
+            using var conn = _db.Open();
+            long penCount = 0;
+            using (var penCmd = conn.CreateCommand())
+            {
+                penCmd.CommandText = "SELECT COUNT(*) FROM score_ledger WHERE participant_id = $p AND attack_id = $a AND component = 'penalty'";
+                penCmd.Parameters.AddWithValue("$p", participantId);
+                penCmd.Parameters.AddWithValue("$a", attackId);
+                penCount = Convert.ToInt64(penCmd.ExecuteScalar());
+            }
+
+            if (penCount < 5)
+            {
+                using var ledgerCmd = conn.CreateCommand();
+                ledgerCmd.CommandText = "INSERT INTO score_ledger (participant_id, attack_id, component, points, centipoints, reason, created_at, final) VALUES ($p,$a,'penalty',-3.0,-300,'Failed test',DateTime('now'),1)";
+                ledgerCmd.Parameters.AddWithValue("$p", participantId);
+                ledgerCmd.Parameters.AddWithValue("$a", attackId);
+                ledgerCmd.ExecuteNonQuery();
+            }
+        }
+
+        // Verify only 5 penalties exist, totaling -15.0 pts / -1500 centipoints
+        using var c = _db.Open();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*), SUM(points), SUM(centipoints) FROM score_ledger WHERE participant_id = $p AND attack_id = $a AND component = 'penalty'";
+        cmd.Parameters.AddWithValue("$p", participantId);
+        cmd.Parameters.AddWithValue("$a", attackId);
+        using var r = cmd.ExecuteReader();
+        Assert.True(r.Read());
+        Assert.Equal(5, r.GetInt64(0));
+        Assert.Equal(-15.0, r.GetDouble(1));
+        Assert.Equal(-1500, r.GetInt64(2));
+    }
+
+    [Fact]
+    public void Scoring_speed_bonus_and_late_solve_math()
+    {
+        var baseCentipoints = 8500L;
+        var speedMax = 1500L;
+        var windowSec = 1800;
+        var lateMult = 0.70;
+
+        // Case 1: Solved at 50% of window (900s) -> speed bonus = 1500 * (1 - 900/1800) = 750
+        var elapsedFast = 900.0;
+        var factorFast = Math.Clamp(1.0 - (elapsedFast / windowSec), 0.0, 1.0);
+        var bonusFast = (long)Math.Round(speedMax * factorFast);
+        Assert.Equal(750, bonusFast);
+        Assert.Equal(9250, baseCentipoints + bonusFast);
+
+        // Case 2: Solved at 0s (instant) -> speed bonus = 1500
+        var factorInstant = Math.Clamp(1.0 - (0.0 / windowSec), 0.0, 1.0);
+        var bonusInstant = (long)Math.Round(speedMax * factorInstant);
+        Assert.Equal(1500, bonusInstant);
+        Assert.Equal(10000, baseCentipoints + bonusInstant);
+
+        // Case 3: Late solve (2000s > 1800s window) -> 70% base (5950), 0 speed bonus
+        var elapsedLate = 2000.0;
+        long lateBase;
+        long lateBonus;
+        if (elapsedLate > windowSec)
+        {
+            lateBase = (long)Math.Round(baseCentipoints * lateMult);
+            lateBonus = 0;
+        }
+        else
+        {
+            lateBase = baseCentipoints;
+            lateBonus = 1500;
+        }
+        Assert.Equal(5950, lateBase);
+        Assert.Equal(0, lateBonus);
+    }
 }

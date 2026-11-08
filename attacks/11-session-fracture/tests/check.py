@@ -97,6 +97,39 @@ def tier_checks(base_url, context=None):
         except Exception:
             return results
 
+        # Step 8: Data Isolation - Maria can read her own note (#2)
+        req_maria_own = urllib.request.Request(f"{base_url}/api/notes/2", headers={"Cookie": maria_cookie})
+        try:
+            with urllib.request.urlopen(req_maria_own, timeout=3) as r:
+                if r.status != 200:
+                    return results
+                body = json.loads(r.read().decode("utf-8"))
+                if body.get("title") != "Maria Net Inventory":
+                    return results
+        except Exception:
+            return results
+
+        # Step 9: Data Isolation - Maria CANNOT read Admin's confidential note (#1) -> must return 403
+        req_cross_read = urllib.request.Request(f"{base_url}/api/notes/1", headers={"Cookie": maria_cookie})
+        try:
+            with urllib.request.urlopen(req_cross_read, timeout=3) as r:
+                if r.status == 200:
+                    return results  # Failed: Data leak! Maria read admin's note!
+        except urllib.error.HTTPError as e:
+            if e.code not in (403, 404):
+                return results
+        except Exception:
+            return results
+
+        # Step 10: Admin can read Admin's note (#1)
+        req_admin_own = urllib.request.Request(f"{base_url}/api/notes/1", headers={"Cookie": admin_cookie})
+        try:
+            with urllib.request.urlopen(req_admin_own, timeout=3) as r:
+                if r.status != 200:
+                    return results
+        except Exception:
+            return results
+
         results["tier1_correct_identity"] = True
     except Exception:
         pass

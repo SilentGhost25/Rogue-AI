@@ -7,6 +7,14 @@ module.exports = (db) => {
     if (!req.user) return res.status(401).json({ error: 'unauthorized' });
     res.json({ id: req.user.id, username: req.user.username, role: req.user.role });
   });
+  r.get('/api/notes/:id', (req, res) => {
+    const note = db.prepare('SELECT * FROM notes WHERE id = ?').get(req.params.id);
+    if (!note) return res.status(404).json({ error: 'not found' });
+    if (!req.user || (req.user.id !== note.user_id && req.user.role !== 'admin')) {
+      return res.status(403).json({ error: 'forbidden' });
+    }
+    res.json(note);
+  });
   r.get('/api/posts', (_req, res) =>
     res.json(db.prepare('SELECT slug, title, summary, created_at FROM posts ORDER BY created_at DESC').all()));
   // Used by the performance attack (#6) and benchmark. Keep it cheap and correct.
@@ -17,4 +25,3 @@ module.exports = (db) => {
   });
   return r;
 };
-

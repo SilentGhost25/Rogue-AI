@@ -515,7 +515,40 @@ app.MapPost("/api/kiosk/{id}/submit", (string id, HttpRequest httpReq, Database 
                         {
                             var attackManifest = orch.Attacks.FirstOrDefault(a => a.Id == v.Attack_Id);
                             var baseCentipoints = attackManifest?.Scoring.BasePoints ?? 8500;
-                            score = baseCentipoints / 100.0;
+                            var speedMax = attackManifest?.Scoring.SpeedBonusMax ?? 1500;
+                            var windowSec = attackManifest?.Scoring.SpeedBonusWindowSeconds ?? 1800;
+                            var lateMult = attackManifest?.Scoring.LateSolveMultiplier ?? 0.70;
+
+                            string? landedAtStr = null;
+                            using (var landCmd = conn.CreateCommand())
+                            {
+                                landCmd.CommandText = "SELECT landed_at FROM attack_deliveries WHERE participant_id = $p AND attack_id = $a";
+                                landCmd.Parameters.AddWithValue("$p", id);
+                                landCmd.Parameters.AddWithValue("$a", v.Attack_Id);
+                                landedAtStr = landCmd.ExecuteScalar() as string;
+                            }
+
+                            long speedBonus = 0;
+                            if (!string.IsNullOrEmpty(landedAtStr) && DateTime.TryParse(landedAtStr, out var landedAt))
+                            {
+                                var elapsedSec = Math.Max(0, (DateTime.UtcNow - landedAt.ToUniversalTime()).TotalSeconds);
+                                if (elapsedSec <= windowSec)
+                                {
+                                    // Linear speed decay: speedMax * (1 - elapsed / window)
+                                    var factor = Math.Clamp(1.0 - (elapsedSec / windowSec), 0.0, 1.0);
+                                    speedBonus = (long)Math.Round(speedMax * factor);
+                                }
+                                else
+                                {
+                                    // Late solve: 70% base, 0 speed bonus
+                                    baseCentipoints = (long)Math.Round(baseCentipoints * lateMult);
+                                    speedBonus = 0;
+                                }
+                            }
+
+                            var totalCentipoints = baseCentipoints + speedBonus;
+                            score = totalCentipoints / 100.0;
+
                             using var updateCmd = conn.CreateCommand();
                             updateCmd.CommandText = "UPDATE attack_deliveries SET solved_at = $t WHERE participant_id = $p AND attack_id = $a";
                             updateCmd.Parameters.AddWithValue("$t", DateTime.UtcNow.ToString("O"));
@@ -528,27 +561,44 @@ app.MapPost("/api/kiosk/{id}/submit", (string id, HttpRequest httpReq, Database 
                             ledgerCmd.Parameters.AddWithValue("$p", id);
                             ledgerCmd.Parameters.AddWithValue("$a", v.Attack_Id);
                             ledgerCmd.Parameters.AddWithValue("$pts", score);
-                            ledgerCmd.Parameters.AddWithValue("$cpts", baseCentipoints);
+                            ledgerCmd.Parameters.AddWithValue("$cpts", totalCentipoints);
                             ledgerCmd.Parameters.AddWithValue("$r", v.Reason);
                             ledgerCmd.Parameters.AddWithValue("$sid", sid);
                             ledgerCmd.Parameters.AddWithValue("$t", DateTime.UtcNow.ToString("O"));
                             ledgerCmd.ExecuteNonQuery();
 
-                            db.Log("VERDICT", id, v.Attack_Id, JsonSerializer.Serialize(new { status = "SOLVED", score, centipoints = baseCentipoints, v.Reason }));
+                            db.Log("VERDICT", id, v.Attack_Id, JsonSerializer.Serialize(new { status = "SOLVED", score, centipoints = totalCentipoints, baseCentipoints, speedBonus, v.Reason }));
                         }
                         else
                         {
-                            score = -3.0; // Failed penalty
-                            using var ledgerCmd = conn.CreateCommand();
-                            ledgerCmd.CommandText = "INSERT INTO score_ledger (participant_id, attack_id, component, points, reason, run_id, created_at) VALUES ($p,$a,'penalty',-3.0,$r,$sid,$t)";
-                            ledgerCmd.Parameters.AddWithValue("$p", id);
-                            ledgerCmd.Parameters.AddWithValue("$a", v.Attack_Id);
-                            ledgerCmd.Parameters.AddWithValue("$r", v.Reason);
-                            ledgerCmd.Parameters.AddWithValue("$sid", sid);
-                            ledgerCmd.Parameters.AddWithValue("$t", DateTime.UtcNow.ToString("O"));
-                            ledgerCmd.ExecuteNonQuery();
+                            // Rejection penalty: -300 centipoints (-3.0 pts), capped at -1500 centipoints (-15.0 pts / 5 attempts) per attack
+                            long penCount = 0;
+                            using (var penCmd = conn.CreateCommand())
+                            {
+                                penCmd.CommandText = "SELECT COUNT(*) FROM score_ledger WHERE participant_id = $p AND attack_id = $a AND component = 'penalty'";
+                                penCmd.Parameters.AddWithValue("$p", id);
+                                penCmd.Parameters.AddWithValue("$a", v.Attack_Id);
+                                penCount = Convert.ToInt64(penCmd.ExecuteScalar());
+                            }
 
-                            db.Log("VERDICT", id, v.Attack_Id, JsonSerializer.Serialize(new { status = v.Status, score = -3.0, v.Reason }));
+                            if (penCount < 5)
+                            {
+                                score = -3.0;
+                                using var ledgerCmd = conn.CreateCommand();
+                                ledgerCmd.CommandText = "INSERT INTO score_ledger (participant_id, attack_id, component, points, centipoints, reason, run_id, created_at, final) VALUES ($p,$a,'penalty',-3.0,-300,$r,$sid,$t,1)";
+                                ledgerCmd.Parameters.AddWithValue("$p", id);
+                                ledgerCmd.Parameters.AddWithValue("$a", v.Attack_Id);
+                                ledgerCmd.Parameters.AddWithValue("$r", v.Reason);
+                                ledgerCmd.Parameters.AddWithValue("$sid", sid);
+                                ledgerCmd.Parameters.AddWithValue("$t", DateTime.UtcNow.ToString("O"));
+                                ledgerCmd.ExecuteNonQuery();
+                            }
+                            else
+                            {
+                                score = 0.0; // Penalty cap reached
+                            }
+
+                            db.Log("VERDICT", id, v.Attack_Id, JsonSerializer.Serialize(new { status = v.Status, score, v.Reason, penaltyCapped = penCount >= 5 }));
                         }
 
                         // Broadcast live verdict to participant kiosk!

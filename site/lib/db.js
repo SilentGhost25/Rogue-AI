@@ -17,6 +17,10 @@ function open(file) {
       id INTEGER PRIMARY KEY, post_id INTEGER NOT NULL, author TEXT NOT NULL,
       body TEXT NOT NULL, created_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS notes (
+      id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL,
+      title TEXT NOT NULL, body TEXT NOT NULL, created_at TEXT NOT NULL
+    );
   `);
   return db;
 }
