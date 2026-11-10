@@ -49,8 +49,15 @@ public sealed class HostSupervisor : IDisposable
             var psi = Hidden(python, "-m uvicorn breach_engine.api:app --host 0.0.0.0 --port 8000", Path.Combine(_appDir, "engine"));
             psi.Environment["WORKSPACES_DIR"] = workspaces;
             psi.Environment["GIT_MIRROR_URL"] = Environment.GetEnvironmentVariable("GIT_MIRROR_URL") ?? "https://github.com/Prince649294u83/Rogue-AI-competition.git";
-            var node = Path.Combine(_appDir, "node", "node.exe");
-            if (File.Exists(node)) psi.Environment["NODE_BIN"] = node;
+            var nodeExe = File.Exists(Path.Combine(_appDir, "nodejs", "node.exe"))
+                ? Path.Combine(_appDir, "nodejs", "node.exe")
+                : Path.Combine(_appDir, "node", "node.exe");
+            if (File.Exists(nodeExe))
+            {
+                psi.Environment["NODE_BIN"] = nodeExe;
+                var nodeDir = Path.GetDirectoryName(nodeExe)!;
+                psi.Environment["PATH"] = nodeDir + Path.PathSeparator + (Environment.GetEnvironmentVariable("PATH") ?? "");
+            }
             _children.Add(Process.Start(psi)!);
         }
 
@@ -68,6 +75,7 @@ public sealed class HostSupervisor : IDisposable
             psi.Environment["Breach__WorkspacesPath"] = workspaces;
             psi.Environment["Breach__SiteTemplatePath"] = Path.Combine(_appDir, "site");
             psi.Environment["Breach__EngineUrl"] = EngineUrl;
+            psi.Environment["RogueAgent__AttacksRoot"] = Path.Combine(_appDir, "attacks");
             psi.Environment["Breach__GitHubRepo"] = "Prince649294u83/Rogue-AI-competition";
             _children.Add(Process.Start(psi)!);
         }

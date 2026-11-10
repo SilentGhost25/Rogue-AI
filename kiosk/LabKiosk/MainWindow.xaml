@@ -1,190 +1,536 @@
 <Window x:Class="LabKiosk.MainWindow"
+
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+
         xmlns:t="clr-namespace:LabKiosk.Terminal"
+
         xmlns:c="clr-namespace:LabKiosk.Controls"
+
         Title="ROGUE AI: The Breach Protocol" Background="#0A1218" Foreground="{StaticResource Ink}"
+
         WindowState="Maximized" WindowStyle="None" ResizeMode="NoResize" PreviewKeyDown="OnPreviewKeyDown">
+
     <Window.Resources>
-        <Style x:Key="ViewBtn" TargetType="Button">
-            <Setter Property="Background" Value="#14242E"/>
+
+        <Style x:Key="DarkViewComboItem" TargetType="ComboBoxItem">
+
+            <Setter Property="Background" Value="#0C161D"/>
+
             <Setter Property="Foreground" Value="{StaticResource Ink}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource Line}"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="9,4"/>
-            <Setter Property="Margin" Value="2,0"/>
+
+            <Setter Property="Padding" Value="10,6"/>
+
             <Setter Property="FontSize" Value="12"/>
+
             <Setter Property="Cursor" Value="Hand"/>
+
             <Setter Property="Template">
+
                 <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="border" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="3" Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+
+                    <ControlTemplate TargetType="ComboBoxItem">
+
+                        <Border x:Name="bd" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+
+                            <ContentPresenter VerticalAlignment="Center"/>
+
                         </Border>
+
                         <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="border" Property="BorderBrush" Value="{StaticResource Cyan}"/>
-                                <Setter TargetName="border" Property="Background" Value="#1D3544"/>
+
+                            <Trigger Property="IsHighlighted" Value="True">
+
+                                <Setter TargetName="bd" Property="Background" Value="#1D3544"/>
+
+                                <Setter Property="Foreground" Value="#FFFFFF"/>
+
                             </Trigger>
+
+                            <Trigger Property="IsSelected" Value="True">
+
+                                <Setter TargetName="bd" Property="Background" Value="#22485C"/>
+
+                                <Setter Property="FontWeight" Value="Bold"/>
+
+                            </Trigger>
+
                         </ControlTemplate.Triggers>
+
                     </ControlTemplate>
+
                 </Setter.Value>
+
             </Setter>
+
         </Style>
-        <Style x:Key="ActionBtn" TargetType="Button">
-            <Setter Property="Background" Value="#1B3848"/>
-            <Setter Property="Foreground" Value="#FFFFFF"/>
+
+        <Style x:Key="DarkViewCombo" TargetType="ComboBox">
+
+            <Setter Property="Background" Value="#14242E"/>
+
+            <Setter Property="Foreground" Value="{StaticResource Ink}"/>
+
             <Setter Property="BorderBrush" Value="{StaticResource Cyan}"/>
+
             <Setter Property="BorderThickness" Value="1"/>
+
+            <Setter Property="Padding" Value="10,4"/>
+
+            <Setter Property="FontSize" Value="12"/>
+
             <Setter Property="FontWeight" Value="SemiBold"/>
+
             <Setter Property="Cursor" Value="Hand"/>
+
+            <Setter Property="ItemContainerStyle" Value="{StaticResource DarkViewComboItem}"/>
+
             <Setter Property="Template">
+
                 <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="border" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4" Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="border" Property="Background" Value="#255169"/>
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="border" Property="Opacity" Value="0.45"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
+
+                    <ControlTemplate TargetType="ComboBox">
+
+                        <Grid>
+
+                            <ToggleButton x:Name="ToggleButton" Focusable="False"
+
+                                          IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
+
+                                          ClickMode="Press" Cursor="Hand">
+
+                                <ToggleButton.Template>
+
+                                    <ControlTemplate TargetType="ToggleButton">
+
+                                        <Border x:Name="bd" Background="#14242E" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="4" Padding="10,5">
+
+                                            <Grid>
+
+                                                <Grid.ColumnDefinitions>
+
+                                                    <ColumnDefinition Width="*"/>
+
+                                                    <ColumnDefinition Width="Auto"/>
+
+                                                </Grid.ColumnDefinitions>
+
+                                                <ContentPresenter Grid.Column="0"/>
+
+                                                <TextBlock Grid.Column="1" Text="▾" Foreground="{StaticResource Cyan}" Margin="10,0,0,0" VerticalAlignment="Center"/>
+
+                                            </Grid>
+
+                                        </Border>
+
+                                        <ControlTemplate.Triggers>
+
+                                            <Trigger Property="IsMouseOver" Value="True">
+
+                                                <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource Cyan}"/>
+
+                                                <Setter TargetName="bd" Property="Background" Value="#1D3544"/>
+
+                                            </Trigger>
+
+                                        </ControlTemplate.Triggers>
+
+                                    </ControlTemplate>
+
+                                </ToggleButton.Template>
+
+                                <ContentPresenter Content="{TemplateBinding SelectionBoxItem}"
+
+                                                  ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+
+                                                  VerticalAlignment="Center" HorizontalAlignment="Left"/>
+
+                            </ToggleButton>
+
+                            <Popup x:Name="Popup" Placement="Bottom" IsOpen="{TemplateBinding IsDropDownOpen}" AllowsTransparency="True" Focusable="False" PopupAnimation="Slide">
+
+                                <Border Margin="0,2,0,0" Background="#0C161D" BorderBrush="{StaticResource Cyan}" BorderThickness="1" CornerRadius="4" MinWidth="{TemplateBinding ActualWidth}">
+
+                                    <ScrollViewer SnapsToDevicePixels="True" MaxHeight="260">
+
+                                        <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Contained"/>
+
+                                    </ScrollViewer>
+
+                                </Border>
+
+                            </Popup>
+
+                        </Grid>
+
                     </ControlTemplate>
+
                 </Setter.Value>
+
             </Setter>
+
         </Style>
-        <Style x:Key="SubmitBtn" TargetType="Button">
-            <Setter Property="Background" Value="#13523B"/>
-            <Setter Property="Foreground" Value="#FFFFFF"/>
-            <Setter Property="BorderBrush" Value="{StaticResource Ok}"/>
+
+        <Style x:Key="ViewBtn" TargetType="Button">
+
+            <Setter Property="Background" Value="#14242E"/>
+
+            <Setter Property="Foreground" Value="{StaticResource Ink}"/>
+
+            <Setter Property="BorderBrush" Value="{StaticResource Line}"/>
+
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="FontWeight" Value="Bold"/>
-            <Setter Property="FontSize" Value="13"/>
+
+            <Setter Property="Padding" Value="9,4"/>
+
+            <Setter Property="Margin" Value="2,0"/>
+
+            <Setter Property="FontSize" Value="12"/>
+
             <Setter Property="Cursor" Value="Hand"/>
+
             <Setter Property="Template">
+
                 <Setter.Value>
+
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="border" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+
+                        <Border x:Name="border" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="3" Padding="{TemplateBinding Padding}">
+
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+
                         </Border>
+
                         <ControlTemplate.Triggers>
+
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="border" Property="Background" Value="#1C7554"/>
+
+                                <Setter TargetName="border" Property="BorderBrush" Value="{StaticResource Cyan}"/>
+
+                                <Setter TargetName="border" Property="Background" Value="#1D3544"/>
+
                             </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="border" Property="Opacity" Value="0.45"/>
-                            </Trigger>
+
                         </ControlTemplate.Triggers>
+
                     </ControlTemplate>
+
                 </Setter.Value>
+
             </Setter>
+
         </Style>
+
+        <Style x:Key="ActionBtn" TargetType="Button">
+
+            <Setter Property="Background" Value="#1B3848"/>
+
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+
+            <Setter Property="BorderBrush" Value="{StaticResource Cyan}"/>
+
+            <Setter Property="BorderThickness" Value="1"/>
+
+            <Setter Property="FontWeight" Value="SemiBold"/>
+
+            <Setter Property="Cursor" Value="Hand"/>
+
+            <Setter Property="Template">
+
+                <Setter.Value>
+
+                    <ControlTemplate TargetType="Button">
+
+                        <Border x:Name="border" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+
+                        </Border>
+
+                        <ControlTemplate.Triggers>
+
+                            <Trigger Property="IsMouseOver" Value="True">
+
+                                <Setter TargetName="border" Property="Background" Value="#255169"/>
+
+                            </Trigger>
+
+                            <Trigger Property="IsEnabled" Value="False">
+
+                                <Setter TargetName="border" Property="Opacity" Value="0.45"/>
+
+                            </Trigger>
+
+                        </ControlTemplate.Triggers>
+
+                    </ControlTemplate>
+
+                </Setter.Value>
+
+            </Setter>
+
+        </Style>
+
+        <Style x:Key="SubmitBtn" TargetType="Button">
+
+            <Setter Property="Background" Value="#13523B"/>
+
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+
+            <Setter Property="BorderBrush" Value="{StaticResource Ok}"/>
+
+            <Setter Property="BorderThickness" Value="1"/>
+
+            <Setter Property="FontWeight" Value="Bold"/>
+
+            <Setter Property="FontSize" Value="13"/>
+
+            <Setter Property="Cursor" Value="Hand"/>
+
+            <Setter Property="Template">
+
+                <Setter.Value>
+
+                    <ControlTemplate TargetType="Button">
+
+                        <Border x:Name="border" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+
+                        </Border>
+
+                        <ControlTemplate.Triggers>
+
+                            <Trigger Property="IsMouseOver" Value="True">
+
+                                <Setter TargetName="border" Property="Background" Value="#1C7554"/>
+
+                            </Trigger>
+
+                            <Trigger Property="IsEnabled" Value="False">
+
+                                <Setter TargetName="border" Property="Opacity" Value="0.45"/>
+
+                            </Trigger>
+
+                        </ControlTemplate.Triggers>
+
+                    </ControlTemplate>
+
+                </Setter.Value>
+
+            </Setter>
+
+        </Style>
+
     </Window.Resources>
+
     <Grid>
+
         <Grid.RowDefinitions>
+
             <RowDefinition Height="56"/>   <!-- Top Control Strip -->
+
             <RowDefinition Height="38"/>   <!-- Live Attacks & Objectives Strip -->
+
             <RowDefinition Height="*"/>    <!-- Multi-pane Workspace -->
+
         </Grid.RowDefinitions>
 
+
+
         <!-- Top Header Strip -->
+
         <Border Grid.Row="0" Background="{StaticResource Panel}" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1">
+
             <DockPanel Margin="14,0">
+
                 <!-- Right Side Actions & Meters -->
+
                 <Button x:Name="SubmitButton" DockPanel.Dock="Right" Content="Submit Fix (F5)" Padding="20,7" Margin="10,9"
+
                         Style="{StaticResource SubmitBtn}" Click="OnSubmitFix" AutomationProperties.Name="Submit fix"/>
+
                 <Button x:Name="BtnProfile" DockPanel.Dock="Right" Content="👤 Profile" Padding="10,6" Margin="6,10"
+
                         Style="{StaticResource ActionBtn}" Click="OnProfileClick" ToolTip="Review participant identity &amp; accounts"/>
+
                 <Button x:Name="AdminButton" DockPanel.Dock="Right" Content="&#x2699; Admin Console" Padding="12,6" Margin="6,10"
+
                         Style="{StaticResource ActionBtn}" Click="OnAdminConsole" AutomationProperties.Name="Open organizer console"/>
+
                 <Border x:Name="SolvedBadge" DockPanel.Dock="Right" Visibility="Collapsed" Margin="6,10,6,10" Padding="14,2"
+
                         Background="#143D31" BorderBrush="{StaticResource Ok}" BorderThickness="1" CornerRadius="4">
+
                     <Border.Effect><DropShadowEffect Color="#3FB68B" ShadowDepth="0" BlurRadius="10"/></Border.Effect>
+
                     <TextBlock Text="&#x2714; SOLVED" Foreground="{StaticResource Ok}" FontWeight="Bold" VerticalAlignment="Center"/>
+
                 </Border>
+
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0">
+
                     <TextBlock x:Name="AgyMeter" Text="agy: ready" Foreground="{StaticResource Cyan}" FontWeight="SemiBold" Margin="0,0,14,0"/>
+
                     <TextBlock x:Name="OcMeter" Text="OpenCode: 0 / 30" Foreground="{StaticResource Ink}"/>
+
                 </StackPanel>
 
-                <!-- Center View Switcher: Combination Buttons -->
-                <Border DockPanel.Dock="Right" Background="#0C161D" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="4" Padding="3,2" Margin="10,9" VerticalAlignment="Center">
-                    <StackPanel Orientation="Horizontal">
-                        <Button x:Name="BtnViewAll" Content="&#x229E; All 3" Style="{StaticResource ViewBtn}" Click="OnViewAll" ToolTip="Show Website, Code Editor, and AI Terminal side by side"/>
-                        <Button x:Name="BtnViewCodeAi" Content="&#x25EB; Code + AI" Style="{StaticResource ViewBtn}" Click="OnViewCodeAi" ToolTip="Focus on Code Editor and AI Terminal (Website hidden)"/>
-                        <Button x:Name="BtnViewWebAi" Content="&#x25EB; Web + AI" Style="{StaticResource ViewBtn}" Click="OnViewWebAi" ToolTip="Focus on Website and AI Terminal (Code editor hidden)"/>
-                        <Button x:Name="BtnViewWebCode" Content="&#x25EB; Web + Code" Style="{StaticResource ViewBtn}" Click="OnViewWebCode" ToolTip="Focus on Website and Code Editor (AI hidden)"/>
-                        <Rectangle Width="1" Fill="{StaticResource Line}" Margin="4,2"/>
-                        <Button x:Name="BtnViewSite" Content="&#x1F310; Web" Style="{StaticResource ViewBtn}" Click="OnViewSiteOnly" ToolTip="Maximize Website Pane"/>
-                        <Button x:Name="BtnViewCode" Content="&#x1F4DD; Code" Style="{StaticResource ViewBtn}" Click="OnViewCodeOnly" ToolTip="Maximize Code Editor"/>
-                        <Button x:Name="BtnViewAi" Content="&#x1F916; AI" Style="{StaticResource ViewBtn}" Click="OnViewAiOnly" ToolTip="Maximize AI Terminal"/>
-                    </StackPanel>
-                </Border>
+
+
+                <!-- Center View Switcher: Compact Dropdown -->
+
+                <ComboBox x:Name="ViewSelector" DockPanel.Dock="Right" Width="155" Margin="10,11" VerticalAlignment="Center"
+
+                          Style="{StaticResource DarkViewCombo}" SelectedIndex="0" SelectionChanged="OnViewSelectionChanged"
+
+                          ToolTip="Switch visible workspace panes">
+
+                    <ComboBoxItem Content="&#x229E; All 3 Panes" Tag="All"/>
+
+                    <ComboBoxItem Content="&#x25EB; Code + AI" Tag="CodeAi"/>
+
+                    <ComboBoxItem Content="&#x25EB; Web + AI" Tag="WebAi"/>
+
+                    <ComboBoxItem Content="&#x25EB; Web + Code" Tag="WebCode"/>
+
+                    <ComboBoxItem Content="&#x1F310; Web Only" Tag="Site"/>
+
+                    <ComboBoxItem Content="&#x1F4DD; Code Only" Tag="Code"/>
+
+                    <ComboBoxItem Content="&#x1F916; AI Only" Tag="Ai"/>
+
+                </ComboBox>
+
+
 
                 <!-- Left: Status Display -->
+
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+
                     <TextBlock Text="ROGUE AI" Foreground="{StaticResource Cyan}" FontWeight="Bold" FontSize="16" Margin="0,0,10,0"/>
+
                     <TextBlock Text="|" Foreground="{StaticResource Line}" Margin="0,0,10,0"/>
+
                     <TextBlock x:Name="StatusText" Text="Starting..." Foreground="{StaticResource Ink}" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Cursor="Hand" ToolTip="Click to change Organizer Server URL" MouseLeftButtonUp="OnStatusClick"/>
+
                 </StackPanel>
+
             </DockPanel>
+
         </Border>
+
+
 
         <!-- Live Attacks & Objectives Strip -->
+
         <Border Grid.Row="1" Background="#0D1A22" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1">
+
             <DockPanel Margin="14,0" VerticalAlignment="Center">
+
                 <TextBlock Text="LIVE BREACH STATUS:" Foreground="{StaticResource Cyan}" FontWeight="Bold" FontSize="11" VerticalAlignment="Center" Margin="0,0,12,0"/>
+
                 <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+
                     <StackPanel x:Name="AttackBadgesPanel" Orientation="Horizontal" VerticalAlignment="Center">
+
                         <!-- Populated dynamically: [ ⚡ #1 Defacement (ACTIVE) ] [ ✔ #2 XSS (SOLVED) ] -->
+
                         <TextBlock Text="Standing by. Waiting for event server..." Foreground="{StaticResource Mute}" FontSize="12" VerticalAlignment="Center"/>
+
                     </StackPanel>
+
                 </ScrollViewer>
+
             </DockPanel>
+
         </Border>
 
+
+
         <!-- Main Workspace (Dynamic Split Layout) -->
+
         <Grid Grid.Row="2">
+
             <Grid.ColumnDefinitions>
+
                 <ColumnDefinition x:Name="ColSite" Width="1.15*"/>
+
                 <ColumnDefinition x:Name="Splitter1Col" Width="6"/>
+
                 <ColumnDefinition x:Name="ColCode" Width="1.15*"/>
+
                 <ColumnDefinition x:Name="Splitter2Col" Width="6"/>
+
                 <ColumnDefinition x:Name="ColTerminal" Width="1.2*"/>
+
             </Grid.ColumnDefinitions>
 
+
+
             <!-- 1: the live website -->
+
             <wv2:WebView2 x:Name="Site" Grid.Column="0"/>
+
             <GridSplitter x:Name="Splitter1" Grid.Column="1" Width="6" HorizontalAlignment="Stretch" Background="{StaticResource Line}"/>
 
+
+
             <!-- 2: the code the agents are editing -->
+
             <c:CodeViewer x:Name="Code" Grid.Column="2"/>
+
             <GridSplitter x:Name="Splitter2" Grid.Column="3" Width="6" HorizontalAlignment="Stretch" Background="{StaticResource Line}"/>
 
+
+
             <!-- 3: real terminals -->
+
             <Grid x:Name="TerminalContainer" Grid.Column="4" Background="#070E13">
+
                 <Grid.RowDefinitions>
+
                     <RowDefinition Height="38"/>
+
                     <RowDefinition Height="*"/>
+
                 </Grid.RowDefinitions>
+
                 <Border Grid.Row="0" Background="#0E1B24" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1">
+
                     <DockPanel Margin="10,0">
+
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+
                             <RadioButton x:Name="TabAgy" Content="agy (Antigravity AI)" GroupName="agent" IsChecked="True" Margin="0,0,18,0" Foreground="{StaticResource Ink}" FontWeight="SemiBold" Checked="OnTabChanged"/>
+
                             <RadioButton x:Name="TabOc" Content="OpenCode AI" GroupName="agent" Foreground="{StaticResource Ink}" FontWeight="SemiBold" Checked="OnTabChanged"/>
+
                         </StackPanel>
+
                         <Button x:Name="BtnGoogleAccount" Content="&#x1F464; Profile &amp; Accounts" DockPanel.Dock="Right" Padding="8,3" FontSize="11" Click="OnProfileClick" Style="{StaticResource ViewBtn}" ToolTip="Review participant identity and linked accounts"/>
+
                     </DockPanel>
+
                 </Border>
+
                 <Grid Grid.Row="1">
+
                     <t:TerminalTab x:Name="TermAgy"/>
+
                     <t:TerminalTab x:Name="TermOc" Visibility="Hidden"/>
+
                 </Grid>
+
             </Grid>
+
         </Grid>
+
     </Grid>
+
 </Window>
+

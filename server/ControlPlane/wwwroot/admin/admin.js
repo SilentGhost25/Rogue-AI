@@ -97,10 +97,28 @@ async function refreshEvaluations() {
     if (!tbody || !data || !Array.isArray(data.evaluations)) return;
 
     const list = data.evaluations;
+    const attacks = Array.isArray(data.attacks) ? data.attacks : [];
+    const headRow = document.getElementById('eval-head-row');
+    if (headRow) {
+      headRow.innerHTML = `
+        <th>Desk</th>
+        <th>Participant / Team</th>
+        <th>Station IP</th>
+        <th>PIN / Pass</th>
+        <th>Score</th>
+        <th>Pass / Solved</th>
+        <th>Local Penalties</th>
+        ${attacks.map(a => `<th title="#${a.id} ${escapeHtml(a.title)} (Band ${a.band})">#${a.id}</th>`).join('')}
+        <th>Gates (Out/Comp)</th>
+        <th>Diagnostic Verdict / Reason</th>
+        <th>Breakdown</th>
+      `;
+    }
+    const totalCols = 10 + attacks.length;
     if (countEl) countEl.textContent = `${list.length} participant${list.length === 1 ? '' : 's'}`;
 
     if (list.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="16" class="muted">No participants connected yet</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="${totalCols}" class="muted">No participants connected yet</td></tr>`;
       return;
     }
 
@@ -118,20 +136,17 @@ async function refreshEvaluations() {
         if (failedAtt) lastDiag = `#${failedAtt.attackId} FAILED: ${failedAtt.lastReason}`;
       }
 
-      // Attack columns 1 to 8
-      let attackCols = '';
-      for (let i = 1; i <= 8; i++) {
-        const att = attMap[i];
+      const attackCols = attacks.map(a => {
+        const att = attMap[a.id];
         if (!att || att.status === 'PENDING') {
-          attackCols += `<td><span class="badge pending" title="Not dispatched">--</span></td>`;
+          return `<td><span class="badge pending" title="Not dispatched">--</span></td>`;
         } else if (att.status === 'PASSED') {
-          attackCols += `<td><span class="badge passed" title="Passed (+points)">PASS</span></td>`;
+          return `<td><span class="badge passed" title="Passed (+points)">PASS</span></td>`;
         } else if (att.status === 'FAILED') {
-          attackCols += `<td><span class="badge failed" title="${escapeHtml(att.lastReason)}">FAIL</span></td>`;
-        } else {
-          attackCols += `<td><span class="badge inprogress" title="Active breach">RUN</span></td>`;
+          return `<td><span class="badge failed" title="${escapeHtml(att.lastReason)}">FAIL</span></td>`;
         }
-      }
+        return `<td><span class="badge inprogress" title="Active breach">RUN</span></td>`;
+      }).join('');
 
       const penaltyTag = p.localPenalties > 0
         ? `<span class="penalty-tag">${p.localPenalties} fail (${-(p.localPenalties * 3.0).toFixed(1)} pts)</span>`
@@ -263,8 +278,6 @@ function openEvalModal(pid) {
 function closeEvalModal() {
   const modal = document.getElementById('eval-modal');
   if (modal) modal.style.display = 'none';
-}
-
 }
 
 async function refreshKiosks() {

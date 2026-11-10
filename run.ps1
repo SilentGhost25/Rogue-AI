@@ -1,9 +1,22 @@
 param(
+    [Parameter(Position = 0)]
+    [string]$Command = "",
+    [Parameter(Position = 1)]
+    [string]$ServerUrl = "",
     [switch]$HostMode,
     [switch]$Both,
-    [switch]$Participant,
-    [string]$ServerUrl
+    [switch]$Participant
 )
+
+$cmd = $Command.Trim().ToLowerInvariant()
+switch ($cmd) {
+    { $_ -in @("host", "organizer", "-hostmode") } { $HostMode = $true }
+    { $_ -in @("play", "participant", "kiosk", "-participant") } { $Participant = $true }
+    { $_ -in @("demo", "both", "-both") } { $Both = $true }
+}
+if ($ServerUrl -and -not $ServerUrl.StartsWith("http", [System.StringComparison]::OrdinalIgnoreCase)) {
+    $ServerUrl = if ($ServerUrl.Contains(":")) { "http://$ServerUrl" } else { "http://${ServerUrl}:5080" }
+}
 
 $ErrorActionPreference = "Stop"
 
@@ -131,14 +144,22 @@ if ($detectedIps.Count -gt 1) {
 }
 Write-Host "    Auto-Discovery:   UDP Broadcast on port 5082 (Active)" -ForegroundColor Cyan
 
-# 1. Initialize Breach Workspace
+# 1. Initialize Breach Workspace (refresh if legacy Harbour Notes files exist)
 $WorkspaceDir = "C:\BreachWorkspace"
 try {
     if (!(Test-Path $WorkspaceDir)) {
         New-Item -ItemType Directory -Path $WorkspaceDir -Force -ErrorAction Stop | Out-Null
     }
-    if (!(Test-Path "$WorkspaceDir\server.js")) {
-        Write-Host "[*] Initializing Breach Workspace at $WorkspaceDir..." -ForegroundColor Cyan
+    $legacyHarbour = (Test-Path "$WorkspaceDir\routes\posts.js") -and !(Test-Path "$WorkspaceDir\routes\traffic.js")
+    if (!(Test-Path "$WorkspaceDir\server.js") -or $legacyHarbour) {
+        if ($legacyHarbour) {
+            Write-Host "[*] Upgrading legacy workspace at $WorkspaceDir to AEGIS..." -ForegroundColor Yellow
+            foreach ($d in @("routes", "views", "lib", "public", "test")) {
+                if (Test-Path "$WorkspaceDir\$d") { Remove-Item "$WorkspaceDir\$d" -Recurse -Force -ErrorAction SilentlyContinue }
+            }
+        } else {
+            Write-Host "[*] Initializing Breach Workspace at $WorkspaceDir..." -ForegroundColor Cyan
+        }
         Copy-Item -Path "$RogueRoot\site\*" -Destination $WorkspaceDir -Recurse -Force -ErrorAction Stop
     }
 } catch {
@@ -147,7 +168,13 @@ try {
     if (!(Test-Path $WorkspaceDir)) {
         New-Item -ItemType Directory -Path $WorkspaceDir -Force | Out-Null
     }
-    if (!(Test-Path "$WorkspaceDir\server.js")) {
+    $legacyFallback = (Test-Path "$WorkspaceDir\routes\posts.js") -and !(Test-Path "$WorkspaceDir\routes\traffic.js")
+    if (!(Test-Path "$WorkspaceDir\server.js") -or $legacyFallback) {
+        if ($legacyFallback) {
+            foreach ($d in @("routes", "views", "lib", "public", "test")) {
+                if (Test-Path "$WorkspaceDir\$d") { Remove-Item "$WorkspaceDir\$d" -Recurse -Force -ErrorAction SilentlyContinue }
+            }
+        }
         Write-Host "[*] Initializing Breach Workspace at $WorkspaceDir..." -ForegroundColor Cyan
         Copy-Item -Path "$RogueRoot\site\*" -Destination $WorkspaceDir -Recurse -Force
     }
@@ -157,27 +184,42 @@ try {
 # If participant-only mode requested without host services
 if ($Participant) {
     $kioskExe = Ensure-LabKioskBuilt
-    $targetUrl = if ($ServerUrl) { $ServerUrl } else { "http://$primaryLanIp:5080" }
-    Write-Host "[*] Launching Participant Kiosk (Connecting dynamically to $targetUrl)..." -ForegroundColor Green
+    $targetUrl = $ServerUrl
+    if (-not $targetUrl) {
+        # 1. Prefer same-PC organizer on loopback if running
+        try {
+            $localResp = Invoke-WebRequest -Uri "http://127.0.0.1:5080/api/state" -TimeoutSec 1 -UseBasicParsing -ErrorAction SilentlyContinue
+            if ($localResp.StatusCode -eq 200) { $targetUrl = "http://127.0.0.1:5080" }
+        } catch { }
+    }
+    if (-not $targetUrl) {
+        # 2. Try UDP port 5082 LAN discovery
+        try {
+            $udp = New-Object System.Net.Sockets.UdpClient(0)
+            $udp.EnableBroadcast = $true
+            $udp.Client.ReceiveTimeout = 1500
+            $ping = [System.Text.Encoding]::UTF8.GetBytes("ROGUE_AI_DISCOVERY_PING")
+            [void]$udp.Send($ping, $ping.Length, (New-Object System.Net.IPEndPoint([System.Net.IPAddress]::Broadcast, 5082)))
+            $remote = New-Object System.Net.IPEndPoint([System.Net.IPAddress]::Any, 0)
+            $recv = $udp.Receive([ref]$remote)
+            $msg = [System.Text.Encoding]::UTF8.GetString($recv)
+            if ($msg -match '^ROGUE_AI_(?:HOST|BEACON):(\d+)') {
+                $targetUrl = "http://$($remote.Address):$($Matches[1])"
+            }
+            $udp.Close()
+        } catch { }
+    }
+    if (-not $targetUrl) {
+        $targetUrl = "http://$primaryLanIp:5080"
+    }
+    Write-Host "[*] Launching Participant Kiosk (Connecting to $targetUrl)..." -ForegroundColor Green
     Start-Process -FilePath $kioskExe -ArgumentList "--server `"$targetUrl`""
     exit 0
 }
 
 try {
-# 2. Check and Start Target Website (Port 3000)
+# Note: LabKiosk's SiteHost owns port 3000 for the participant workspace; HostMode only runs Engine (8000) + ControlPlane (5080).
 $siteProc = $null
-$isSiteRunning = $false
-try {
-    $resp = Invoke-WebRequest -Uri "http://127.0.0.1:3000" -TimeoutSec 1 -UseBasicParsing -ErrorAction SilentlyContinue
-    if ($resp.StatusCode -eq 200) { $isSiteRunning = $true }
-} catch { }
-
-if ($isSiteRunning) {
-    Write-Host "[+] Target Website already online on http://127.0.0.1:3000" -ForegroundColor Green
-} else {
-    Write-Host "[*] Starting Target Website (Node.js --watch) on port 3000..." -ForegroundColor Cyan
-    $siteProc = Start-Process -FilePath "node" -ArgumentList "--watch server.js" -WorkingDirectory $WorkspaceDir -PassThru -WindowStyle Hidden
-}
 
 # 3. Check and Start Python Engine (Port 8000)
 $engineProc = $null

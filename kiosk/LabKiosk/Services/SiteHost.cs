@@ -43,6 +43,16 @@ public sealed class SiteHost : IDisposable
         psi.Environment["PORT"] = new Uri(_siteUrl).Port.ToString();
         psi.Environment["HOST"] = "127.0.0.1";
         psi.Environment["DB_FILE"] = _dbPath;
+
+        var nodeModules = ResolveNodeModules();
+        if (nodeModules is not null)
+        {
+            var existing = Environment.GetEnvironmentVariable("NODE_PATH");
+            psi.Environment["NODE_PATH"] = string.IsNullOrWhiteSpace(existing)
+                ? nodeModules
+                : $"{nodeModules}{Path.PathSeparator}{existing}";
+        }
+
         _proc = Process.Start(psi);
 
         _watcher = new FileSystemWatcher(_dir) { IncludeSubdirectories = true, NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size };
@@ -50,6 +60,23 @@ public sealed class SiteHost : IDisposable
         _watcher.Changed += h; _watcher.Created += h; _watcher.Deleted += h;
         _watcher.Renamed += (_, e) => OnFileEvent(e.FullPath);
         _watcher.EnableRaisingEvents = true;
+    }
+
+    private string? ResolveNodeModules()
+    {
+        var candidates = new List<string>
+        {
+            Path.Combine(_dir, "node_modules"),
+            Path.Combine(AppContext.BaseDirectory, "node_modules"),
+            Path.Combine(AppContext.BaseDirectory, "site", "node_modules"),
+            Path.Combine(AppContext.BaseDirectory, "site-template", "node_modules"),
+            @"C:\BreachWorkspace\node_modules",
+        };
+        var probe = new DirectoryInfo(AppContext.BaseDirectory);
+        for (var i = 0; i < 6 && probe is not null; i++, probe = probe.Parent)
+            candidates.Add(Path.Combine(probe.FullName, "site", "node_modules"));
+
+        return candidates.FirstOrDefault(d => Directory.Exists(Path.Combine(d, "express")));
     }
 
     private static bool Ignored(string path) =>
@@ -61,6 +88,7 @@ public sealed class SiteHost : IDisposable
     {
         for (var i = 0; i < seconds * 4; i++)
         {
+            if (_proc is { HasExited: true }) return false;
             try { using var res = await Http.GetAsync(_siteUrl + "/api/health"); if (res.IsSuccessStatusCode) return true; }
             catch (HttpRequestException) { }
             catch (TaskCanceledException) { }

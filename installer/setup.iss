@@ -1,10 +1,10 @@
 ; Script generated for Inno Setup 6+
-; ROGUE AI — The Breach Protocol: Unified Setup Installer
+; ROGUE AI — The Breach Protocol: Unified Setup Installer (Participant + Host Mode)
 
 #define MyAppName "Rogue AI - The Breach Protocol"
 #define MyAppVersion "1.0.0"
 #define MyAppPublisher "Almatron Defense Labs"
-#define MyAppURL "https://github.com/almatron/rogue-ai"
+#define MyAppURL "https://github.com/SilentGhost25/Rogue-AI"
 #define MyAppExeName "LabKiosk.exe"
 
 [Setup]
@@ -28,41 +28,51 @@ PrivilegesRequired=lowest
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
+[Types]
+Name: "participant"; Description: "Participant Kiosk (Defend site & connect to Organizer Host)"
+Name: "host"; Description: "Host Mode (Organizer Control Plane + Evaluation Engine)"
+Name: "full"; Description: "Full Suite (Host Mode + Participant Kiosk)"
+Name: "custom"; Description: "Custom installation"; Flags: iscustom
+
+[Components]
+Name: "participant"; Description: "Participant Defense Studio (LabKiosk + AEGIS Site)"; Types: participant full custom
+Name: "host"; Description: "Organizer Host Mode (Control Plane + Attack Engine + Command Center)"; Types: host full custom
+
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
-Name: "organizericon"; Description: "Create Organizer Command Center shortcut"; GroupDescription: "{cm:AdditionalIcons}"
 
 [Files]
-; Kiosk WPF Application & Self-Contained .NET 9 Runtime
+; Kiosk WPF Application & Self-Contained .NET 9 Runtime (used by both Participant View and --host Command Center)
 Source: "..\kiosk\LabKiosk\bin\SelfContained\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "*.pdb,*.WebView2\*"
 ; Bundled Standalone Portable Node.js Runtime & NPM Shim (Zero External Dependency)
 Source: "..\vendor\nodejs\*"; DestDir: "{app}\nodejs"; Flags: ignoreversion
 ; Default Kiosk Settings
 Source: "..\kiosk\LabKiosk\kiosk.json"; DestDir: "{app}"; Flags: ignoreversion
-; Target Website (Harbour Notes including bundled node_modules)
+; Target Website (AEGIS including bundled node_modules)
 Source: "..\site\*"; DestDir: "{app}\site"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "*.db,*.sqlite,*.log"
-; Control Plane Server
-Source: "..\server\ControlPlane\bin\Release\net9.0\*"; DestDir: "{app}\server"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "wwwroot\*.exe"
-; Engine and Attack Packs
-Source: "..\engine\*"; DestDir: "{app}\engine"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "__pycache__\*,*.pyc,*.db"
-Source: "..\attacks\*"; DestDir: "{app}\attacks"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "__pycache__\*,*.pyc"
+; Control Plane Server (Host Mode)
+Source: "..\server\ControlPlane\bin\Release\net9.0\*"; DestDir: "{app}\server"; Components: host; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "wwwroot\*.exe"
+; Engine and Attack Packs (Host Mode)
+Source: "..\engine\*"; DestDir: "{app}\engine"; Components: host; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "__pycache__\*,*.pyc,*.db"
+Source: "..\attacks\*"; DestDir: "{app}\attacks"; Components: host; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "__pycache__\*,*.pyc"
 ; Uninstaller Helper Script
 Source: "uninstall.bat"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 ; Participant Mode
-Name: "{group}\Rogue AI - Participant Defense Studio"; Filename: "{app}\{#MyAppExeName}"
-Name: "{autodesktop}\Rogue AI - Participant Defense Studio"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
-; Organizer Command Mode
-Name: "{group}\Rogue AI - Organizer Command Center"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--host"
-Name: "{autodesktop}\Rogue AI - Organizer Command Center"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--host"; Tasks: organizericon
+Name: "{group}\Rogue AI - Participant Defense Studio"; Filename: "{app}\{#MyAppExeName}"; Components: participant
+Name: "{autodesktop}\Rogue AI - Participant Defense Studio"; Filename: "{app}\{#MyAppExeName}"; Components: participant; Tasks: desktopicon
+; Organizer Host Mode
+Name: "{group}\Rogue AI - Organizer Host Mode"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--host"; Components: host
+Name: "{autodesktop}\Rogue AI - Organizer Host Mode"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--host"; Components: host; Tasks: desktopicon
 ; Uninstaller
 Name: "{group}\Uninstall Rogue AI"; Filename: "{uninstallexe}"
 Name: "{group}\Cleanup and Uninstall Utility"; Filename: "{app}\uninstall.bat"
 Name: "{autodesktop}\Uninstall Rogue AI"; Filename: "{uninstallexe}"; Tasks: desktopicon
 
 [Run]
-Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Filename: "{app}\{#MyAppExeName}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Parameters: "--host"; Description: "Launch Organizer Host Mode"; Components: host; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Description: "Launch Participant Defense Studio"; Components: participant; Flags: nowait postinstall skipifsilent
 
 [Code]
 var
@@ -70,14 +80,21 @@ var
 
 procedure InitializeWizard;
 begin
-  ServerPage := CreateInputQueryPage(wpSelectDir,
+  ServerPage := CreateInputQueryPage(wpSelectComponents,
     'Organizer Server Configuration',
     'Specify the Host Server connection for this participant laptop.',
-    'Keep AUTO for automatic dynamic discovery, or enter the Host IP / Cloudflare Tunnel URL:');
+    'Keep AUTO for automatic dynamic discovery, or enter the Host IP / URL:');
   ServerPage.Add('Organizer Host IP / URL (or AUTO for dynamic discovery):', False);
   ServerPage.Add('Participant Desk Identifier (e.g. DESK-01, DESK-02):', False);
   ServerPage.Values[0] := 'AUTO';
   ServerPage.Values[1] := 'DESK-01';
+end;
+
+function ShouldSkipPage(PageID: Integer): Boolean;
+begin
+  Result := False;
+  if (PageID = ServerPage.ID) and (not WizardIsComponentSelected('participant')) then
+    Result := True;
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
@@ -111,4 +128,3 @@ begin
     SaveStringToFile(ExpandConstant('{app}\kiosk.json'), JsonContent, False);
   end;
 end;
-

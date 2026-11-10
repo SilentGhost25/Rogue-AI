@@ -77,7 +77,7 @@
       <div class="table-responsive">
         <table class="data-table">
           <thead>
-            <tr>
+            <tr id="eval-head-row">
               <th>Desk</th>
               <th>Participant / Team</th>
               <th>Station IP</th>
@@ -85,21 +85,13 @@
               <th>Score</th>
               <th>Pass / Solved</th>
               <th>Local Penalties</th>
-              <th title="Attack 1: SQL Injection">#1</th>
-              <th title="Attack 2: Session Fixation">#2</th>
-              <th title="Attack 3: Prototype Pollution">#3</th>
-              <th title="Attack 4: Stored XSS">#4</th>
-              <th title="Attack 5: Path Traversal">#5</th>
-              <th title="Attack 6: Timing Attack / Signature">#6</th>
-              <th title="Attack 7: SSRF">#7</th>
-              <th title="Attack 8: IDOR">#8</th>
               <th>Gates (Out/Comp)</th>
               <th>Diagnostic Verdict / Reason</th>
               <th>Breakdown</th>
             </tr>
           </thead>
           <tbody id="eval-list">
-            <tr><td colspan="18" class="muted">Loading participant evaluations...</td></tr>
+            <tr><td colspan="10" class="muted">Loading participant evaluations...</td></tr>
           </tbody>
         </table>
       </div>

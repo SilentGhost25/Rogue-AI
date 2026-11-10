@@ -1,69 +1,33 @@
 @echo off
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
-title ROGUE AI - The Breach Protocol Launcher
+title ROGUE AI - Launcher
 
-:: Detect primary IP address dynamically
-for /f "tokens=4" %%a in ('route print 0.0.0.0 2^>nul ^| findstr /r "^[ ]*0.0.0.0"') do (
-    if not defined DETECTED_IP set DETECTED_IP=%%a
-)
-if not defined DETECTED_IP set DETECTED_IP=127.0.0.1
+:: Quick usage:
+::   run.bat host              -> Organizer Host (Control Plane + Engine + Admin UI)
+::   run.bat play [host-url]   -> Participant View (auto-discovers Host or connects to host-url)
+::   run.bat demo              -> Single-PC Demo (Host + Participant together)
 
-:: Support direct CLI flags or "run.bat organizer" / "run.bat participant" / "run.bat both"
-if /I "%~1"=="organizer" (
-    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0run.ps1" -HostMode
-    goto :eof
-)
-if /I "%~1"=="participant" (
-    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0run.ps1" -Participant
-    goto :eof
-)
-if /I "%~1"=="both" (
-    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0run.ps1" -Both
-    goto :eof
-)
 if not "%~1"=="" (
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0run.ps1" %*
     goto :eof
 )
 
 echo ===================================================================
-echo     ROGUE AI: THE BREACH PROTOCOL -- DYNAMIC LAN LAUNCHER
+echo   ROGUE AI: THE BREACH PROTOCOL
 echo ===================================================================
-echo   Detected Local LAN IP: http://!DETECTED_IP!:5080
-echo   UDP Auto-Discovery:    Port 5082 (Active)
+echo   Commands:  run.bat host  ^|  run.bat play [ip]  ^|  run.bat demo
 echo ===================================================================
 echo.
-echo   [1] Organizer Host Mode  (Control Plane + Engine + Site + LAN Broadcast)
-echo   [2] Participant Kiosk    (Auto-detects and connects to Organizer)
-echo   [3] Single-PC Demo       (Runs Host and Kiosk on this machine)
-echo   [4] Share Online Tunnel  (Cloudflare public tunnel for remote play)
-echo   [5] Exit
+echo   [1] Host   (Organizer Command Center)
+echo   [2] Play   (Participant View - auto-detects Host)
+echo   [3] Demo   (Host + Participant on this PC)
+echo   [4] Exit
 echo.
-set /p CHOICE="Select an option [1-5] (Default: 1): "
+set /p CHOICE="Select [1-4] (Default: 1): "
 
 if "%CHOICE%"=="" set CHOICE=1
-if "%CHOICE%"=="1" goto :host
-if "%CHOICE%"=="2" goto :kiosk
-if "%CHOICE%"=="3" goto :both
-if "%CHOICE%"=="4" goto :tunnel
-if "%CHOICE%"=="5" goto :eof
-
-:host
-echo [*] Launching Organizer Command Center with dynamic LAN broadcasting...
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0run.ps1" -HostMode
-goto :eof
-
-:kiosk
-echo [*] Launching Participant Kiosk with dynamic zero-config LAN discovery...
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0run.ps1" -Participant
-goto :eof
-
-:both
-echo [*] Launching Host Mode + Local Participant Kiosk...
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0run.ps1" -Both
-goto :eof
-
-:tunnel
-call "%~dp0share_online.bat"
+if "%CHOICE%"=="1" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0run.ps1" host
+if "%CHOICE%"=="2" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0run.ps1" play
+if "%CHOICE%"=="3" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0run.ps1" demo
 goto :eof

@@ -2,6 +2,7 @@
 from __future__ import annotations
 import base64
 import hashlib
+import os
 from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -39,12 +40,16 @@ class EvaluateRequest(BaseModel):
 
 
 def resolve_workspace(participant_id: str) -> Path | None:
-    candidates = [
+    env_ws = os.environ.get("WORKSPACES_DIR")
+    candidates = []
+    if env_ws:
+        candidates.append(Path(env_ws) / participant_id)
+    candidates.extend([
         REPOS_DIR / participant_id,
         WORKSPACES_DIR / participant_id,
         ROOT / "server" / "data" / "workspaces" / participant_id,
         ROOT / "data" / "workspaces" / participant_id,
-    ]
+    ])
     for c in candidates:
         if c.exists():
             return c

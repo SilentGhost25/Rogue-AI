@@ -133,6 +133,7 @@
     <button id="btnResume" class="btn-ok">&#x25B6; Resume</button>
     <button id="btnFreeze" class="btn-warn">&#x2744; Freeze Board</button>
     <button id="btnExport" title="Export raw SQLite score ledger">&#x1F4E5; Export CSV</button>
+    <a href="/admin/" style="text-decoration:none"><button style="background:#1c3242; border-color:var(--ok); color:var(--ok)">&#x2699; Full Admin Console</button></a>
     <a href="/projector.html" target="_blank" style="text-decoration:none"><button style="background:var(--cyan); color:#fff; border-color:var(--cyan)">&#x1F4FA; Projector View</button></a>
   </div>
 </header>
@@ -223,23 +224,18 @@
 
 <script src="/signalr.min.js"></script>
 <script>
-const ATTACKS = [
-  { id: 1, name: "Defacement & Redirect", desc: "CSS corruption & route redirect", time: "10:45" },
-  { id: 2, name: "Stored Cross-Site Scripting", desc: "Unescaped HTML tags in comments", time: "11:30" },
-  { id: 3, name: "SQL Injection Extraction", desc: "Raw string interpolation in search", time: "12:15" },
-  { id: 4, name: "Hardcoded Admin Backdoor", desc: "Static master key in api route", time: "13:00" },
-  { id: 5, name: "Auth Bypass & Permissive CORS", desc: "Null Origin and wildcard auth bypass", time: "14:30" },
-  { id: 6, name: "CPU Performance Sabotage", desc: "200k iterative SHA256 blocking loop", time: "15:30" },
-  { id: 7, name: "Poisoned Dependency Hook", desc: "Trojan hook in server.js dependency", time: "16:30" }
-];
+let ATTACKS = [];
 
 const $ = id => document.getElementById(id);
 const getHeaders = () => ({ 'X-Admin-Key': $('adminKey').value, 'Content-Type': 'application/json' });
 const post = (url, body) => fetch(url, { method: 'POST', headers: getHeaders(), body: body ? JSON.stringify(body) : undefined });
 
-// Load saved key if available and not stale
+// Load key injected by AdminWindow (--) or saved key
 const savedKey = localStorage.getItem('breachAdminKey');
-if (savedKey && savedKey !== 'change-me-locally' && savedKey !== 'CHANGE-ME-BEFORE-EVENT') {
+if (window.__ADMIN_KEY) {
+  $('adminKey').value = window.__ADMIN_KEY;
+  localStorage.setItem('breachAdminKey', window.__ADMIN_KEY);
+} else if (savedKey && savedKey !== 'change-me-locally' && savedKey !== 'CHANGE-ME-BEFORE-EVENT') {
   $('adminKey').value = savedKey;
 } else {
   $('adminKey').value = 'LocalDevAdminKey_2026_Secure123';
@@ -248,29 +244,43 @@ if (savedKey && savedKey !== 'change-me-locally' && savedKey !== 'CHANGE-ME-BEFO
 $('adminKey').addEventListener('input', () => {
   localStorage.setItem('breachAdminKey', $('adminKey').value);
   try { hubConn.invoke('JoinAdmin', $('adminKey').value); } catch(_) {}
+  refreshAttacks();
   refreshKiosks();
   refreshLeaderboard();
 });
 
-// Render Attack Buttons
-$('attacksDeck').innerHTML = ATTACKS.map(a => `
-  <div class="attack-item">
-    <div class="attack-title">#${a.id} ${a.name}</div>
-    <div class="attack-desc">${a.desc} &bull; <i>${a.time}</i></div>
-    <div class="attack-actions">
-      <button class="btn-danger" onclick="fireAttack(${a.id}, '${a.name}')">&#x1F680; Fire Attack #${a.id}</button>
-    </div>
-  </div>
-`).join('');
+async function refreshAttacks() {
+  try {
+    const res = await fetch('/api/admin/attacks', { headers: getHeaders() });
+    if (!res.ok) {
+      $('attacksDeck').innerHTML = `<div style="color:var(--mute); font-size:12px">Authenticate Admin Key to load attacks (HTTP ${res.status}).</div>`;
+      return;
+    }
+    ATTACKS = await res.json();
+    $('attacksDeck').innerHTML = ATTACKS.map(a => `
+      <div class="attack-item">
+        <div class="attack-title">#${a.id} ${a.title} <span style="font-size:11px; color:var(--mute)">[${a.state}]</span></div>
+        <div class="attack-desc">${a.codename || ''} &bull; Band ${a.band} &bull; Slot ${a.sequenceSlot || 'reserve'}</div>
+        <div class="attack-actions">
+          <button class="btn-danger" onclick="fireAttack(${a.id}, '${String(a.title).replace(/'/g, "\\'")}')">&#x1F680; Fire #${a.id}</button>
+        </div>
+      </div>
+    `).join('');
+  } catch (err) {
+    $('attacksDeck').innerHTML = `<div style="color:var(--accent); font-size:12px">Failed to load attacks: ${err.message}</div>`;
+  }
+}
 
 async function fireAttack(id, name) {
   const target = $('targetScope').value;
-  const targetDesc = target ? `Target Kiosk: ${target}` : 'ALL 50 NODES';
+  const targetDesc = target ? `Target Kiosk: ${target}` : 'ALL ACTIVE NODES';
   if (!confirm(`CONFIRM INTRUSION DISPATCH\n\nAttack: #${id} ${name}\nTarget: ${targetDesc}\n\nProceed with payload landing?`)) return;
-  const url = target ? `/admin/attacks/${id}/fire?targetId=${encodeURIComponent(target)}` : `/admin/attacks/${id}/fire`;
-  const res = await post(url);
+  const res = target
+    ? await post(`/admin/attacks/${id}/fire?targetId=${encodeURIComponent(target)}`)
+    : await post(`/api/admin/attacks/${id}/fire-arena`);
   if (res.ok) {
     alert(`Intrusion #${id} dispatched successfully!`);
+    refreshAttacks();
   } else {
     alert(`Failed to dispatch attack (HTTP ${res.status}): ${res.statusText}\nPlease verify your Admin Key in the top right header.`);
   }
@@ -495,11 +505,13 @@ hubConn.start().then(() => {
   $('connStatus').textContent = 'Online';
   $('connStatus').className = 'status-pill online';
   hubConn.invoke('JoinAdmin', $('adminKey').value);
+  refreshAttacks();
   refreshKiosks();
   refreshLeaderboard();
   refreshBackupStatus();
 }).catch(e => {
   $('connStatus').textContent = 'Offline';
+  refreshAttacks();
 });
 
 setInterval(() => { refreshKiosks(); refreshLeaderboard(); }, 8000);

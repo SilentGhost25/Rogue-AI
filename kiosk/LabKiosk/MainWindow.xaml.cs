@@ -125,7 +125,6 @@ public partial class MainWindow : Window
     private bool _capLockScheduled;
     private DispatcherTimer? _statusTimer;
     private CancellationTokenSource? _submitTimeoutCts;
-    private Button? _activeViewBtn;
 
     public MainWindow(KioskSettings? settings = null)
     {
@@ -151,48 +150,35 @@ public partial class MainWindow : Window
     {
         try
         {
-            SetActiveViewBtn(BtnViewAll);
+            SelectViewMode("All");
 
-            // 1. Register with the control plane (retry: the server may still be starting).
-            while (_pid is null)
-            {
-                try { _pid = await _api.RegisterAsync(_s.DisplayName, _s.KioskId); }
-                catch (Exception ex)
-                {
-                    Status($"Waiting for server at {_s.ServerUrl} ({ex.Message}) [Click text or Ctrl+Shift+S to change IP]");
-                    await Task.Delay(3000);
-                }
-            }
-
-            // 2. The workspace is the single set of real files that the site, agy and OpenCode all use.
+            // 1. Resolve workspace and initialize clean AEGIS site template if empty or stale Harbour Notes.
             _s.WorkspacePath = WorkspaceBackup.ResolveWorkspace(_s.WorkspacePath);
-            if (!File.Exists(Path.Combine(_s.WorkspacePath, "server.js")) && Directory.Exists(_s.SiteTemplatePath))
+            var hasLegacyHarbour = File.Exists(Path.Combine(_s.WorkspacePath, "routes", "posts.js"))
+                                && !File.Exists(Path.Combine(_s.WorkspacePath, "routes", "traffic.js"));
+            var templateIsAegis = Directory.Exists(_s.SiteTemplatePath)
+                                && File.Exists(Path.Combine(_s.SiteTemplatePath, "routes", "traffic.js"));
+            if ((!File.Exists(Path.Combine(_s.WorkspacePath, "server.js")) || (hasLegacyHarbour && templateIsAegis))
+                && Directory.Exists(_s.SiteTemplatePath))
+            {
+                if (hasLegacyHarbour)
+                {
+                    WorkspaceBackup.Snapshot(_s.WorkspacePath, "legacy-harbour-notes");
+                    foreach (var staleDir in new[] { "routes", "views", "lib", "public", "test" })
+                    {
+                        var p = Path.Combine(_s.WorkspacePath, staleDir);
+                        if (Directory.Exists(p)) try { Directory.Delete(p, true); } catch { }
+                    }
+                }
                 CopyTree(_s.SiteTemplatePath, _s.WorkspacePath);
+            }
 
             // Autoconfigure AI context by ensuring GEMINI.md and AGENTS.md are in the workspace
             EnsureAiContextFiles();
 
             Code.Initialize(_s.WorkspacePath);
 
-            // 3. Sync starts held; pull the server state first so a restart can never push old files over an attack.
-            _sync = new SnapshotSync(_api, _pid, _s.WorkspacePath);
-            _sync.Hold();
-            _pull = new WorkspaceSync(_api, _pid, _s.WorkspacePath, _sync);
-            var status = await _api.GetStatusAsync(_pid);
-            await _pull.PullAsync("startup");
-            if (status?.ActiveAttacks != null)
-            {
-                foreach (var id in status.ActiveAttacks)
-                {
-                    _pulled.Add(id);
-                    _activeAttacks.Add(id);
-                }
-            }
-            _sync.Release();
-            _sync.Start(TimeSpan.FromSeconds(15));
-            if (status?.Status is "eliminated" or "disqualified") { Eliminate(); return; }
-
-            // 4. The website runs from the workspace; edits by the agents restart it and reload this pane.
+            // 2. Start the live website immediately so participant view renders even while host connects.
             _site = new SiteHost(_s.NodePath, _s.WorkspacePath, _s.SiteUrl, _s.DataPath);
             _site.ReloadRequested += () => Dispatcher.InvokeAsync(() => { Site.Reload(); Code.RefreshAll(); });
             _site.Problem += Status;
@@ -205,6 +191,52 @@ public partial class MainWindow : Window
                 if (host is not ("127.0.0.1" or "localhost")) e.Cancel = true;
             };
             Site.Source = new Uri(_s.SiteUrl);
+
+            // 3. Register with the control plane (auto-discover LAN host if configured URL is unreachable).
+            while (_pid is null)
+            {
+                try
+                {
+                    _pid = await _api.RegisterAsync(_s.DisplayName, _s.KioskId, _s.DeskId, _s.Password, _s.GitHubHandle, _s.GoogleAccount);
+                }
+                catch (Exception ex)
+                {
+                    Status($"Waiting for server at {_s.ServerUrl} ({ex.Message}) — scanning LAN... [Click or Ctrl+Shift+S]");
+                    var discovered = await HostDiscoveryClient.DiscoverAsync();
+                    if (!string.IsNullOrEmpty(discovered) && !string.Equals(discovered.TrimEnd('/'), _s.ServerUrl.TrimEnd('/'), StringComparison.OrdinalIgnoreCase))
+                    {
+                        _s.ServerUrl = discovered;
+                        _s.Save();
+                        _api = new ApiClient(_s.ServerUrl);
+                        Status($"Discovered Organizer at {_s.ServerUrl}. Connecting...");
+                        continue;
+                    }
+                    await Task.Delay(2500);
+                }
+            }
+
+            // 4. Sync starts held; pull the server state first so a restart can never push old files over an attack.
+            _sync = new SnapshotSync(_api, _pid, _s.WorkspacePath);
+            _sync.Hold();
+            _pull = new WorkspaceSync(_api, _pid, _s.WorkspacePath, _sync);
+            var status = await _api.GetStatusAsync(_pid);
+            var pulled = await _pull.PullAsync("startup");
+            if (pulled > 0)
+            {
+                _site.RequestReload();
+                Code.RefreshAll();
+            }
+            if (status?.ActiveAttacks != null)
+            {
+                foreach (var id in status.ActiveAttacks)
+                {
+                    _pulled.Add(id);
+                    _activeAttacks.Add(id);
+                }
+            }
+            _sync.Release();
+            _sync.Start(TimeSpan.FromSeconds(15));
+            if (status?.Status is "eliminated" or "disqualified") { Eliminate(); return; }
 
             // 5. Live connection to the event server.
             _hub = new HubClient(_s.ServerUrl, _pid);
@@ -585,110 +617,51 @@ public partial class MainWindow : Window
         }
     }
 
-    private void SetActiveViewBtn(Button activeBtn)
+    private void OnViewSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        _activeViewBtn = activeBtn;
-        var buttons = new[] { BtnViewAll, BtnViewCodeAi, BtnViewWebAi, BtnViewWebCode, BtnViewSite, BtnViewCode, BtnViewAi };
-        foreach (var b in buttons)
+        if (ViewSelector?.SelectedItem is ComboBoxItem item && item.Tag is string mode)
+            ApplyViewLayout(mode);
+    }
+
+    private void SelectViewMode(string mode)
+    {
+        if (ViewSelector is not null)
         {
-            if (b is null) continue;
-            if (b == activeBtn)
+            foreach (ComboBoxItem item in ViewSelector.Items)
             {
-                b.BorderBrush = (Brush)FindResource("Cyan");
-                b.Background = new SolidColorBrush(Color.FromRgb(0x22, 0x48, 0x5C));
-                b.FontWeight = FontWeights.Bold;
-            }
-            else
-            {
-                b.BorderBrush = (Brush)FindResource("Line");
-                b.Background = new SolidColorBrush(Color.FromRgb(0x14, 0x24, 0x2E));
-                b.FontWeight = FontWeights.Normal;
+                if (item.Tag as string == mode)
+                {
+                    ViewSelector.SelectedItem = item;
+                    break;
+                }
             }
         }
+        ApplyViewLayout(mode);
     }
 
-    private void OnViewAll(object sender, RoutedEventArgs e)
+    private void ApplyViewLayout(string mode)
     {
-        SetActiveViewBtn(BtnViewAll);
-        ColSite.Width = new GridLength(1.15, GridUnitType.Star);
-        Splitter1Col.Width = new GridLength(6);
-        Splitter1.Visibility = Visibility.Visible;
-        ColCode.Width = new GridLength(1.15, GridUnitType.Star);
-        Splitter2Col.Width = new GridLength(6);
-        Splitter2.Visibility = Visibility.Visible;
-        ColTerminal.Width = new GridLength(1.2, GridUnitType.Star);
-    }
+        if (ColSite is null || ColCode is null || ColTerminal is null) return;
+        var (site, code, ai) = mode switch
+        {
+            "CodeAi"  => (0.0,  1.0,  1.0),
+            "WebAi"   => (1.0,  0.0,  1.0),
+            "WebCode" => (1.0,  1.0,  0.0),
+            "Site"    => (1.0,  0.0,  0.0),
+            "Code"    => (0.0,  1.0,  0.0),
+            "Ai"      => (0.0,  0.0,  1.0),
+            _         => (1.15, 1.15, 1.2),
+        };
+        ColSite.Width = new GridLength(site, site > 0 ? GridUnitType.Star : GridUnitType.Pixel);
+        ColCode.Width = new GridLength(code, code > 0 ? GridUnitType.Star : GridUnitType.Pixel);
+        ColTerminal.Width = new GridLength(ai, ai > 0 ? GridUnitType.Star : GridUnitType.Pixel);
 
-    private void OnViewCodeAi(object sender, RoutedEventArgs e)
-    {
-        SetActiveViewBtn(BtnViewCodeAi);
-        ColSite.Width = new GridLength(0);
-        Splitter1Col.Width = new GridLength(0);
-        Splitter1.Visibility = Visibility.Collapsed;
-        ColCode.Width = new GridLength(1, GridUnitType.Star);
-        Splitter2Col.Width = new GridLength(6);
-        Splitter2.Visibility = Visibility.Visible;
-        ColTerminal.Width = new GridLength(1, GridUnitType.Star);
-    }
-
-    private void OnViewWebAi(object sender, RoutedEventArgs e)
-    {
-        SetActiveViewBtn(BtnViewWebAi);
-        ColSite.Width = new GridLength(1, GridUnitType.Star);
-        Splitter1Col.Width = new GridLength(6);
-        Splitter1.Visibility = Visibility.Visible;
-        ColCode.Width = new GridLength(0);
-        Splitter2Col.Width = new GridLength(0);
-        Splitter2.Visibility = Visibility.Collapsed;
-        ColTerminal.Width = new GridLength(1, GridUnitType.Star);
-    }
-
-    private void OnViewWebCode(object sender, RoutedEventArgs e)
-    {
-        SetActiveViewBtn(BtnViewWebCode);
-        ColSite.Width = new GridLength(1, GridUnitType.Star);
-        Splitter1Col.Width = new GridLength(6);
-        Splitter1.Visibility = Visibility.Visible;
-        ColCode.Width = new GridLength(1, GridUnitType.Star);
-        Splitter2Col.Width = new GridLength(0);
-        Splitter2.Visibility = Visibility.Collapsed;
-        ColTerminal.Width = new GridLength(0);
-    }
-
-    private void OnViewSiteOnly(object sender, RoutedEventArgs e)
-    {
-        SetActiveViewBtn(BtnViewSite);
-        ColSite.Width = new GridLength(1, GridUnitType.Star);
-        Splitter1Col.Width = new GridLength(0);
-        Splitter1.Visibility = Visibility.Collapsed;
-        ColCode.Width = new GridLength(0);
-        Splitter2Col.Width = new GridLength(0);
-        Splitter2.Visibility = Visibility.Collapsed;
-        ColTerminal.Width = new GridLength(0);
-    }
-
-    private void OnViewCodeOnly(object sender, RoutedEventArgs e)
-    {
-        SetActiveViewBtn(BtnViewCode);
-        ColSite.Width = new GridLength(0);
-        Splitter1Col.Width = new GridLength(0);
-        Splitter1.Visibility = Visibility.Collapsed;
-        ColCode.Width = new GridLength(1, GridUnitType.Star);
-        Splitter2Col.Width = new GridLength(0);
-        Splitter2.Visibility = Visibility.Collapsed;
-        ColTerminal.Width = new GridLength(0);
-    }
-
-    private void OnViewAiOnly(object sender, RoutedEventArgs e)
-    {
-        SetActiveViewBtn(BtnViewAi);
-        ColSite.Width = new GridLength(0);
-        Splitter1Col.Width = new GridLength(0);
-        Splitter1.Visibility = Visibility.Collapsed;
-        ColCode.Width = new GridLength(0);
-        Splitter2Col.Width = new GridLength(0);
-        Splitter2.Visibility = Visibility.Collapsed;
-        ColTerminal.Width = new GridLength(1, GridUnitType.Star);
+        var show1 = site > 0 && (code > 0 || ai > 0);
+        var show2 = code > 0 && ai > 0;
+        Splitter1Col.Width = new GridLength(show1 ? 6 : 0);
+        Splitter1.Visibility = show1 ? Visibility.Visible : Visibility.Collapsed;
+        Splitter2Col.Width = new GridLength(show2 ? 6 : 0);
+        Splitter2.Visibility = show2 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     // ---- incident popup & investigation -------------------------------------------------------------
@@ -730,7 +703,7 @@ public partial class MainWindow : Window
     {
         // Switch view to Code + AI so participant can inspect files with their AI assistant
         // Does NOT pre-open or reveal any file spoiler
-        OnViewCodeAi(this, new RoutedEventArgs());
+        SelectViewMode("CodeAi");
     }
 
     private async Task OnAttackResetAsync(int attackId)
