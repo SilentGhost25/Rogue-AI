@@ -1,6 +1,3 @@
-using System.Diagnostics;
-using System.IO;
-using System.Net.Http;
 using System.Windows;
 using LabKiosk.Services;
 
@@ -8,104 +5,60 @@ namespace LabKiosk;
 
 public partial class App : Application
 {
-#if !KIOSK_ONLY
-    private Process? _serverProc;
-#endif
-
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
 
         var args = e.Args;
-        var config = KioskConfig.FromArgs(args);
-
-#if !KIOSK_ONLY
         var isHost = args.Any(a => a.Equals("--host", StringComparison.OrdinalIgnoreCase) ||
                                    a.Equals("--admin", StringComparison.OrdinalIgnoreCase) ||
                                    a.Equals("-h", StringComparison.OrdinalIgnoreCase));
 
+        var isProjector = args.Any(a => a.Equals("--projector", StringComparison.OrdinalIgnoreCase) ||
+                                       a.Equals("-p", StringComparison.OrdinalIgnoreCase));
+
+        var s = KioskSettings.Load();
+
+        for (var i = 0; i < args.Length; i++)
+        {
+            if (args[i].Equals("--server", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+            {
+                s.ServerUrl = args[i + 1];
+            }
+        }
+
         if (isHost)
         {
-            TryStartControlPlaneServer();
-            var target = $"{config.ServerUrl.TrimEnd('/')}/admin/";
-            try
-            {
-                Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
-            }
-            catch
-            {
-                var adminWin = new AdminWindow(config.ServerUrl);
-                adminWin.Show();
-                return;
-            }
-            Shutdown();
+            // Organizer mode: start the event services (control plane + engine) and open the Command Center.
+            var supervisor = new HostSupervisor();
+            var admin = new AdminWindow(supervisor.ServerUrl, supervisor.AdminKey, "/", fullscreen: false, supervisor);
+            MainWindow = admin;
+            ShutdownMode = ShutdownMode.OnMainWindowClose;
+            admin.Show();
             return;
         }
-#endif
-        var settings = KioskSettings.Load();
-        if (!settings.Onboarded || string.IsNullOrWhiteSpace(settings.DisplayName) || settings.DisplayName == Environment.MachineName)
+
+        if (isProjector)
         {
-            var onboard = new OnboardingWindow(settings);
+            var admin = new AdminWindow(s.ServerUrl, "", "/projector.html", fullscreen: true);
+            MainWindow = admin;
+            ShutdownMode = ShutdownMode.OnMainWindowClose;
+            admin.Show();
+            return;
+        }
+
+        if (!s.Onboarded || string.IsNullOrWhiteSpace(s.DisplayName) || s.DisplayName == Environment.MachineName)
+        {
+            var onboard = new OnboardingWindow(s);
             if (onboard.ShowDialog() != true)
             {
                 Shutdown();
                 return;
             }
-            config = KioskConfig.FromArgs(args);
         }
 
-        var mainWin = new MainWindow(config);
-        MainWindow = mainWin;
-        mainWin.Show();
-    }
-
-#if !KIOSK_ONLY
-    private void TryStartControlPlaneServer()
-    {
-        try
-        {
-            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(1) };
-            var res = client.GetAsync("http://127.0.0.1:5080/api/state").GetAwaiter().GetResult();
-            if (res.IsSuccessStatusCode) return;
-        }
-        catch { }
-
-        try
-        {
-            var baseDir = AppContext.BaseDirectory;
-            var serverCandidates = new[]
-            {
-                Path.Combine(baseDir, "ControlPlane.exe"),
-                Path.Combine(baseDir, "..", "..", "..", "..", "server", "ControlPlane", "bin", "Debug", "net9.0", "ControlPlane.exe"),
-                Path.Combine(baseDir, "server", "ControlPlane.exe")
-            };
-
-            foreach (var cand in serverCandidates)
-            {
-                var full = Path.GetFullPath(cand);
-                if (File.Exists(full))
-                {
-                    _serverProc = Process.Start(new ProcessStartInfo
-                    {
-                        FileName = full,
-                        WorkingDirectory = Path.GetDirectoryName(full),
-                        UseShellExecute = false,
-                        CreateNoWindow = true
-                    });
-                    Thread.Sleep(800);
-                    break;
-                }
-            }
-        }
-        catch { }
-    }
-#endif
-
-    protected override void OnExit(ExitEventArgs e)
-    {
-#if !KIOSK_ONLY
-        try { _serverProc?.Kill(); } catch { }
-#endif
-        base.OnExit(e);
+        var main = new MainWindow(s);
+        MainWindow = main;
+        main.Show();
     }
 }

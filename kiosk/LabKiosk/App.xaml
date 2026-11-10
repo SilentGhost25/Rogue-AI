@@ -8,5 +8,7 @@
         <SolidColorBrush x:Key="Alert" Color="#E5533D"/>
         <SolidColorBrush x:Key="Ok" Color="#3FB68B"/>
         <SolidColorBrush x:Key="Mute" Color="#8AA0AC"/>
+        <SolidColorBrush x:Key="Cyan" Color="#37D6E8"/>
+        <SolidColorBrush x:Key="Warn" Color="#E0B341"/>
     </Application.Resources>
 </Application>

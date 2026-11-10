@@ -1,228 +1,214 @@
-using System.Collections.ObjectModel;
 using System.IO;
+using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Threading;
 using ICSharpCode.AvalonEdit.Highlighting;
 
 namespace LabKiosk.Controls;
 
+/// <summary>
+/// The middle pane: file tree plus a syntax-highlighted editor over the same workspace the agents edit. Changes made by
+/// agy, OpenCode or an attack appear within a moment, keeping the cursor and scroll position; Ctrl+S saves manual edits.
+/// </summary>
 public partial class CodeViewer : UserControl, IDisposable
 {
-    private string _workspacePath = string.Empty;
-    private string? _currentRelativeFile;
+    private static readonly string[] Hidden = { "node_modules", ".git", ".breach-backup" };
+    private string _root = "";
+    private string? _current;
+    private bool _loading, _dirty, _suppressSelect, _firstBuild = true;
     private FileSystemWatcher? _watcher;
-    private readonly DispatcherTimer _debounceTimer;
-    private string? _pendingChangedFile;
-    private bool _isSavingInternal;
+    private System.Threading.Timer? _debounce;
 
-    public ObservableCollection<WorkspaceFileItem> Files { get; } = new();
+    static CodeViewer() => AdaptHighlightingToDarkTheme();
 
     public CodeViewer()
     {
         InitializeComponent();
-        FileList.ItemsSource = Files;
-
-        _debounceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
-        _debounceTimer.Tick += OnDebounceTick;
-
-        Editor.TextArea.KeyDown += (s, e) =>
-        {
-            if (e.Key == Key.S && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
-            {
-                SaveCurrentFile();
-                e.Handled = true;
-            }
-        };
+        Editor.TextChanged += (_, _) => { if (!_loading) { _dirty = true; UpdateLabel(); } };
+        PreviewKeyDown += OnKey;
     }
 
-    public void InitializeWorkspace(string path)
+    public void Initialize(string root)
     {
-        _workspacePath = Path.GetFullPath(path);
-        RefreshFileList();
-        SetupWatcher();
-        if (Files.Count > 0)
-        {
-            // Default select search.js or app.js
-            var preferred = Files.FirstOrDefault(f => f.DisplayPath == "routes/search.js")
-                         ?? Files.FirstOrDefault(f => f.DisplayPath == "app.js")
-                         ?? Files[0];
-            FileList.SelectedItem = preferred;
-        }
-    }
-
-    public void RefreshFileList()
-    {
-        Files.Clear();
-        if (!Directory.Exists(_workspacePath)) return;
-
-        var excluded = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "node_modules", ".git", ".breach-backup", "dist", "build" };
-
-        var allFiles = Directory.EnumerateFiles(_workspacePath, "*.*", SearchOption.AllDirectories)
-            .Where(f => !f.Split(Path.DirectorySeparatorChar).Any(segment => excluded.Contains(segment)))
-            .OrderBy(f => f)
-            .ToList();
-
-        foreach (var file in allFiles)
-        {
-            var rel = Path.GetRelativePath(_workspacePath, file).Replace('\\', '/');
-            var ext = Path.GetExtension(file).ToLowerInvariant();
-            var icon = ext switch
-            {
-                ".js" => "JS",
-                ".json" => "{ }",
-                ".html" => "<>",
-                ".css" => "#",
-                ".md" => "MD",
-                _ => "FILE"
-            };
-            var color = ext switch
-            {
-                ".js" => new SolidColorBrush(Color.FromRgb(240, 219, 79)),
-                ".json" => new SolidColorBrush(Color.FromRgb(63, 182, 139)),
-                ".html" => new SolidColorBrush(Color.FromRgb(229, 83, 61)),
-                ".css" => new SolidColorBrush(Color.FromRgb(66, 165, 245)),
-                _ => new SolidColorBrush(Color.FromRgb(138, 160, 172))
-            };
-            Files.Add(new WorkspaceFileItem(rel, file, icon, color));
-        }
-    }
-
-    private void SetupWatcher()
-    {
-        _watcher?.Dispose();
-        if (!Directory.Exists(_workspacePath)) return;
-
-        _watcher = new FileSystemWatcher(_workspacePath)
-        {
-            IncludeSubdirectories = true,
-            NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size
-        };
-        _watcher.Changed += OnFileChangedOnDisk;
-        _watcher.Created += OnFileChangedOnDisk;
-        _watcher.Deleted += OnFileChangedOnDisk;
-        _watcher.Renamed += OnFileChangedOnDisk;
+        _root = root;
+        BuildTree();
+        _watcher = new FileSystemWatcher(root) { IncludeSubdirectories = true, NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size };
+        FileSystemEventHandler h = (_, e) => OnDiskChange(e.FullPath);
+        _watcher.Changed += h; _watcher.Created += h; _watcher.Deleted += h;
+        _watcher.Renamed += (_, e) => OnDiskChange(e.FullPath);
         _watcher.EnableRaisingEvents = true;
     }
 
-    private void OnFileChangedOnDisk(object sender, FileSystemEventArgs e)
+    /// <summary>Re-reads the tree and the open file right now (used after an attack lands).</summary>
+    public void RefreshAll() => Dispatcher.InvokeAsync(() => { BuildTree(); ReloadCurrentFile(); });
+
+    // ---- tree --------------------------------------------------------------------------------------
+    private static bool IsLocalOnly(string name) => name.EndsWith(".db") || name.EndsWith(".db-wal") || name.EndsWith(".db-shm") || name == ".gitignore";
+
+    private HashSet<string> CollectExpanded()
     {
-        if (_isSavingInternal) return;
-        var rel = Path.GetRelativePath(_workspacePath, e.FullPath).Replace('\\', '/');
-        _pendingChangedFile = rel;
-        Dispatcher.InvokeAsync(() =>
-        {
-            _debounceTimer.Stop();
-            _debounceTimer.Start();
-        });
+        var set = new HashSet<string>();
+        void Walk(ItemCollection items) { foreach (TreeViewItem i in items) { if (i.IsExpanded && i.Tag is string p) set.Add(p); Walk(i.Items); } }
+        Walk(Tree.Items);
+        return set;
     }
 
-    private void OnDebounceTick(object? sender, EventArgs e)
+    private void BuildTree()
     {
-        _debounceTimer.Stop();
-        if (_pendingChangedFile is not null && _pendingChangedFile == _currentRelativeFile)
+        var expanded = CollectExpanded();
+        _suppressSelect = true;
+        Tree.Items.Clear();
+        AddDirectory(Tree.Items, _root, expanded);
+        _firstBuild = false;
+        _suppressSelect = false;
+    }
+
+    private void AddDirectory(ItemCollection items, string dir, HashSet<string> expanded)
+    {
+        foreach (var d in Directory.GetDirectories(dir).OrderBy(x => Path.GetFileName(x), StringComparer.OrdinalIgnoreCase))
         {
-            ReloadCurrentFile();
-            SyncStatus.Text = "Updated from disk";
-            SyncStatus.Foreground = (SolidColorBrush)FindResource("Ok");
+            var name = Path.GetFileName(d);
+            if (Hidden.Contains(name)) continue;
+            var node = new TreeViewItem { Header = "\uD83D\uDCC1 " + name, Tag = d, Foreground = Brushes.Gainsboro, IsExpanded = _firstBuild || expanded.Contains(d) };
+            AddDirectory(node.Items, d, expanded);
+            items.Add(node);
+        }
+        foreach (var f in Directory.GetFiles(dir).OrderBy(x => Path.GetFileName(x), StringComparer.OrdinalIgnoreCase))
+        {
+            var name = Path.GetFileName(f);
+            if (IsLocalOnly(name)) continue;
+            items.Add(new TreeViewItem { Header = "\uD83D\uDCC4 " + name, Tag = f, Foreground = Brushes.Gainsboro, IsSelected = f == _current });
         }
     }
 
-    private void OnFileSelected(object sender, SelectionChangedEventArgs e)
+    private void OnTreeSelect(object sender, RoutedPropertyChangedEventArgs<object> e)
     {
-        if (FileList.SelectedItem is WorkspaceFileItem item)
-        {
-            LoadFile(item.RelativePath, item.FullPath);
-        }
+        if (_suppressSelect || e.NewValue is not TreeViewItem { Tag: string path } || !File.Exists(path)) return;
+        if (_dirty) Save();               // switching files saves manual edits, so nothing is lost silently
+        OpenFile(path);
     }
 
-    public void LoadFile(string relPath, string fullPath)
+    // ---- file ---------------------------------------------------------------------------------------
+    public void OpenRelative(string relPath)
     {
-        _currentRelativeFile = relPath;
-        CurrentFilePath.Text = relPath;
-
-        if (File.Exists(fullPath))
-        {
-            try
-            {
-                Editor.Text = File.ReadAllText(fullPath);
-                var ext = Path.GetExtension(fullPath);
-                var highlighting = HighlightingManager.Instance.GetDefinitionByExtension(ext);
-                if (highlighting is not null)
-                {
-                    Editor.SyntaxHighlighting = highlighting;
-                }
-                SyncStatus.Text = "Synced";
-                SyncStatus.Foreground = (SolidColorBrush)FindResource("Ok");
-            }
-            catch (Exception ex)
-            {
-                Editor.Text = $"// Error loading file: {ex.Message}";
-                SyncStatus.Text = "Read error";
-                SyncStatus.Foreground = (SolidColorBrush)FindResource("Alert");
-            }
-        }
-    }
-
-    public void ReloadCurrentFile()
-    {
-        if (_currentRelativeFile is null) return;
-        var full = Path.Combine(_workspacePath, _currentRelativeFile);
+        var full = Path.Combine(_root, relPath.Replace('/', Path.DirectorySeparatorChar));
         if (File.Exists(full))
         {
-            var caretOffset = Math.Min(Editor.CaretOffset, (int)new FileInfo(full).Length);
-            try
+            Dispatcher.InvokeAsync(() =>
             {
-                Editor.Text = File.ReadAllText(full);
-                if (caretOffset >= 0 && caretOffset <= Editor.Text.Length)
+                if (_dirty) Save();
+                OpenFile(full);
+                SelectTreeNode(full);
+            });
+        }
+    }
+
+    private void SelectTreeNode(string fullPath)
+    {
+        bool FindAndSelect(ItemCollection items)
+        {
+            foreach (TreeViewItem item in items)
+            {
+                if (item.Tag is string p && string.Equals(p, fullPath, StringComparison.OrdinalIgnoreCase))
                 {
-                    Editor.CaretOffset = caretOffset;
+                    item.IsSelected = true;
+                    item.BringIntoView();
+                    return true;
+                }
+                if (item.Items.Count > 0 && FindAndSelect(item.Items))
+                {
+                    item.IsExpanded = true;
+                    return true;
                 }
             }
-            catch { /* File might be locked during rapid writes */ }
+            return false;
         }
+        FindAndSelect(Tree.Items);
     }
 
-    private void OnSaveClicked(object sender, RoutedEventArgs e) => SaveCurrentFile();
-
-    private void SaveCurrentFile()
+    public void OpenFile(string path)
     {
-        if (_currentRelativeFile is null) return;
-        var full = Path.Combine(_workspacePath, _currentRelativeFile);
-        try
+        string text;
+        try { text = File.ReadAllText(path); } catch (IOException) { return; }
+        _current = path;
+        _loading = true;
+        Editor.Text = text;
+        Editor.SyntaxHighlighting = HighlightingManager.Instance.GetDefinitionByExtension(Path.GetExtension(path));
+        Editor.IsReadOnly = false;
+        _loading = false; _dirty = false;
+        SaveButton.IsEnabled = true;
+        UpdateLabel();
+    }
+
+    private void ReloadCurrentFile()
+    {
+        if (_current is null) return;
+        if (!File.Exists(_current)) { FileLabel.Text = Rel() + "  (deleted on disk)"; return; }
+        string disk;
+        try { disk = File.ReadAllText(_current); } catch (IOException) { return; }
+        if (disk == Editor.Text) return;                  // our own save, or nothing changed
+        if (_dirty) { FileLabel.Text = Rel() + "  (changed on disk; your unsaved edits are kept)"; return; }
+
+        var caret = Editor.CaretOffset;                   // keep the cursor and scroll position
+        var scroll = Editor.VerticalOffset;
+        _loading = true;
+        Editor.Text = disk;
+        Editor.CaretOffset = Math.Min(caret, disk.Length);
+        Editor.ScrollToVerticalOffset(scroll);
+        _loading = false; _dirty = false;
+        FileLabel.Text = Rel() + "  (updated from disk)";
+    }
+
+    private void Save()
+    {
+        if (_current is null) return;
+        try { File.WriteAllText(_current, Editor.Text, new UTF8Encoding(false)); _dirty = false; UpdateLabel(); }
+        catch (IOException ex) { FileLabel.Text = "Could not save: " + ex.Message; }
+    }
+
+    private void OnSave(object sender, RoutedEventArgs e) => Save();
+
+    private void OnKey(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.S && Keyboard.Modifiers == ModifierKeys.Control) { Save(); e.Handled = true; }
+    }
+
+    private string Rel() => _current is null ? "" : Path.GetRelativePath(_root, _current).Replace('\\', '/');
+    private void UpdateLabel() => FileLabel.Text = Rel() + (_dirty ? "  \u25CF unsaved" : "");
+
+    private void OnDiskChange(string path)
+    {
+        if (Hidden.Any(h => path.Contains(Path.DirectorySeparatorChar + h + Path.DirectorySeparatorChar)) || IsLocalOnly(Path.GetFileName(path))) return;
+        _debounce?.Dispose();
+        _debounce = new System.Threading.Timer(_ => RefreshAll(), null, 400, Timeout.Infinite);
+    }
+
+    // ---- theme --------------------------------------------------------------------------------------
+    /// <summary>AvalonEdit's built-in colours are made for a white background; lighten them for the dark kiosk theme.</summary>
+    private static void AdaptHighlightingToDarkTheme()
+    {
+        foreach (var ext in new[] { ".js", ".json", ".html", ".css", ".md", ".xml" })
         {
-            _isSavingInternal = true;
-            File.WriteAllText(full, Editor.Text);
-            SyncStatus.Text = "Saved to disk";
-            SyncStatus.Foreground = (SolidColorBrush)FindResource("Ok");
-        }
-        catch (Exception ex)
-        {
-            SyncStatus.Text = $"Save failed: {ex.Message}";
-            SyncStatus.Foreground = (SolidColorBrush)FindResource("Alert");
-        }
-        finally
-        {
-            _isSavingInternal = false;
+            var def = HighlightingManager.Instance.GetDefinitionByExtension(ext);
+            if (def is null) continue;
+            foreach (var color in def.NamedHighlightingColors)
+            {
+                var n = color.Name ?? "";
+                Color? c =
+                    n.Contains("Comment", StringComparison.OrdinalIgnoreCase) ? Color.FromRgb(0x6A, 0x99, 0x55) :
+                    n.Contains("String", StringComparison.OrdinalIgnoreCase) ? Color.FromRgb(0xCE, 0x91, 0x78) :
+                    n.Contains("Digit", StringComparison.OrdinalIgnoreCase) || n.Contains("Number", StringComparison.OrdinalIgnoreCase) ? Color.FromRgb(0xB5, 0xCE, 0xA8) :
+                    n.Contains("Key", StringComparison.OrdinalIgnoreCase) || n.Contains("Statement", StringComparison.OrdinalIgnoreCase) || n.Contains("Reserved", StringComparison.OrdinalIgnoreCase) ? Color.FromRgb(0x56, 0x9C, 0xD6) :
+                    n.Contains("Method", StringComparison.OrdinalIgnoreCase) || n.Contains("Function", StringComparison.OrdinalIgnoreCase) ? Color.FromRgb(0xDC, 0xDC, 0xAA) :
+                    n.Contains("Tag", StringComparison.OrdinalIgnoreCase) || n.Contains("Element", StringComparison.OrdinalIgnoreCase) ? Color.FromRgb(0x4E, 0xC9, 0xB0) :
+                    n.Contains("Attribute", StringComparison.OrdinalIgnoreCase) || n.Contains("Property", StringComparison.OrdinalIgnoreCase) ? Color.FromRgb(0x9C, 0xDC, 0xFE) :
+                    null;
+                if (c is { } value) color.Foreground = new SimpleHighlightingBrush(value);
+            }
         }
     }
 
-    private void OnRefreshTree(object sender, RoutedEventArgs e)
-    {
-        RefreshFileList();
-    }
-
-    public void Dispose()
-    {
-        _watcher?.Dispose();
-        _debounceTimer.Stop();
-    }
+    public void Dispose() { _watcher?.Dispose(); _debounce?.Dispose(); }
 }
-
-public sealed record WorkspaceFileItem(string DisplayPath, string FullPath, string Icon, Brush IconColor)
-{
-    public string RelativePath => DisplayPath;
-}
-

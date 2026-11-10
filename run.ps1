@@ -18,10 +18,60 @@ if (Test-Path "$env:LOCALAPPDATA\dotnet" -ErrorAction SilentlyContinue) {
     $env:DOTNET_ROOT = "$env:LOCALAPPDATA\dotnet"
     $env:Path = "$env:LOCALAPPDATA\dotnet;$env:Path"
 }
+$dotnetCmd = if (Test-Path "$env:LOCALAPPDATA\dotnet\dotnet.exe") { "$env:LOCALAPPDATA\dotnet\dotnet.exe" } else { (Get-Command dotnet -ErrorAction SilentlyContinue).Source }
 $env:PYTHONPATH = "$RogueRoot\engine"
 
 if (-not $env:BREACH_ADMIN_KEY) {
     $env:BREACH_ADMIN_KEY = "LocalDevAdminKey_2026_Secure123"
+}
+
+function Ensure-ControlPlaneBuilt {
+    if (Test-Path "$RogueRoot\server\ControlPlane.exe") {
+        return "$RogueRoot\server\ControlPlane.exe"
+    }
+    $cpProj = "$RogueRoot\server\ControlPlane\ControlPlane.csproj"
+    $cpExe = "$RogueRoot\server\ControlPlane\bin\Debug\net9.0\ControlPlane.exe"
+    if ((Test-Path $cpProj) -and $dotnetCmd) {
+        $needsBuild = -not (Test-Path $cpExe)
+        if (-not $needsBuild) {
+            $exeTime = (Get-Item $cpExe).LastWriteTimeUtc
+            $newer = Get-ChildItem "$RogueRoot\server\ControlPlane" -Recurse -Include *.cs,*.csproj,*.json -ErrorAction SilentlyContinue |
+                     Where-Object { $_.FullName -notmatch "\\bin\\|\\obj\\" -and $_.LastWriteTimeUtc -gt $exeTime } |
+                     Select-Object -First 1
+            if ($newer) { $needsBuild = $true }
+        }
+        if ($needsBuild) {
+            Write-Host "[*] Building Control Plane (updating from source changes)..." -ForegroundColor Cyan
+            & $dotnetCmd build $cpProj -c Debug | Out-Null
+        }
+    }
+    return $cpExe
+}
+
+function Ensure-LabKioskBuilt {
+    if (Test-Path "$RogueRoot\LabKiosk.exe") {
+        return "$RogueRoot\LabKiosk.exe"
+    }
+    $kProj = "$RogueRoot\kiosk\LabKiosk\LabKiosk.csproj"
+    $kExe = "$RogueRoot\kiosk\LabKiosk\bin\Debug\net9.0-windows\LabKiosk.exe"
+    if ((Test-Path $kProj) -and $dotnetCmd) {
+        $needsBuild = -not (Test-Path $kExe)
+        if (-not $needsBuild) {
+            $exeTime = (Get-Item $kExe).LastWriteTimeUtc
+            $newer = Get-ChildItem "$RogueRoot\kiosk\LabKiosk" -Recurse -Include *.cs,*.xaml,*.csproj,*.json,*.html,*.css,*.js -ErrorAction SilentlyContinue |
+                     Where-Object { $_.FullName -notmatch "\\bin\\|\\obj\\" -and $_.LastWriteTimeUtc -gt $exeTime } |
+                     Select-Object -First 1
+            if ($newer) { $needsBuild = $true }
+        }
+        if ($needsBuild) {
+            Write-Host "[*] Building LabKiosk application (updating from source changes)..." -ForegroundColor Cyan
+            & $dotnetCmd build $kProj -c Debug | Out-Null
+        }
+    }
+    if (Test-Path $kExe) { return $kExe }
+    $scExe = "$RogueRoot\kiosk\LabKiosk\bin\SelfContained\LabKiosk.exe"
+    if (Test-Path $scExe) { return $scExe }
+    return $kExe
 }
 
 Write-Host "==========================================================" -ForegroundColor Cyan
@@ -106,14 +156,7 @@ try {
 
 # If participant-only mode requested without host services
 if ($Participant) {
-    $kioskExe = "$RogueRoot\kiosk\LabKiosk\bin\Debug\net9.0-windows\LabKiosk.exe"
-    if (!(Test-Path $kioskExe)) {
-        $kioskExe = "$RogueRoot\kiosk\LabKiosk\bin\SelfContained\LabKiosk.exe"
-    }
-    if (!(Test-Path $kioskExe)) {
-        Write-Host "[*] Building LabKiosk application..." -ForegroundColor Cyan
-        dotnet build "$RogueRoot\kiosk\LabKiosk\LabKiosk.csproj" -c Debug | Out-Null
-    }
+    $kioskExe = Ensure-LabKioskBuilt
     $targetUrl = if ($ServerUrl) { $ServerUrl } else { "http://$primaryLanIp:5080" }
     Write-Host "[*] Launching Participant Kiosk (Connecting dynamically to $targetUrl)..." -ForegroundColor Green
     Start-Process -FilePath $kioskExe -ArgumentList "--server `"$targetUrl`""
@@ -163,11 +206,7 @@ if ($isServerRunning) {
     Write-Host "[+] Control Plane already online on http://127.0.0.1:5080" -ForegroundColor Green
 } else {
     Write-Host "[*] Starting Control Plane (ASP.NET Core) on port 5080..." -ForegroundColor Cyan
-    $controlPlaneExe = "$RogueRoot\server\ControlPlane\bin\Debug\net9.0\ControlPlane.exe"
-    if (!(Test-Path $controlPlaneExe)) {
-        Write-Host "[*] Building Control Plane..." -ForegroundColor Cyan
-        dotnet build "$RogueRoot\server\ControlPlane\ControlPlane.csproj" -c Debug | Out-Null
-    }
+    $controlPlaneExe = Ensure-ControlPlaneBuilt
     $serverProc = Start-Process -FilePath $controlPlaneExe -ArgumentList "--urls http://0.0.0.0:5080" -WorkingDirectory "$RogueRoot\server\ControlPlane" -PassThru -WindowStyle Hidden
 }
 
@@ -190,11 +229,6 @@ if ($ready) {
 }
 
 # 5. Launch Kiosk App or Host Mode
-$kioskExe = "$RogueRoot\kiosk\LabKiosk\bin\Debug\net9.0-windows\LabKiosk.exe"
-if (!(Test-Path $kioskExe)) {
-    $kioskExe = "$RogueRoot\kiosk\LabKiosk\bin\SelfContained\LabKiosk.exe"
-}
-
 if ($HostMode) {
     Write-Host "`n==========================================================" -ForegroundColor Green
     Write-Host " ROGUE AI: ORGANIZER COMMAND CENTER ONLINE (DYNAMIC LAN)  " -ForegroundColor Green
@@ -225,16 +259,12 @@ if ($HostMode) {
         Start-Sleep -Seconds 86400
     }
 } else {
-    if (!(Test-Path $kioskExe)) {
-        Write-Host "[*] Building LabKiosk application..." -ForegroundColor Cyan
-        dotnet build "$RogueRoot\kiosk\LabKiosk\LabKiosk.csproj" -c Debug | Out-Null
-    }
+    $kioskExe = Ensure-LabKioskBuilt
 
-    $appArgs = ""
+    $appArgs = "--server `"http://127.0.0.1:5080`""
     if ($Both) {
         Write-Host "[*] Launching BOTH Participant Kiosk and Organizer Command Center..." -ForegroundColor Magenta
         Start-Process -FilePath $kioskExe -ArgumentList "--host"
-        $appArgs = ""
     } else {
         Write-Host "[*] Launching ROGUE AI Defense Studio (Participant Kiosk)..." -ForegroundColor Green
     }

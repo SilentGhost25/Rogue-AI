@@ -1,3 +1,4 @@
+using System.IO;
 using System.Text.Json;
 
 namespace LabKiosk.Services;
@@ -5,7 +6,7 @@ namespace LabKiosk.Services;
 /// <summary>Read from kiosk.json next to the exe. The lab image provides one per laptop.</summary>
 public sealed class KioskSettings
 {
-    public string ServerUrl { get; set; } = "http://192.168.1.10:5080";
+    public string ServerUrl { get; set; } = "http://127.0.0.1:5080";
     public string SiteUrl { get; set; } = "http://127.0.0.1:3000";
     public string WorkspacePath { get; set; } = @"C:\BreachWorkspace";
     public string KioskId { get; set; } = Environment.MachineName;
@@ -39,8 +40,18 @@ public sealed class KioskSettings
         s.NodePath = Environment.ExpandEnvironmentVariables(s.NodePath ?? "node");
 
         var bundledNode = Path.Combine(AppContext.BaseDirectory, "node", "node.exe");
-        if ((s.NodePath == "node" || !File.Exists(s.NodePath)) && File.Exists(bundledNode))
-            s.NodePath = bundledNode;
+        var bundledNodeJs = Path.Combine(AppContext.BaseDirectory, "nodejs", "node.exe");
+        if (s.NodePath == "node" || !File.Exists(s.NodePath))
+        {
+            if (File.Exists(bundledNode)) s.NodePath = bundledNode;
+            else if (File.Exists(bundledNodeJs)) s.NodePath = bundledNodeJs;
+        }
+
+        if (string.IsNullOrWhiteSpace(s.SiteTemplatePath) || !Directory.Exists(s.SiteTemplatePath))
+        {
+            var st = Path.Combine(AppContext.BaseDirectory, "site-template");
+            s.SiteTemplatePath = Directory.Exists(st) ? st : Path.Combine(AppContext.BaseDirectory, "site");
+        }
 
         return s;
     }

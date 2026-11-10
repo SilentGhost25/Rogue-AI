@@ -9,7 +9,19 @@ for /f "tokens=4" %%a in ('route print 0.0.0.0 2^>nul ^| findstr /r "^[ ]*0.0.0.
 )
 if not defined DETECTED_IP set DETECTED_IP=127.0.0.1
 
-:: If arguments passed directly, pass through to powershell
+:: Support direct CLI flags or "run.bat organizer" / "run.bat participant" / "run.bat both"
+if /I "%~1"=="organizer" (
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0run.ps1" -HostMode
+    goto :eof
+)
+if /I "%~1"=="participant" (
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0run.ps1" -Participant
+    goto :eof
+)
+if /I "%~1"=="both" (
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0run.ps1" -Both
+    goto :eof
+)
 if not "%~1"=="" (
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0run.ps1" %*
     goto :eof

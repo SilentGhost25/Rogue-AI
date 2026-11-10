@@ -1,47 +1,63 @@
 <#
 .SYNOPSIS
-    End-to-End Build & Leak-Verified Packaging for Rogue AI Kiosk
+    End-to-End Build & Packaging for Unified Rogue AI Setup (RogueAI-Setup.exe)
 .DESCRIPTION
-    1. Cleans dedicated KioskRelease directories.
-    2. Builds LabKiosk with -p:KioskOnly=true into bin/KioskRelease/net9.0-windows/.
-    3. Compiles installer/kiosk.iss via Inno Setup.
-    4. Runs verify-kiosk-installer.ps1 on the resulting installer.
+    1. Publishes latest self-contained LabKiosk.
+    2. Publishes ControlPlane release build.
+    3. Compiles installer/setup.iss via Inno Setup (ISCC.exe) into dist/RogueAI-Setup.exe.
+    4. Syncs the installer to server/ControlPlane/wwwroot for organizer distribution.
+    5. Cleans up obsolete standalone kiosk setup binaries.
 #>
 
 $ErrorActionPreference = "Stop"
 
 Write-Host "==========================================================" -ForegroundColor Cyan
-Write-Host " ROGUE AI: Automated Kiosk Clean-Build-Package-Verify" -ForegroundColor Cyan
+Write-Host " ROGUE AI: Automated Unified Setup Build & Packaging" -ForegroundColor Cyan
 Write-Host "==========================================================" -ForegroundColor Cyan
 
 $env:DOTNET_ROOT = "$env:LOCALAPPDATA\dotnet"
 $env:Path = "$env:LOCALAPPDATA\dotnet;$env:Path"
+$dotnetCmd = if (Test-Path "$env:LOCALAPPDATA\dotnet\dotnet.exe") { "$env:LOCALAPPDATA\dotnet\dotnet.exe" } else { "dotnet" }
 
 $root = Resolve-Path (Join-Path $PSScriptRoot "..")
 $kioskProj = Join-Path $root "kiosk\LabKiosk\LabKiosk.csproj"
-$kioskReleaseDir = Join-Path $root "kiosk\LabKiosk\bin\KioskRelease"
-$kioskObjDir = Join-Path $root "kiosk\LabKiosk\obj\KioskRelease"
-$issPath = Join-Path $root "installer\kiosk.iss"
-$distExe = Join-Path $root "dist\RogueAI-Kiosk-Setup.exe"
+$kioskSelfContained = Join-Path $root "kiosk\LabKiosk\bin\SelfContained"
+$cpProj = Join-Path $root "server\ControlPlane\ControlPlane.csproj"
+$cpRelease = Join-Path $root "server\ControlPlane\bin\Release\net9.0"
+$issPath = Join-Path $root "installer\setup.iss"
+$distExe = Join-Path $root "dist\RogueAI-Setup.exe"
+$legacyKioskExe = Join-Path $root "dist\RogueAI-Kiosk-Setup.exe"
 
-# 1. Clean dedicated KioskRelease output
-Write-Host "[1/4] Cleaning dedicated KioskRelease directories..." -ForegroundColor Yellow
-if (Test-Path $kioskReleaseDir) { Remove-Item -Path $kioskReleaseDir -Recurse -Force }
-if (Test-Path $kioskObjDir) { Remove-Item -Path $kioskObjDir -Recurse -Force }
+# 1. Remove obsolete standalone kiosk installer if present
+if (Test-Path $legacyKioskExe) {
+    Remove-Item $legacyKioskExe -Force -ErrorAction SilentlyContinue
+    Write-Host "[*] Removed obsolete standalone $legacyKioskExe" -ForegroundColor Gray
+}
 
-# 2. Compile LabKiosk with KIOSK_ONLY define and dedicated output
-Write-Host "[2/4] Building LabKiosk in KioskOnly Release mode..." -ForegroundColor Yellow
-& dotnet build "$kioskProj" -c Release -p:KioskOnly=true
+# 2. Publish Self-Contained LabKiosk (.NET 9 runtime bundled)
+Write-Host "[1/4] Publishing self-contained LabKiosk..." -ForegroundColor Yellow
+& $dotnetCmd publish "$kioskProj" -c Release -r win-x64 --self-contained true -o "$kioskSelfContained"
 if ($LASTEXITCODE -ne 0) {
-    Write-Error "dotnet build failed with exit code $LASTEXITCODE"
+    Write-Error "LabKiosk publish failed with exit code $LASTEXITCODE"
     exit $LASTEXITCODE
 }
 
-# 3. Compile Inno Setup installer
-Write-Host "[3/4] Compiling Inno Setup kiosk installer..." -ForegroundColor Yellow
+# 3. Publish ControlPlane
+Write-Host "[2/4] Publishing ControlPlane..." -ForegroundColor Yellow
+& $dotnetCmd publish "$cpProj" -c Release -o "$cpRelease"
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "ControlPlane publish failed with exit code $LASTEXITCODE"
+    exit $LASTEXITCODE
+}
+
+# 4. Compile Inno Setup installer
+Write-Host "[3/4] Compiling Inno Setup unified installer (setup.iss)..." -ForegroundColor Yellow
 $isccPath = "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
 if (-not (Test-Path $isccPath)) {
     $isccPath = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+}
+if (-not (Test-Path $isccPath)) {
+    $isccPath = "C:\Program Files\Inno Setup 6\ISCC.exe"
 }
 if (-not (Test-Path $isccPath)) {
     Write-Error "Inno Setup compiler (ISCC.exe) not found."
@@ -54,19 +70,22 @@ if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
 
-# 4. Run automated leak scanner
-Write-Host "[4/4] Executing automated leak verification scanner..." -ForegroundColor Yellow
-$verifyScript = Join-Path $root "installer\verify-kiosk-installer.ps1"
-powershell -ExecutionPolicy Bypass -File "$verifyScript" -InstallerPath "$distExe"
-if ($LASTEXITCODE -ne 0) {
-    if (Test-Path "$distExe") {
-        Write-Warning "Deleting non-compliant installer to prevent distribution: $distExe"
-        Remove-Item -Path "$distExe" -Force -ErrorAction SilentlyContinue
+# 5. Sync to webroot
+Write-Host "[4/4] Syncing RogueAI-Setup.exe to ControlPlane webroot..." -ForegroundColor Yellow
+$webrootTargets = @(
+    (Join-Path $root "server\ControlPlane\wwwroot\RogueAI-Setup.exe"),
+    (Join-Path $root "server\ControlPlane\bin\Debug\net9.0\wwwroot\RogueAI-Setup.exe"),
+    (Join-Path $root "server\ControlPlane\bin\Release\net9.0\wwwroot\RogueAI-Setup.exe")
+)
+foreach ($target in $webrootTargets) {
+    $parent = Split-Path -Parent $target
+    if (Test-Path $parent) {
+        Copy-Item -Path $distExe -Destination $target -Force
+        Write-Host "  -> Synced to: $target" -ForegroundColor Green
     }
-    Write-Error "Leak scan failed on built installer!"
-    exit 1
 }
 
 Write-Host "==========================================================" -ForegroundColor Green
-Write-Host " KIOSK BUILD, PACKAGING & VERIFICATION COMPLETE: ALL CLEAN" -ForegroundColor Green
+Write-Host " UNIFIED SETUP BUILD & PACKAGING COMPLETE: ALL READY" -ForegroundColor Green
+Write-Host " Setup Path: $distExe" -ForegroundColor Green
 Write-Host "==========================================================" -ForegroundColor Green

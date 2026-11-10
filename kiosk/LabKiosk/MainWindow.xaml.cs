@@ -1,799 +1,911 @@
 using System.IO;
-using System.Text.RegularExpressions;
+using System.Net.Http;
+using System.Text.Json;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Animation;
+using System.Windows.Media.Effects;
+using System.Windows.Threading;
+using LabKiosk.Controls;
 using LabKiosk.Services;
+using LabKiosk.Terminal;
 
 namespace LabKiosk;
 
 public partial class MainWindow : Window
 {
-    private readonly KioskSettings _settings = KioskSettings.Load();
-    private KioskConfig _config;
+    private readonly KioskSettings _s;
     private ApiClient _api;
     private readonly BudgetState _budget = new();
-    private bool _uiInitialized = false;
+    private readonly QuotaWatcher _quota = new();
+    private readonly HashSet<int> _pulled = new();
+    private readonly HashSet<int> _activeAttacks = new();
+    private readonly HashSet<int> _solvedAttacks = new();
+
+    private record AttackMeta(string Title, string Classification, string Symptoms, string Telemetry);
+
+    private static readonly Dictionary<int, AttackMeta> AttackMetadata = new()
+    {
+        [0] = new(
+            "Warmup: System Initialization & UI Verification",
+            "LOW SEVERITY · SYSTEM INITIALIZATION",
+            "Initial setup sanity check. Minor layout or typo discrepancy in navigation templates.",
+            "Verify the application layout helpers and base rendering components."
+        ),
+        [1] = new(
+            "Attack #1: Unauthorized UI Injection & Route Tampering",
+            "HIGH SEVERITY · UI & INTEGRITY COMPROMISE",
+            "Defacement banner injected across all views. Navigation links silently hijack user traffic to a rogue external endpoint.",
+            "SIEM telemetry reports abnormal DOM mutations and unmapped route rewrites. Decoy logs cite WebSocket proxy buffering failure, but inspect the application's actual markup templates and stylesheet rules."
+        ),
+        [2] = new(
+            "Attack #2: Stored Content Execution & DOM Injection",
+            "CRITICAL SEVERITY · CLIENT CODE EXECUTION",
+            "Submitting or browsing journal entries triggers unescaped script alerts and DOM corruption in viewer sessions.",
+            "Browser runtime reports script injection during article rendering. Error traces hint at Markdown AST parser recursion limits, but review how user-supplied post data is formatted before HTML output."
+        ),
+        [3] = new(
+            "Attack #3: Database Exfiltration via Query Tampering",
+            "CRITICAL SEVERITY · DATA EXFILTRATION",
+            "Search endpoint dumps raw user password hashes and system credentials when query strings contain special operators.",
+            "Database telemetry flags malformed UNION query signatures. Decoy stack traces report SQLite B-Tree index corruption, but inspect how search request input is passed to the database engine."
+        ),
+        [4] = new(
+            "Attack #4: Privileged Endpoint Authentication Bypass",
+            "CRITICAL SEVERITY · AUTHENTICATION COMPROMISE",
+            "Administrative control routes allow unauthorized access and return sensitive member data without standard session credentials.",
+            "Audit logs detect privileged administrative responses triggered with non-standard auth headers. Decoy comments warn of scrypt key derivation entropy loss, but verify route authorization gates."
+        ),
+        [5] = new(
+            "Attack #5: Cross-Origin Data Exposure & Access Control",
+            "HIGH SEVERITY · CROSS-ORIGIN POLICY FAILURE",
+            "Sensitive user session endpoints allow cross-origin reads from external origins and null origins with exposed credentials.",
+            "Browser CORS preflight alerts report permissive origin reflection. Decoy logs point to OAuth2 token exchange timing, but check global HTTP headers and middleware access rules."
+        ),
+        [6] = new(
+            "Attack #6: Algorithmic Resource Exhaustion (DoS)",
+            "HIGH SEVERITY · DENIAL OF SERVICE",
+            "Querying API statistics endpoint locks the server event loop, causing severe latency and request timeouts across all connections.",
+            "Process telemetry reports 100% CPU core utilization and event-loop lag exceeding 4500ms. Decoy traces cite V8 garbage collector heap thrashing, but examine looping and computation bounds in request handlers."
+        ),
+        [7] = new(
+            "Attack #7: Rogue Lifecycle Hook & Process Hijack",
+            "CRITICAL SEVERITY · SUPPLY CHAIN INTEGRITY",
+            "Application startup and background execution triggers anomalous network callbacks and suspicious process execution.",
+            "Host intrusion monitor detects unauthorized child process spawning during server initialization. Decoy errors report TLS OpenSSL cipher negotiation failure, but inspect build and startup lifecycle configurations."
+        ),
+        [8] = new(
+            "Attack #8: Cookie State Tampering & Role Elevation",
+            "HIGH SEVERITY · SESSION INTEGRITY COMPROMISE",
+            "Users can elevate privileges to administrator by altering plain cookie state values without server-side signature validation.",
+            "Access logs indicate arbitrary administrator sessions without matching database records. Decoy comments reference Ed25519 asymmetric signature failures, but review how session cookies are parsed and authenticated."
+        ),
+        [9] = new(
+            "Attack #9: Mass Parameter Assignment & Permission Pollution",
+            "HIGH SEVERITY · ACCESS CONTROL MANIPULATION",
+            "Normal comment or profile submissions unexpectedly overwrite internal entity fields and alter user account permissions.",
+            "Database state audit detects unauthorized role mutations occurring via public user-facing submission forms. Decoy warnings cite JSON-LD schema parsing errors, but inspect object destructuring and parameter whitelisting."
+        ),
+        [10] = new(
+            "Attack #10: Arbitrary File Disclosure via Path Traversal",
+            "CRITICAL SEVERITY · INFORMATION DISCLOSURE",
+            "Manipulated URL paths on static asset endpoints allow reading sensitive configuration and source files outside the public directory.",
+            "WAF logs flag encoded directory traversal sequences accessing non-public workspace files. Decoy traces suggest Buffer allocation pool corruption, but inspect static asset resolution and directory root confinement."
+        )
+    };
+
+    private static readonly Dictionary<int, string> AttackNames = new()
+    {
+        [0] = "Warmup Verification",
+        [1] = "Defacement & Route Redirect",
+        [2] = "Stored Cross-Site Scripting (XSS)",
+        [3] = "SQL Injection Extraction",
+        [4] = "Hardcoded Admin Backdoor",
+        [5] = "Auth Bypass & Permissive CORS",
+        [6] = "CPU Performance Sabotage",
+        [7] = "Poisoned Dependency Hook",
+        [8] = "Session Cookie Tampering",
+        [9] = "Mass Parameter Assignment",
+        [10] = "Static Path Traversal",
+        [11] = "Session Fracture (Boss Attack)"
+    };
+
+    private IncidentWindow? _activeIncidentWindow;
+
     private HubClient? _hub;
     private SnapshotSync? _sync;
-    private TelemetryCollector? _telemetry;
-    private ClockSync? _clock;
-    private string? _participantId;
-    private int? _lastAppliedAttackId;
-    private AttackPayloadDto? _bufferedPayload;
-    private int? _bufferedAttackId;
-    private CancellationTokenSource? _landingTimerCts;
+    private WorkspaceSync? _pull;
+    private SiteHost? _site;
+    private OpenCodeHost? _oc;
+    private string? _pid;
+    private int _reportedPrompts;
+    private bool _eliminated;
+    private bool _capLockScheduled;
+    private DispatcherTimer? _statusTimer;
+    private CancellationTokenSource? _submitTimeoutCts;
+    private Button? _activeViewBtn;
 
-    public MainWindow() : this(KioskConfig.FromArgs(Environment.GetCommandLineArgs()))
+    public MainWindow(KioskSettings? settings = null)
     {
-    }
-
-    public MainWindow(KioskConfig config)
-    {
-        _config = config;
-        _settings.ServerUrl = _config.ServerUrl;
-        if (!string.IsNullOrEmpty(_config.DeskId))
-        {
-            _settings.KioskId = _config.DeskId;
-            _settings.DisplayName = _config.DeskId;
-        }
-
+        _s = settings ?? KioskSettings.Load();
         InitializeComponent();
-        _api = new ApiClient(_config.ServerUrl);
-        if (!string.IsNullOrEmpty(_config.DeskToken))
-        {
-            _api.SetToken(_config.DeskToken);
-        }
-
+        _api = new ApiClient(_s.ServerUrl);
+        _budget.OpenCodeCap = _s.OpenCodeCap;
         Loaded += async (_, _) => await StartAsync();
         Closed += (_, _) =>
         {
-            _landingTimerCts?.Cancel();
-            _sync?.Dispose();
-            _telemetry?.Dispose();
-            CodeView?.Dispose();
-            _ = _clock?.DisposeAsync();
+            try { _activeIncidentWindow?.Close(); } catch { }
+            _statusTimer?.Stop();
+            _submitTimeoutCts?.Cancel();
+            _sync?.Dispose(); _site?.Dispose(); _oc?.Dispose();
+            TermAgy.Dispose(); TermOc.Dispose(); Code.Dispose();
             _ = _hub?.DisposeAsync();
-            try { _localSiteProc?.Kill(entireProcessTree: true); } catch { }
-        };
-
-        // F5 shortcut for Submit Fix, F6 for Test Locally
-        KeyDown += (s, e) =>
-        {
-            if (e.Key == System.Windows.Input.Key.F5)
-            {
-                OnSubmitFix(SubmitButton, new RoutedEventArgs());
-            }
-            else if (e.Key == System.Windows.Input.Key.F6)
-            {
-                OnTestLocally(TestLocallyButton, new RoutedEventArgs());
-            }
         };
     }
+
+    private void Status(string text) => Dispatcher.InvokeAsync(() => StatusText.Text = text);
 
     private async Task StartAsync()
     {
-        if (!_uiInitialized)
-        {
-            _uiInitialized = true;
-
-            // Prompt participant login on startup
-            if (string.IsNullOrWhiteSpace(_settings.DisplayName) ||
-                _settings.DisplayName == Environment.MachineName ||
-                string.IsNullOrWhiteSpace(_settings.Password))
-            {
-                var loginDlg = new ParticipantLoginDialog(_settings) { Owner = this };
-                if (loginDlg.ShowDialog() == true)
-                {
-                    _settings.DisplayName = loginDlg.ParticipantName;
-                    _settings.DeskId = loginDlg.DeskId;
-                    _settings.Password = loginDlg.Password;
-                    _settings.ServerUrl = loginDlg.ServerUrl;
-                    _config.ServerUrl = loginDlg.ServerUrl;
-                    _config.DeskId = loginDlg.DeskId;
-                    _api = new ApiClient(_config.ServerUrl);
-                }
-            }
-            UpdateUserButton();
-
-            try
-            {
-                Directory.CreateDirectory(_settings.WorkspacePath);
-            }
-            catch
-            {
-                _settings.WorkspacePath = Path.Combine(AppContext.BaseDirectory, "workspace");
-                Directory.CreateDirectory(_settings.WorkspacePath);
-            }
-
-            EnsureWorkspaceSeeded();
-            EnsureLocalSiteRunning();
-
-            // 1. Initialize WebView2 for the live website with isolated profile folder
-            var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            var udata = Path.Combine(localAppData, "RogueAI", "WV2_Kiosk_" + Environment.ProcessId);
-            var env = await Microsoft.Web.WebView2.Core.CoreWebView2Environment.CreateAsync(null, udata);
-            await Site.EnsureCoreWebView2Async(env);
-
-            Site.CoreWebView2.NavigationStarting += (s, e) =>
-            {
-                if (!e.Uri.StartsWith("http://127.0.0.1:3000", StringComparison.OrdinalIgnoreCase) &&
-                    !e.Uri.StartsWith("http://localhost:3000", StringComparison.OrdinalIgnoreCase) &&
-                    !e.Uri.StartsWith("data:", StringComparison.OrdinalIgnoreCase) &&
-                    !e.Uri.StartsWith("about:", StringComparison.OrdinalIgnoreCase))
-                {
-                    e.Cancel = true;
-                    Site.CoreWebView2.NavigateToString(@"
-                        <!doctype html>
-                        <html>
-                        <head><meta charset='utf-8'></head>
-                        <body style='margin:0; background:#0b0f19; color:#f87171; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif; display:flex; align-items:center; justify-content:center; min-height:100vh; text-align:center;'>
-                          <div style='max-width:540px; margin:24px; padding:32px; background:#1e293b; border:2px solid #ef4444; border-radius:12px; box-shadow:0 10px 25px rgba(0,0,0,0.5);'>
-                            <div style='font-size:48px; margin-bottom:12px;'>🚨</div>
-                            <h2 style='color:#ef4444; margin:0 0 12px 0; font-size:22px; font-weight:700;'>MALICIOUS BEACON BLOCKED</h2>
-                            <p style='color:#cbd5e1; font-size:14px; line-height:1.5; margin-bottom:16px;'>Your web application was compromised by an intrusion payload and attempted to redirect the browser to an external address:</p>
-                            <div style='background:#0f172a; padding:10px 14px; border-radius:6px; font-family:Consolas,monospace; font-size:13px; color:#38bdf8; word-break:break-all; margin-bottom:20px; border:1px solid #334155;'>" + System.Net.WebUtility.HtmlEncode(e.Uri) + @"</div>
-                            <p style='color:#94a3b8; font-size:13px; margin:0 0 20px 0;'>Inspect and remove this malicious script from <code>lib/html.js</code> or <code>routes/search.js</code> using the in-app code editor, then click <b>Reload</b>.</p>
-                            <button onclick='window.location.href=""http://127.0.0.1:3000/?nobounce=1""' style='background:#ef4444; color:#fff; border:none; padding:10px 20px; border-radius:6px; font-weight:600; cursor:pointer;'>View Site (Safe Mode: ?nobounce)</button>
-                          </div>
-                        </body>
-                        </html>");
-                }
-            };
-
-            Site.NavigationCompleted += (s, e) =>
-            {
-                if (!e.IsSuccess)
-                {
-                    var failedUri = Site.Source?.ToString() ?? "";
-                    if (failedUri.StartsWith(_settings.SiteUrl, StringComparison.OrdinalIgnoreCase))
-                    {
-                        Dispatcher.InvokeAsync(() =>
-                        {
-                            StatusText.Text = $"⚠ Website at {_settings.SiteUrl} unreachable ({e.WebErrorStatus}). Verify background node server.";
-                            StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Alert");
-                        });
-                    }
-                }
-            };
-            Site.Source = new Uri(_settings.SiteUrl);
-
-            // 2. Initialize in-app Code Viewer
-            CodeView.InitializeWorkspace(_settings.WorkspacePath);
-
-            // 3. Initialize ConPTY Terminals
-            InitializeTerminals();
-        }
-
-        await ConnectToControlPlaneAsync();
-    }
-
-    private async Task ConnectToControlPlaneAsync()
-    {
         try
         {
-            StatusText.Text = $"Locating Breach Command ({_config.ServerUrl})...";
-            StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Ink");
+            SetActiveViewBtn(BtnViewAll);
 
-            // 1. Check if configured server is reachable; if not, auto-discover dynamically on the network
-            var isReachable = await NetworkDiscovery.ProbeHostAsync(_config.ServerUrl, 800);
-            if (!isReachable)
+            // 1. Register with the control plane (retry: the server may still be starting).
+            while (_pid is null)
             {
-                StatusText.Text = "Breach Command unreachable. Auto-detecting host on local network...";
-                StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Alert");
-
-                var discovered = await NetworkDiscovery.AutoDiscoverHostAsync(_config.ServerUrl, status =>
+                try { _pid = await _api.RegisterAsync(_s.DisplayName, _s.KioskId); }
+                catch (Exception ex)
                 {
-                    Dispatcher.InvokeAsync(() => StatusText.Text = status);
-                });
-
-                if (!string.IsNullOrEmpty(discovered))
-                {
-                    _config.ServerUrl = discovered;
-                    _settings.ServerUrl = discovered;
-                    _settings.Save();
-                    _api = new ApiClient(_config.ServerUrl);
-                    StatusText.Text = $"Breach Command located dynamically at {_config.ServerUrl}!";
-                    StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Ok");
-                    await Task.Delay(500);
+                    Status($"Waiting for server at {_s.ServerUrl} ({ex.Message}) [Click text or Ctrl+Shift+S to change IP]");
+                    await Task.Delay(3000);
                 }
             }
 
-            StatusText.Text = $"Connecting to Breach Command ({_config.ServerUrl})...";
-            StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Ink");
+            // 2. The workspace is the single set of real files that the site, agy and OpenCode all use.
+            _s.WorkspacePath = WorkspaceBackup.ResolveWorkspace(_s.WorkspacePath);
+            if (!File.Exists(Path.Combine(_s.WorkspacePath, "server.js")) && Directory.Exists(_s.SiteTemplatePath))
+                CopyTree(_s.SiteTemplatePath, _s.WorkspacePath);
 
-            // Stop existing sync or connection if retrying
-            _sync?.Dispose();
-            _sync = null;
-            _telemetry?.Dispose();
-            _telemetry = null;
-            if (_hub != null)
-            {
-                try { await _hub.DisposeAsync(); } catch { }
-                _hub = null;
-            }
+            // Autoconfigure AI context by ensuring GEMINI.md and AGENTS.md are in the workspace
+            EnsureAiContextFiles();
 
-            // 4. Enroll or Register with the event server
-            if (!string.IsNullOrEmpty(_config.DeskToken))
-            {
-                var (pid, desk) = await _api.EnrollAsync(_config.DeskToken, _config.DeskId, _config.DeskId);
-                _participantId = pid;
-            }
-            else
-            {
-                _participantId = await _api.RegisterAsync(_settings.DisplayName, _settings.KioskId, _settings.DeskId, _settings.Password, _settings.GitHubHandle, _settings.GoogleAccount);
-            }
+            Code.Initialize(_s.WorkspacePath);
 
-            // 5. Start continuous snapshot sync (every 15s), telemetry collector, and clock sync
-            _clock = new ClockSync(_api);
-            _sync = new SnapshotSync(_api, _participantId, _settings.WorkspacePath);
+            // 3. Sync starts held; pull the server state first so a restart can never push old files over an attack.
+            _sync = new SnapshotSync(_api, _pid, _s.WorkspacePath);
+            _sync.Hold();
+            _pull = new WorkspaceSync(_api, _pid, _s.WorkspacePath, _sync);
+            var status = await _api.GetStatusAsync(_pid);
+            await _pull.PullAsync("startup");
+            if (status?.ActiveAttacks != null)
+            {
+                foreach (var id in status.ActiveAttacks)
+                {
+                    _pulled.Add(id);
+                    _activeAttacks.Add(id);
+                }
+            }
+            _sync.Release();
             _sync.Start(TimeSpan.FromSeconds(15));
-            _telemetry = new TelemetryCollector(_api, _participantId, _settings.DeskId ?? "DESK");
-            _telemetry.Start(TimeSpan.FromSeconds(20));
+            if (status?.Status is "eliminated" or "disqualified") { Eliminate(); return; }
 
-            // 6. Connect to SignalR Hub
-            _hub = new HubClient(_config.ServerUrl, _participantId, _api.Token ?? _config.DeskToken ?? "");
-
-            _hub.Imminent += async (attackId, seconds, landAtUtcStr) =>
+            // 4. The website runs from the workspace; edits by the agents restart it and reload this pane.
+            _site = new SiteHost(_s.NodePath, _s.WorkspacePath, _s.SiteUrl, _s.DataPath);
+            _site.ReloadRequested += () => Dispatcher.InvokeAsync(() => { Site.Reload(); Code.RefreshAll(); });
+            _site.Problem += Status;
+            _site.Start();
+            await Site.EnsureCoreWebView2Async(await WebViewEnv.GetAsync());
+            if (!await _site.WaitHealthyAsync(15)) Status("The website did not start. Check Node.js (NodePath in kiosk.json).");
+            Site.CoreWebView2.NavigationStarting += (_, e) =>
             {
-                _ = Dispatcher.InvokeAsync(() => Sfx.Siren());
-                await Dispatcher.InvokeAsync(() =>
-                {
-                    StatusText.Text = $"⚠ IMMINENT BREACH #{attackId} in {seconds}s! Saving workspace & pre-buffering payload...";
-                    StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Alert");
-                });
-
-                // Auto-save local workspace before landing
-                await _sync.FlushAsync();
-                await _hub.AckImminentAsync(attackId);
-
-                // Pre-fetch attack payload into memory during the countdown window
-                if (_participantId is not null)
-                {
-                    try
-                    {
-                        var payload = await _api.GetAttackPayloadAsync(_participantId, attackId);
-                        if (payload?.Files != null && payload.Files.Count > 0)
-                        {
-                            _bufferedPayload = payload;
-                            _bufferedAttackId = attackId;
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        await Dispatcher.InvokeAsync(() => StatusText.Text = $"Payload pre-fetch warning: {ex.Message}");
-                    }
-                }
-
-                // Compute exact local delay until server landAtUtc
-                var landAt = DateTime.UtcNow.AddSeconds(seconds);
-                if (!string.IsNullOrEmpty(landAtUtcStr) && DateTime.TryParse(landAtUtcStr, out var parsedLandAt))
-                {
-                    landAt = parsedLandAt.ToUniversalTime();
-                }
-
-                var now = _clock?.SyncedUtcNow ?? DateTime.UtcNow;
-                var delay = landAt - now;
-
-                _landingTimerCts?.Cancel();
-                _landingTimerCts = new CancellationTokenSource();
-                var ct = _landingTimerCts.Token;
-
-                _ = Task.Run(async () =>
-                {
-                    if (delay > TimeSpan.Zero)
-                    {
-                        try { await Task.Delay(delay, ct); } catch (OperationCanceledException) { return; }
-                    }
-                    await Dispatcher.InvokeAsync(() => ApplyAttack(attackId));
-                }, ct);
+                var host = new Uri(e.Uri).Host;
+                if (host is not ("127.0.0.1" or "localhost")) e.Cancel = true;
             };
+            Site.Source = new Uri(_s.SiteUrl);
 
-            _hub.Landed += attackId => Dispatcher.InvokeAsync(() =>
-            {
-                // Instant write or fallback if timer hasn't fired yet
-                ApplyAttack(attackId);
-            });
-
-            _hub.Reconnected += async () =>
-            {
-                await ReconcileActiveBreachAsync();
-            };
-
-            // Initial recovery check in case kiosk booted while breach was active/imminent
-            _ = Task.Run(async () => await ReconcileActiveBreachAsync());
-
-            _hub.Verdict += (attackId, status, reason, score) => Dispatcher.InvokeAsync(() =>
-            {
-                if (status == "SOLVED")
-                {
-                    Sfx.Fanfare();
-                    VerdictBadge.Visibility = Visibility.Visible;
-                    VerdictBadge.Background = (System.Windows.Media.SolidColorBrush)FindResource("Ok");
-                    VerdictBadgeText.Text = "SOLVED";
-                    StatusText.Text = $"Attack #{attackId} NEUTRALIZED! +{score:F1} pts. ({reason})";
-                    StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Ok");
-                }
-                else
-                {
-                    VerdictBadge.Visibility = Visibility.Visible;
-                    VerdictBadge.Background = (System.Windows.Media.SolidColorBrush)FindResource("Alert");
-                    VerdictBadgeText.Text = status;
-                    StatusText.Text = $"Submission rejected ({status}): {reason}";
-                    StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Alert");
-                }
-                ReloadSiteSafe();
-            });
-
-            _hub.Message += text => Dispatcher.InvokeAsync(() => StatusText.Text = text);
-            _hub.Paused += () => Dispatcher.InvokeAsync(() =>
-            {
-                StatusText.Text = "⏸ Event PAUSED by the organizers. Timers frozen.";
-                StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Mute");
-            });
-
+            // 5. Live connection to the event server.
+            _hub = new HubClient(_s.ServerUrl, _pid);
+            _hub.Imminent += OnImminentAsync;
+            _hub.Landed += HandleAttackAsync;
+            _hub.Reset += OnAttackResetAsync;
+            _hub.Message += Status;
+            _hub.Paused += () => Status("Event paused by the organizers.");
+            _hub.Resumed += () => Status("Event resumed.");
+            _hub.Eliminated += () => Dispatcher.InvokeAsync(Eliminate);
+            _hub.Verdict += OnVerdict;
+            _hub.Reconnected += ResyncAsync;
             await _hub.StartAsync();
 
-            StatusText.Text = "Connected to Breach Command. System nominal. No active attacks.";
-            StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Ink");
+            // 6. Real terminals on the same workspace.
+            await StartTerminalsAsync();
+
+            BtnProfile.Content = $"👤 {_s.DisplayName}";
+
+            if (_activeAttacks.Count > 0)
+                Status($"Active breach detected: #{string.Join(", #", _activeAttacks)}. Fix the code, then submit.");
+            else
+                Status("Connected. All systems secure. No active attacks.");
+
+            UpdateAttackBadges();
             RefreshMeters();
+
+            // 7. Background status polling timer (every 5 seconds) to keep attacks live
+            _statusTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+            _statusTimer.Tick += async (_, _) => await ResyncAsync();
+            _statusTimer.Start();
         }
         catch (Exception ex)
         {
-            StatusText.Text = $"Server unreachable ({_config.ServerUrl}): {ex.Message}";
-            StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Alert");
-
-            // Prompt user to confirm or update organizer host IP
-            _ = Dispatcher.InvokeAsync(async () =>
-            {
-                var dlg = new ServerConfigDialog(_config.ServerUrl, _config.DeskId) { Owner = this };
-                if (dlg.ShowDialog() == true)
-                {
-                    _config.ServerUrl = dlg.ServerUrl;
-                    _config.DeskId = dlg.DeskId;
-                    _settings.ServerUrl = dlg.ServerUrl;
-                    _settings.DeskId = dlg.DeskId;
-                    _settings.Save();
-                    _api = new ApiClient(_config.ServerUrl);
-                    await ConnectToControlPlaneAsync();
-                }
-            });
+            Status($"Startup problem: {ex.Message}");
         }
     }
 
-    private void ApplyAttack(int attackId)
+    private void EnsureAiContextFiles()
     {
-        if (_lastAppliedAttackId == attackId) return; // Prevent duplicate writes in-memory
-
-        var markerDir = Path.Combine(_settings.WorkspacePath, ".breach-applied");
-        var markerFile = Path.Combine(markerDir, $"attack-{attackId}.applied");
-        if (File.Exists(markerFile))
-        {
-            _lastAppliedAttackId = attackId;
-            return; // Already applied to disk previously; NEVER overwrite participant fix!
-        }
-
-        _lastAppliedAttackId = attackId;
-        _landingTimerCts?.Cancel();
-
-        StatusText.Text = $"🔴 Attack #{attackId} has LANDED! Applying attack payload...";
-        StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Alert");
-        VerdictBadge.Visibility = Visibility.Collapsed;
-
-        var payload = (_bufferedAttackId == attackId) ? _bufferedPayload : null;
-        if (payload == null && _participantId != null)
-        {
-            try
-            {
-                payload = _api.GetAttackPayloadAsync(_participantId, attackId).GetAwaiter().GetResult();
-            }
-            catch (Exception ex)
-            {
-                StatusText.Text = $"Payload download warning: {ex.Message}";
-            }
-        }
-
-        if (payload?.Files != null && payload.Files.Count > 0)
-        {
-            var backupDir = Path.Combine(_settings.WorkspacePath, ".breach-backup", attackId.ToString());
-            Directory.CreateDirectory(backupDir);
-            foreach (var file in payload.Files)
-            {
-                var targetPath = Path.Combine(_settings.WorkspacePath, file.Path);
-                if (File.Exists(targetPath))
-                {
-                    var bkp = Path.Combine(backupDir, file.Path);
-                    Directory.CreateDirectory(Path.GetDirectoryName(bkp)!);
-                    File.Copy(targetPath, bkp, overwrite: true);
-                }
-                var bytes = Convert.FromBase64String(file.ContentBase64);
-                Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);
-                File.WriteAllBytes(targetPath, bytes);
-            }
-        }
-
-        // Write durable marker so reboot / reconnect never overwrites code
         try
         {
-            Directory.CreateDirectory(markerDir);
-            File.WriteAllText(markerFile, DateTime.UtcNow.ToString("O"));
+            var srcGemini = Path.Combine(_s.SiteTemplatePath, "GEMINI.md");
+            var dstGemini = Path.Combine(_s.WorkspacePath, "GEMINI.md");
+            if (File.Exists(srcGemini) && (!File.Exists(dstGemini) || new FileInfo(dstGemini).Length == 0))
+                File.Copy(srcGemini, dstGemini, true);
+
+            var srcAgents = Path.Combine(_s.SiteTemplatePath, "AGENTS.md");
+            var dstAgents = Path.Combine(_s.WorkspacePath, "AGENTS.md");
+            if (File.Exists(srcAgents) && (!File.Exists(dstAgents) || new FileInfo(dstAgents).Length == 0))
+                File.Copy(srcAgents, dstAgents, true);
         }
-        catch { }
-
-        var isSynced = _clock != null && _clock.IsSynced;
-        var clockSource = isSynced ? "SYNCED" : "UNSYNCED_FALLBACK";
-        var now = isSynced ? _clock!.SyncedUtcNow : DateTime.UtcNow;
-        var landingTimestamp = now.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
-
-        Console.WriteLine($"[SIMULTANEITY] Attack #{attackId} payload written at {landingTimestamp} (Clock: {clockSource})");
-        System.Diagnostics.Debug.WriteLine($"[SIMULTANEITY] Attack #{attackId} payload written at {landingTimestamp} (Clock: {clockSource})");
-        StatusText.Text = $"🔴 Attack #{attackId} has LANDED at {landingTimestamp}! (Clock: {clockSource}) Inspect code in viewer and neutralize the exploit.";
-
-        // Refresh website and code viewer to show the corruption
-        ReloadSiteSafe();
-        CodeView.RefreshFileList();
-        CodeView.ReloadCurrentFile();
+        catch { /* best effort */ }
     }
 
-    private async Task ReconcileActiveBreachAsync()
+    private async Task StartTerminalsAsync()
     {
-        if (_participantId == null) return;
-        try
-        {
-            var breach = await _api.GetActiveBreachAsync(_participantId);
-            if (breach?.ActiveAttackId != null)
-            {
-                var attackId = breach.ActiveAttackId.Value;
-                if (_lastAppliedAttackId != attackId)
-                {
-                    if (breach.Landed)
-                    {
-                        await Dispatcher.InvokeAsync(() => ApplyAttack(attackId));
-                    }
-                    else if (DateTime.TryParse(breach.LandAtUtc, out var landAt))
-                    {
-                        var now = _clock?.SyncedUtcNow ?? DateTime.UtcNow;
-                        var delay = landAt.ToUniversalTime() - now;
-                        if (delay <= TimeSpan.Zero)
-                        {
-                            await Dispatcher.InvokeAsync(() => ApplyAttack(attackId));
-                        }
-                        else
-                        {
-                            var payload = await _api.GetAttackPayloadAsync(_participantId, attackId);
-                            _bufferedPayload = payload;
-                            _bufferedAttackId = attackId;
+        var assets = Path.Combine(AppContext.BaseDirectory, "Assets", "terminal");
+        await TermAgy.InitializeAsync(assets);
+        await TermOc.InitializeAsync(assets);
 
-                            _landingTimerCts?.Cancel();
-                            _landingTimerCts = new CancellationTokenSource();
-                            var ct = _landingTimerCts.Token;
-                            _ = Task.Run(async () =>
-                            {
-                                try { await Task.Delay(delay, ct); } catch (OperationCanceledException) { return; }
-                                await Dispatcher.InvokeAsync(() => ApplyAttack(attackId));
-                            }, ct);
-                        }
-                    }
-                }
-            }
-        }
-        catch { }
-    }
-
-    private void InitializeTerminals()
-    {
-        var bundledNodeDir = Path.Combine(AppContext.BaseDirectory, "nodejs");
-        if (Directory.Exists(bundledNodeDir))
+        // agy: Pre-configure trust and permissions in settings.json so no trust prompt appears
+        ConfigureAgy(_s.WorkspacePath);
+        var agy = ExeResolver.Resolve(_s.AgyPath);
+        if (agy is null)
         {
-            var currentPath = Environment.GetEnvironmentVariable("PATH") ?? "";
-            if (!currentPath.Contains(bundledNodeDir, StringComparison.OrdinalIgnoreCase))
-            {
-                Environment.SetEnvironmentVariable("PATH", $"{bundledNodeDir};{currentPath}");
-            }
-        }
-
-        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        var agyExe = Path.Combine(localAppData, @"agy\bin\agy.exe");
-        var agyCmd = Path.Combine(localAppData, @"agy\bin\agy.cmd");
-
-        // Set up agy Terminal
-        AgyTerm.WorkingDirectory = _settings.WorkspacePath;
-        if (File.Exists(agyExe))
-        {
-            AgyTerm.StartupCommandLine = $"\"{agyExe}\"";
-        }
-        else if (File.Exists(agyCmd))
-        {
-            AgyTerm.StartupCommandLine = $"cmd.exe /c \"{agyCmd}\"";
+            TermAgy.Launch(new LaunchSpec("", "", _s.WorkspacePath, new Dictionary<string, string?>(),
+                () => throw new FileNotFoundException("agy was not found. Check AgyPath in kiosk.json.")));
         }
         else
         {
-            AgyTerm.StartupCommandLine = "powershell.exe -NoExit -Command \"if (Get-Command agy -ErrorAction SilentlyContinue) { agy } else { Write-Host 'Antigravity CLI (agy) Workspace Ready' -ForegroundColor Cyan; Write-Host 'agy executable not detected in %LOCALAPPDATA%\\agy\\bin or PATH.' -ForegroundColor Yellow; Write-Host 'Run: .\\scripts\\provision-ai-clis.ps1 to configure the AI CLIs.' -ForegroundColor Gray; Write-Host ('Workspace: ' + (Get-Location)) -ForegroundColor Gray }\"";
-        }
-
-        // Set up OpenCode Terminal
-        OpenCodeTerm.WorkingDirectory = _settings.WorkspacePath;
-        OpenCodeTerm.StartupCommandLine = "powershell.exe -NoExit -Command \"if (Get-Command opencode -ErrorAction SilentlyContinue) { Write-Host 'Starting OpenCode interactive session...' -ForegroundColor Green; opencode } else { Write-Host 'OpenCode Terminal Workspace Ready' -ForegroundColor Green; Write-Host 'opencode not detected in PATH.' -ForegroundColor Yellow; Write-Host 'Run: .\\scripts\\provision-ai-clis.ps1 to install opencode globally.' -ForegroundColor Gray; Write-Host ('Workspace: ' + (Get-Location)) -ForegroundColor Gray }\"";
-
-        // Listen for quota signals
-        AgyTerm.ConPTYTerm.TerminalOutput += (s, e) =>
-        {
-            var text = e.Data;
-            if (string.IsNullOrEmpty(text)) return;
-
-            if (text.Contains("Individual quota reached", StringComparison.OrdinalIgnoreCase) ||
-                text.Contains("RESOURCE_EXHAUSTED", StringComparison.OrdinalIgnoreCase))
+            var (exe, args) = ExeResolver.ForLaunch(agy, "--dangerously-skip-permissions");
+            TermAgy.Launch(new LaunchSpec(exe, args, _s.WorkspacePath, new Dictionary<string, string?>
             {
-                Dispatcher.InvokeAsync(() =>
-                {
-                    _budget.MarkAgyExhausted();
-                    RefreshMeters();
-                    StatusText.Text = "Antigravity quota exhausted! Switching to OpenCode for remaining tasks.";
-                    StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Alert");
-                    TabOpenCode.IsChecked = true;
-                    OnTabChanged(TabOpenCode, new RoutedEventArgs());
-                    if (_participantId is not null)
-                    {
-                        _ = _api.SendTelemetryAsync(_participantId, "AGY_EXHAUSTED");
-                    }
-                });
-            }
-        };
+                ["GEMINI_API_KEY"] = null,
+                ["GOOGLE_API_KEY"] = null,
+                ["GOOGLE_GENAI_USE_VERTEXAI"] = null,
+                ["COLORTERM"] = "truecolor",
+            }));
+        }
+        TermAgy.OutputText += _quota.Feed;
+        _quota.Exhausted += () => Dispatcher.InvokeAsync(OnAgyExhausted);
+        _quota.OtherSignal += kind => _ = _api.SendTelemetryAsync(_pid!, "QUOTA_SIGNAL", new { kind });
+
+        // OpenCode: `opencode serve` runs hidden; visible terminal attaches to it, prompts counted from server
+        _oc = new OpenCodeHost(_s.OpenCodePath, _s.WorkspacePath, _s.OpenCodePort, _s.OpenCodeModel, _s.DataPath);
+        _oc.PromptCounted += total => Dispatcher.InvokeAsync(() => OnPrompt(total));
+        _oc.Problem += Status;
+        var ocPath = ExeResolver.Resolve(_s.OpenCodePath);
+        if (ocPath is null)
+        {
+            TermOc.Launch(new LaunchSpec("", "", _s.WorkspacePath, new Dictionary<string, string?>(),
+                () => throw new FileNotFoundException("opencode was not found. Check OpenCodePath in kiosk.json.")));
+        }
+        else
+        {
+            var (exe, args) = ExeResolver.ForLaunch(ocPath, $"attach {_oc.Url}");
+            TermOc.Launch(new LaunchSpec(exe, args, _s.WorkspacePath, _oc.Environment, _oc.StartAsync));
+        }
     }
 
-    private async void OnSubmitFix(object sender, RoutedEventArgs e)
+    // ---- attacks -------------------------------------------------------------------------------------
+    private async Task OnImminentAsync(int attackId, int seconds)
     {
-        if (_participantId is null || _sync is null) return;
-        SubmitButton.IsEnabled = false;
+        var name = AttackNames.TryGetValue(attackId, out var n) ? n : $"Attack #{attackId}";
+        Status($"🚨 BREACH IMMINENT: #{attackId} ({name}) in {seconds}s! Saving workspace...");
+        Sfx.Siren();
+        if (_sync is null || _hub is null) return;
+        WorkspaceBackup.Snapshot(_s.WorkspacePath, $"pre-attack-{attackId}");
+        await _sync.FlushAsync(force: true);
+        _sync.Hold();
+        await _hub.AckImminentAsync(attackId);
+    }
+
+    private async Task HandleAttackAsync(int attackId)
+    {
+        if (_sync is null || _pull is null) return;
+        _sync.Hold();
         try
         {
-            StatusText.Text = "Uploading fix snapshot to Gitea...";
-            StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Ink");
-            await _sync.FlushAsync();
-            await _api.SubmitAsync(_participantId);
-            StatusText.Text = "Fix submitted to evaluator queue. Awaiting verdict...";
+            int n;
+            try { n = await _pull.ApplyAsync($"attack-{attackId}", await _api.GetAttackPayloadAsync(_pid!, attackId)); }
+            catch { n = await _pull.PullAsync($"attack-{attackId}"); }
+            _pulled.Add(attackId);
+            _activeAttacks.Add(attackId);
+            var name = AttackNames.TryGetValue(attackId, out var nm) ? nm : $"Attack #{attackId}";
+            Status($"🚨 ATTACK #{attackId} ({name}) LANDED! ({n} files changed). Fix the code, then submit.");
+            _site?.RequestReload();
+            Code.RefreshAll();
+            Dispatcher.Invoke(() =>
+            {
+                UpdateAttackBadges();
+                ShowIncident(attackId);
+            });
         }
         catch (Exception ex)
         {
-            StatusText.Text = $"Submit failed: {ex.Message}. Please retry.";
-            StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Alert");
+            Status($"Could not download attack #{attackId}: {ex.Message}. Retrying...");
         }
-        finally
-        {
-            SubmitButton.IsEnabled = true;
-        }
+        finally { _sync.Release(); }
     }
 
-    private void UpdateUserButton()
+    private async Task ResyncAsync()
     {
-        var label = !string.IsNullOrWhiteSpace(_settings.DisplayName) && _settings.DisplayName != Environment.MachineName
-            ? $"👤 {_settings.DisplayName} ({_settings.DeskId ?? "DESK"})"
-            : "👤 Login";
-        UserButton.Content = label;
-    }
-
-    private async void OnUserLoginClicked(object sender, RoutedEventArgs e)
-    {
-        var loginDlg = new ParticipantLoginDialog(_settings) { Owner = this };
-        if (loginDlg.ShowDialog() == true)
-        {
-            _settings.DisplayName = loginDlg.ParticipantName;
-            _settings.DeskId = loginDlg.DeskId;
-            _settings.Password = loginDlg.Password;
-            _settings.ServerUrl = loginDlg.ServerUrl;
-            _config.ServerUrl = loginDlg.ServerUrl;
-            _config.DeskId = loginDlg.DeskId;
-            _api = new ApiClient(_config.ServerUrl);
-            UpdateUserButton();
-            await ConnectToControlPlaneAsync();
-        }
-    }
-
-    private async void OnServerConfigClicked(object sender, RoutedEventArgs e)
-    {
-        var dlg = new ServerConfigDialog(_config.ServerUrl, _config.DeskId) { Owner = this };
-        if (dlg.ShowDialog() == true)
-        {
-            _config.ServerUrl = dlg.ServerUrl;
-            _config.DeskId = dlg.DeskId;
-            _settings.ServerUrl = dlg.ServerUrl;
-            _settings.DeskId = dlg.DeskId;
-            _api = new ApiClient(_config.ServerUrl);
-            await ConnectToControlPlaneAsync();
-        }
-    }
-
-    private async void OnTestLocally(object sender, RoutedEventArgs e)
-    {
-        if (TestLocallyButton.IsEnabled == false) return;
-        TestLocallyButton.IsEnabled = false;
-        TestLocallyButton.Content = "⏳ Testing...";
-        StatusText.Text = "Executing local test suite (node --test)...";
-        StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Ink");
-
+        if (_pid is null) return;
         try
         {
-            var bundledNode = Path.Combine(AppContext.BaseDirectory, "nodejs", "node.exe");
-            var nodeExe = File.Exists(bundledNode) ? bundledNode : "node";
+            var status = await _api.GetStatusAsync(_pid);
+            if (status is null) return;
+            if (status.Status is "eliminated" or "disqualified") { await Dispatcher.InvokeAsync(Eliminate); return; }
 
-            var psi = new System.Diagnostics.ProcessStartInfo
+            var newlyLanded = status.ActiveAttacks.Where(a => !_pulled.Contains(a)).ToList();
+            foreach (var id in newlyLanded)
+                await HandleAttackAsync(id);
+
+            Dispatcher.Invoke(() =>
             {
-                FileName = nodeExe,
-                Arguments = "--test test/site.test.js",
-                WorkingDirectory = _settings.WorkspacePath,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
+                var changed = false;
+                foreach (var a in status.ActiveAttacks)
+                {
+                    if (_activeAttacks.Add(a)) changed = true;
+                }
+                var toRemove = _activeAttacks.Where(a => !status.ActiveAttacks.Contains(a) && !_solvedAttacks.Contains(a)).ToList();
+                foreach (var rem in toRemove)
+                {
+                    _activeAttacks.Remove(rem);
+                    _pulled.Remove(rem);
+                    changed = true;
+                    if (_activeIncidentWindow?.AttackId == rem)
+                    {
+                        try { _activeIncidentWindow.Close(); } catch { }
+                        _activeIncidentWindow = null;
+                    }
+                }
+
+                if (changed) UpdateAttackBadges();
+            });
+        }
+        catch { /* retry next interval */ }
+    }
+
+    private void UpdateAttackBadges()
+    {
+        AttackBadgesPanel.Children.Clear();
+
+        if (_activeAttacks.Count == 0 && _solvedAttacks.Count == 0)
+        {
+            var tb = new TextBlock
+            {
+                Text = "🛡️ All systems secure. Standing by for incoming breaches...",
+                Foreground = (Brush)FindResource("Mute"),
+                FontSize = 12,
+                VerticalAlignment = VerticalAlignment.Center
             };
+            AttackBadgesPanel.Children.Add(tb);
+            return;
+        }
 
-            using var proc = new System.Diagnostics.Process { StartInfo = psi };
-            proc.Start();
-
-            var stdoutTask = proc.StandardOutput.ReadToEndAsync();
-            var stderrTask = proc.StandardError.ReadToEndAsync();
-
-            await proc.WaitForExitAsync();
-            var stdout = await stdoutTask;
-            var stderr = await stderrTask;
-
-            var output = (stdout + "\n" + stderr).Trim();
-            var passed = proc.ExitCode == 0;
-
-            if (passed)
+        foreach (var id in _activeAttacks.OrderBy(x => x))
+        {
+            var name = AttackNames.TryGetValue(id, out var n) ? n : $"Attack #{id}";
+            var border = new Border
             {
-                StatusText.Text = "✔ Local tests passed! Workspace verified and ready to submit.";
-                StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Ok");
+                Background = new SolidColorBrush(Color.FromArgb(60, 229, 83, 61)),
+                BorderBrush = (Brush)FindResource("Alert"),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(3),
+                Padding = new Thickness(8, 2, 8, 2),
+                Margin = new Thickness(0, 0, 8, 0),
+                Cursor = Cursors.Hand,
+                ToolTip = "Click to inspect incident diagnostics and open breached file"
+            };
+            var content = new StackPanel { Orientation = Orientation.Horizontal };
+            content.Children.Add(new TextBlock
+            {
+                Text = $"⚡ #{id} {name} [ACTIVE]",
+                Foreground = (Brush)FindResource("Alert"),
+                FontWeight = FontWeights.Bold,
+                FontSize = 11,
+                VerticalAlignment = VerticalAlignment.Center
+            });
+            border.Child = content;
+            var localId = id;
+            border.MouseLeftButtonUp += (_, _) => ShowIncident(localId);
+            AttackBadgesPanel.Children.Add(border);
+        }
+
+        foreach (var id in _solvedAttacks.OrderBy(x => x))
+        {
+            var name = AttackNames.TryGetValue(id, out var n) ? n : $"Attack #{id}";
+            var border = new Border
+            {
+                Background = new SolidColorBrush(Color.FromArgb(50, 63, 182, 139)),
+                BorderBrush = (Brush)FindResource("Ok"),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(3),
+                Padding = new Thickness(8, 2, 8, 2),
+                Margin = new Thickness(0, 0, 8, 0),
+                Cursor = Cursors.Hand,
+                ToolTip = "Resolved breach (click to review incident specifications)"
+            };
+            var tb = new TextBlock
+            {
+                Text = $"✔ #{id} {name} [SOLVED]",
+                Foreground = (Brush)FindResource("Ok"),
+                FontWeight = FontWeights.SemiBold,
+                FontSize = 11,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            border.Child = tb;
+            var localId = id;
+            border.MouseLeftButtonUp += (_, _) => ShowIncident(localId);
+            AttackBadgesPanel.Children.Add(border);
+        }
+    }
+
+    private void OnVerdict(string submissionId, JsonElement verdicts, string note)
+    {
+        _submitTimeoutCts?.Cancel();
+        var parts = new List<string>();
+        var anySolved = false;
+        foreach (var v in verdicts.EnumerateArray())
+        {
+            var id = v.GetProperty("attackId").GetInt32();
+            var st = v.GetProperty("status").GetString();
+            if (st == "SOLVED")
+            {
+                anySolved = true;
+                _activeAttacks.Remove(id);
+                _solvedAttacks.Add(id);
+                parts.Add($"#{id} SOLVED +{v.GetProperty("points").GetDouble():0.#} pts");
             }
             else
             {
-                StatusText.Text = "✖ Local tests failed! Fix the issues before submitting to avoid point penalties.";
-                StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Alert");
+                parts.Add($"#{id} {st}: {v.GetProperty("reason").GetString()}");
             }
+        }
+        Status(parts.Count > 0 ? string.Join("   |   ", parts) : note);
+        Dispatcher.InvokeAsync(() =>
+        {
+            SubmitButton.IsEnabled = !_eliminated;
+            UpdateAttackBadges();
+            if (anySolved) CelebrateSolve();
+            _site?.RequestReload();
+        });
+    }
 
-            var dialog = new TestResultsWindow(passed, output, _settings.WorkspacePath)
+    private void CelebrateSolve()
+    {
+        Sfx.Fanfare();
+        SolvedBadge.Visibility = Visibility.Visible;
+        var glow = new DoubleAnimation(4, 26, TimeSpan.FromMilliseconds(450)) { AutoReverse = true, RepeatBehavior = new RepeatBehavior(6) };
+        ((DropShadowEffect)SolvedBadge.Effect).BeginAnimation(DropShadowEffect.BlurRadiusProperty, glow);
+        _ = Task.Delay(TimeSpan.FromSeconds(8)).ContinueWith(_ => Dispatcher.InvokeAsync(() => SolvedBadge.Visibility = Visibility.Collapsed));
+    }
+
+    // ---- budgets -------------------------------------------------------------------------------------
+    private void OnAgyExhausted()
+    {
+        if (_budget.AgyExhausted) return;
+        _budget.MarkAgyExhausted();
+        TermAgy.Lock("agy quota is used up. Use the OpenCode tab.");
+        TabOc.IsChecked = true;
+        _ = _api.SendTelemetryAsync(_pid!, "AGY_EXHAUSTED");
+        RefreshMeters();
+        CheckBothSpent();
+    }
+
+    private void OnPrompt(int total)
+    {
+        _budget.SetOpenCodePrompts(total);
+        for (var n = _reportedPrompts + 1; n <= total; n++)
+            _ = _api.SendTelemetryAsync(_pid!, "PROMPT", new { agent = "opencode", n });
+        _reportedPrompts = total;
+        RefreshMeters();
+
+        if (_budget.OpenCodeCapReached && !_capLockScheduled)
+        {
+            _capLockScheduled = true;
+            _ = _api.SendTelemetryAsync(_pid!, "OC_CAP_REACHED");
+            _ = Task.Delay(TimeSpan.FromSeconds(60)).ContinueWith(_ => Dispatcher.InvokeAsync(() =>
             {
-                Owner = this
-            };
-            dialog.ShowDialog();
+                _oc?.Stop();
+                TermOc.Lock("OpenCode prompt limit reached.");
+                CheckBothSpent();
+            }));
+        }
+    }
+
+    private void CheckBothSpent()
+    {
+        if (_budget.BothSpent) Status("Both AI budgets are used up. An organizer will confirm your result.");
+    }
+
+    private void Eliminate()
+    {
+        _eliminated = true;
+        TermAgy.Lock("Your session has ended.");
+        TermOc.Lock("Your session has ended.");
+        _oc?.Stop();
+        _sync?.Hold();
+        SubmitButton.IsEnabled = false;
+        Status("Your session has ended. Thanks for playing.");
+    }
+
+    // ---- UI & View Switching -------------------------------------------------------------------------
+    private async void OnSubmitFix(object sender, RoutedEventArgs e)
+    {
+        if (_pid is null || _sync is null) return;
+        SubmitButton.IsEnabled = false;
+        try
+        {
+            Status("Uploading your fix to evaluation engine...");
+            await _sync.FlushAsync(force: true);
+            await _api.SubmitAsync(_pid);
+            Status("Fix submitted! Automated test & security checks are running...");
+
+            // Safety timeout: if verdict is delayed past 45s, re-enable submit
+            _submitTimeoutCts?.Cancel();
+            _submitTimeoutCts = new CancellationTokenSource();
+            var token = _submitTimeoutCts.Token;
+            _ = Task.Delay(TimeSpan.FromSeconds(45), token).ContinueWith(t =>
+            {
+                if (!t.IsCanceled && !_eliminated)
+                {
+                    Dispatcher.InvokeAsync(() =>
+                    {
+                        SubmitButton.IsEnabled = true;
+                        Status("Evaluation is taking longer than usual. You may submit again or wait.");
+                    });
+                }
+            }, TaskScheduler.Default);
         }
         catch (Exception ex)
         {
-            StatusText.Text = $"Error running local tests: {ex.Message}";
-            StatusText.Foreground = (System.Windows.Media.SolidColorBrush)FindResource("Alert");
-            MessageBox.Show($"Failed to execute test suite: {ex.Message}", "Test Runner Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            Status($"Submit failed: {ex.Message}. Try again.");
+            SubmitButton.IsEnabled = !_eliminated;
+        }
+    }
+
+    private void SetActiveViewBtn(Button activeBtn)
+    {
+        _activeViewBtn = activeBtn;
+        var buttons = new[] { BtnViewAll, BtnViewCodeAi, BtnViewWebAi, BtnViewWebCode, BtnViewSite, BtnViewCode, BtnViewAi };
+        foreach (var b in buttons)
+        {
+            if (b is null) continue;
+            if (b == activeBtn)
+            {
+                b.BorderBrush = (Brush)FindResource("Cyan");
+                b.Background = new SolidColorBrush(Color.FromRgb(0x22, 0x48, 0x5C));
+                b.FontWeight = FontWeights.Bold;
+            }
+            else
+            {
+                b.BorderBrush = (Brush)FindResource("Line");
+                b.Background = new SolidColorBrush(Color.FromRgb(0x14, 0x24, 0x2E));
+                b.FontWeight = FontWeights.Normal;
+            }
+        }
+    }
+
+    private void OnViewAll(object sender, RoutedEventArgs e)
+    {
+        SetActiveViewBtn(BtnViewAll);
+        ColSite.Width = new GridLength(1.15, GridUnitType.Star);
+        Splitter1Col.Width = new GridLength(6);
+        Splitter1.Visibility = Visibility.Visible;
+        ColCode.Width = new GridLength(1.15, GridUnitType.Star);
+        Splitter2Col.Width = new GridLength(6);
+        Splitter2.Visibility = Visibility.Visible;
+        ColTerminal.Width = new GridLength(1.2, GridUnitType.Star);
+    }
+
+    private void OnViewCodeAi(object sender, RoutedEventArgs e)
+    {
+        SetActiveViewBtn(BtnViewCodeAi);
+        ColSite.Width = new GridLength(0);
+        Splitter1Col.Width = new GridLength(0);
+        Splitter1.Visibility = Visibility.Collapsed;
+        ColCode.Width = new GridLength(1, GridUnitType.Star);
+        Splitter2Col.Width = new GridLength(6);
+        Splitter2.Visibility = Visibility.Visible;
+        ColTerminal.Width = new GridLength(1, GridUnitType.Star);
+    }
+
+    private void OnViewWebAi(object sender, RoutedEventArgs e)
+    {
+        SetActiveViewBtn(BtnViewWebAi);
+        ColSite.Width = new GridLength(1, GridUnitType.Star);
+        Splitter1Col.Width = new GridLength(6);
+        Splitter1.Visibility = Visibility.Visible;
+        ColCode.Width = new GridLength(0);
+        Splitter2Col.Width = new GridLength(0);
+        Splitter2.Visibility = Visibility.Collapsed;
+        ColTerminal.Width = new GridLength(1, GridUnitType.Star);
+    }
+
+    private void OnViewWebCode(object sender, RoutedEventArgs e)
+    {
+        SetActiveViewBtn(BtnViewWebCode);
+        ColSite.Width = new GridLength(1, GridUnitType.Star);
+        Splitter1Col.Width = new GridLength(6);
+        Splitter1.Visibility = Visibility.Visible;
+        ColCode.Width = new GridLength(1, GridUnitType.Star);
+        Splitter2Col.Width = new GridLength(0);
+        Splitter2.Visibility = Visibility.Collapsed;
+        ColTerminal.Width = new GridLength(0);
+    }
+
+    private void OnViewSiteOnly(object sender, RoutedEventArgs e)
+    {
+        SetActiveViewBtn(BtnViewSite);
+        ColSite.Width = new GridLength(1, GridUnitType.Star);
+        Splitter1Col.Width = new GridLength(0);
+        Splitter1.Visibility = Visibility.Collapsed;
+        ColCode.Width = new GridLength(0);
+        Splitter2Col.Width = new GridLength(0);
+        Splitter2.Visibility = Visibility.Collapsed;
+        ColTerminal.Width = new GridLength(0);
+    }
+
+    private void OnViewCodeOnly(object sender, RoutedEventArgs e)
+    {
+        SetActiveViewBtn(BtnViewCode);
+        ColSite.Width = new GridLength(0);
+        Splitter1Col.Width = new GridLength(0);
+        Splitter1.Visibility = Visibility.Collapsed;
+        ColCode.Width = new GridLength(1, GridUnitType.Star);
+        Splitter2Col.Width = new GridLength(0);
+        Splitter2.Visibility = Visibility.Collapsed;
+        ColTerminal.Width = new GridLength(0);
+    }
+
+    private void OnViewAiOnly(object sender, RoutedEventArgs e)
+    {
+        SetActiveViewBtn(BtnViewAi);
+        ColSite.Width = new GridLength(0);
+        Splitter1Col.Width = new GridLength(0);
+        Splitter1.Visibility = Visibility.Collapsed;
+        ColCode.Width = new GridLength(0);
+        Splitter2Col.Width = new GridLength(0);
+        Splitter2.Visibility = Visibility.Collapsed;
+        ColTerminal.Width = new GridLength(1, GridUnitType.Star);
+    }
+
+    // ---- incident popup & investigation -------------------------------------------------------------
+    public void ShowIncident(int attackId)
+    {
+        if (_activeIncidentWindow != null)
+        {
+            try { _activeIncidentWindow.Close(); } catch { }
+            _activeIncidentWindow = null;
+        }
+
+        if (AttackMetadata.TryGetValue(attackId, out var meta))
+        {
+            _activeIncidentWindow = new IncidentWindow(
+                this,
+                attackId,
+                meta.Title,
+                meta.Classification,
+                meta.Symptoms,
+                meta.Telemetry,
+                onInvestigate: OnInvestigateWorkspace);
+        }
+        else
+        {
+            _activeIncidentWindow = new IncidentWindow(
+                this,
+                attackId,
+                $"Attack #{attackId}: Security Breach Detected",
+                "CRITICAL SEVERITY · INTRUSION ALERT",
+                "Unauthorized modifications detected across application services.",
+                "SIEM telemetry flags abnormal runtime behavior on active endpoints. Review workspace changes.",
+                onInvestigate: OnInvestigateWorkspace);
+        }
+
+        _activeIncidentWindow.Show();
+    }
+
+    private void OnInvestigateWorkspace()
+    {
+        // Switch view to Code + AI so participant can inspect files with their AI assistant
+        // Does NOT pre-open or reveal any file spoiler
+        OnViewCodeAi(this, new RoutedEventArgs());
+    }
+
+    private async Task OnAttackResetAsync(int attackId)
+    {
+        if (_sync is null || _pull is null) return;
+        _sync.Hold();
+        try
+        {
+            _activeAttacks.Remove(attackId);
+            _pulled.Remove(attackId);
+            _solvedAttacks.Remove(attackId);
+
+            // Pull clean state from server
+            await _pull.PullAsync($"reset-{attackId}");
+
+            var name = AttackNames.TryGetValue(attackId, out var nm) ? nm : $"Attack #{attackId}";
+            Status($"↺ Attack #{attackId} ({name}) reset by organizer. Workspace restored.");
+
+            _site?.RequestReload();
+            Code.RefreshAll();
+
+            Dispatcher.Invoke(() =>
+            {
+                if (_activeIncidentWindow?.AttackId == attackId)
+                {
+                    try { _activeIncidentWindow.Close(); } catch { }
+                    _activeIncidentWindow = null;
+                }
+                UpdateAttackBadges();
+            });
+        }
+        catch (Exception ex)
+        {
+            Status($"Failed to reset attack #{attackId}: {ex.Message}");
         }
         finally
         {
-            TestLocallyButton.IsEnabled = true;
-            TestLocallyButton.Content = "🧪 Test Locally (F6)";
+            _sync.Release();
         }
+    }
+
+    private void OnProfileClick(object sender, RoutedEventArgs e)
+    {
+        var onboard = new OnboardingWindow(_s);
+        if (onboard.ShowDialog() == true)
+        {
+            BtnProfile.Content = $"👤 {_s.DisplayName}";
+            Status($"Identity updated to {_s.DisplayName}");
+        }
+    }
+
+    private void OnPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.F5) { e.Handled = true; if (SubmitButton.IsEnabled) OnSubmitFix(sender, e); }
+        else if (e.Key == Key.A && Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift)) { e.Handled = true; OnAdminConsole(sender, e); }
+        else if (e.Key == Key.S && Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift)) { e.Handled = true; PromptChangeServerUrl(); }
+    }
+
+    private void OnStatusClick(object sender, MouseButtonEventArgs e)
+    {
+        if (_pid is null)
+            PromptChangeServerUrl();
+    }
+
+    private void PromptChangeServerUrl()
+    {
+        var newUrl = ServerPrompt.Ask(this, _s.ServerUrl);
+        if (newUrl is not null && newUrl != _s.ServerUrl)
+        {
+            _s.ServerUrl = newUrl;
+            ServerPrompt.SaveServerUrl(newUrl);
+            _api = new ApiClient(_s.ServerUrl);
+            Status($"Server URL set to {_s.ServerUrl}. Reconnecting...");
+        }
+    }
+
+    private async void OnAdminConsole(object sender, RoutedEventArgs e)
+    {
+        var key = KeyPrompt.Ask(this);
+        if (key is null) return;
+        try
+        {
+            using var http = new HttpClient { BaseAddress = new Uri(_s.ServerUrl), Timeout = TimeSpan.FromSeconds(5) };
+            http.DefaultRequestHeaders.Add("X-Admin-Key", key);
+            using var res = await http.GetAsync("/admin/attacks");
+            if (!res.IsSuccessStatusCode) { Status("That organizer key was not accepted."); return; }
+            new AdminWindow(_s.ServerUrl, key).Show();
+        }
+        catch (Exception ex) { Status($"Could not reach the server: {ex.Message}"); }
     }
 
     private void OnTabChanged(object sender, RoutedEventArgs e)
     {
-        if (AgyTerm is null || OpenCodeTerm is null) return;
-
-        if (TabAgy.IsChecked == true)
-        {
-            AgyTerm.Visibility = Visibility.Visible;
-            OpenCodeTerm.Visibility = Visibility.Collapsed;
-        }
-        else
-        {
-            AgyTerm.Visibility = Visibility.Collapsed;
-            OpenCodeTerm.Visibility = Visibility.Visible;
-        }
+        if (TermAgy is null || TermOc is null) return;
+        var agy = TabAgy.IsChecked == true;
+        TermAgy.Visibility = agy ? Visibility.Visible : Visibility.Hidden;
+        TermOc.Visibility = agy ? Visibility.Hidden : Visibility.Visible;
     }
 
     private void RefreshMeters()
     {
-        AgyMeter.Text = _budget.AgyExhausted ? "agy: EXHAUSTED" : "agy: READY";
-        AgyMeter.Foreground = _budget.AgyExhausted
-            ? (System.Windows.Media.SolidColorBrush)FindResource("Alert")
-            : (System.Windows.Media.SolidColorBrush)FindResource("Ok");
-
-        OcMeter.Text = $"OpenCode: {_budget.OpenCodePrompts} / {_budget.OpenCodeCap} prompts";
+        AgyMeter.Text = _budget.AgyExhausted ? "agy: used up" : "agy: ready";
+        OcMeter.Text = $"OpenCode: {_budget.OpenCodePrompts} / {_budget.OpenCodeCap}";
     }
 
-    private System.Diagnostics.Process? _localSiteProc;
-
-    private void EnsureWorkspaceSeeded()
+    /// <summary>
+    /// Ensures agy's settings file exists, is writable (never ReadOnly), and contains workspace in trustedWorkspaces.
+    /// </summary>
+    private static void ConfigureAgy(string workspacePath)
     {
         try
         {
-            if (!File.Exists(Path.Combine(_settings.WorkspacePath, "server.js")))
+            var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".gemini", "antigravity-cli");
+            Directory.CreateDirectory(dir);
+            var path = Path.Combine(dir, "settings.json");
+
+            if (File.Exists(path))
             {
-                var siteSource = Path.Combine(AppContext.BaseDirectory, "site");
-                if (Directory.Exists(siteSource))
+                var attrs = File.GetAttributes(path);
+                if ((attrs & FileAttributes.ReadOnly) != 0)
+                    File.SetAttributes(path, attrs & ~FileAttributes.ReadOnly);
+            }
+
+            var doc = new Dictionary<string, object>();
+            if (File.Exists(path))
+            {
+                try
                 {
-                    CopyDirectory(siteSource, _settings.WorkspacePath);
+                    var text = File.ReadAllText(path);
+                    doc = JsonSerializer.Deserialize<Dictionary<string, object>>(text) ?? new();
                 }
+                catch { }
             }
-        }
-        catch { }
-    }
 
-    private static void CopyDirectory(string sourceDir, string targetDir)
-    {
-        Directory.CreateDirectory(targetDir);
-        foreach (var file in Directory.GetFiles(sourceDir, "*", SearchOption.AllDirectories))
-        {
-            var rel = Path.GetRelativePath(sourceDir, file);
-            var dest = Path.Combine(targetDir, rel);
-            Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
-            File.Copy(file, dest, overwrite: true);
-        }
-    }
+            doc["colorScheme"] = "dark";
 
-    private void EnsureLocalSiteRunning()
-    {
-        try
-        {
-            using var client = new HttpClient { Timeout = TimeSpan.FromMilliseconds(400) };
-            var res = client.GetAsync(_settings.SiteUrl).GetAwaiter().GetResult();
-            if (res.IsSuccessStatusCode) return;
-        }
-        catch { }
-
-        try
-        {
-            var serverJs = Path.Combine(_settings.WorkspacePath, "server.js");
-            if (File.Exists(serverJs))
+            var trustedList = new List<string>();
+            if (doc.TryGetValue("trustedWorkspaces", out var existing) && existing is JsonElement el && el.ValueKind == JsonValueKind.Array)
             {
-                var bundledNode = Path.Combine(AppContext.BaseDirectory, "nodejs", "node.exe");
-                var nodeExe = File.Exists(bundledNode) ? bundledNode : "node";
-
-                var psi = new System.Diagnostics.ProcessStartInfo
-                {
-                    FileName = nodeExe,
-                    Arguments = "--watch server.js",
-                    WorkingDirectory = _settings.WorkspacePath,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                };
-                _localSiteProc = System.Diagnostics.Process.Start(psi);
+                foreach (var item in el.EnumerateArray())
+                    if (item.GetString() is { } s && !string.IsNullOrWhiteSpace(s))
+                        trustedList.Add(s);
             }
+
+            void AddPath(string p)
+            {
+                if (!trustedList.Contains(p, StringComparer.OrdinalIgnoreCase))
+                    trustedList.Add(p);
+            }
+
+            AddPath(workspacePath);
+            AddPath(workspacePath.ToLowerInvariant());
+            try { AddPath(Path.GetFullPath(workspacePath)); } catch { }
+            doc["trustedWorkspaces"] = trustedList;
+
+            var json = JsonSerializer.Serialize(doc, new JsonSerializerOptions { WriteIndented = true });
+            File.WriteAllText(path, json);
         }
-        catch { }
+        catch { /* best effort */ }
     }
 
-    private void ReloadSiteSafe()
+    private static void CopyTree(string src, string dst)
     {
-        if (Site.CoreWebView2 != null)
+        foreach (var f in Directory.EnumerateFiles(src))
         {
-            Site.CoreWebView2.Navigate(_settings.SiteUrl);
+            var name = Path.GetFileName(f);
+            if (name.EndsWith(".db") || name.EndsWith(".db-wal") || name.EndsWith(".db-shm")) continue;
+            File.Copy(f, Path.Combine(dst, name), overwrite: true);
         }
-        else
+        foreach (var d in Directory.EnumerateDirectories(src))
         {
-            Site.Source = new Uri(_settings.SiteUrl);
+            var name = Path.GetFileName(d);
+            if (name is "node_modules" or ".git") continue;
+            Directory.CreateDirectory(Path.Combine(dst, name));
+            CopyTree(d, Path.Combine(dst, name));
         }
-    }
-
-    private void OnReloadSite(object sender, RoutedEventArgs e) => ReloadSiteSafe();
-
-    private void OnLayoutAll3(object sender, RoutedEventArgs e)
-    {
-        ColWeb.Width = new GridLength(1.1, GridUnitType.Star);
-        ColCode.Width = new GridLength(1.2, GridUnitType.Star);
-        ColTerm.Width = new GridLength(1.2, GridUnitType.Star);
-        ColSplitter1.Width = new GridLength(6);
-        ColSplitter2.Width = new GridLength(6);
-    }
-
-    private void OnLayoutWebTerm(object sender, RoutedEventArgs e)
-    {
-        ColWeb.Width = new GridLength(1, GridUnitType.Star);
-        ColCode.Width = new GridLength(0);
-        ColTerm.Width = new GridLength(1, GridUnitType.Star);
-        ColSplitter1.Width = new GridLength(0);
-        ColSplitter2.Width = new GridLength(6);
-    }
-
-    private void OnLayoutCodeTerm(object sender, RoutedEventArgs e)
-    {
-        ColWeb.Width = new GridLength(0);
-        ColCode.Width = new GridLength(1.1, GridUnitType.Star);
-        ColTerm.Width = new GridLength(1.2, GridUnitType.Star);
-        ColSplitter1.Width = new GridLength(0);
-        ColSplitter2.Width = new GridLength(6);
     }
 }

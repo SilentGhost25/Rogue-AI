@@ -50,12 +50,45 @@ public sealed class WorkspaceStore
         return full.StartsWith(baseDir, StringComparison.Ordinal) ? full : null;
     }
 
-    public (int written, List<string> rejected) Save(string participantId, IEnumerable<SnapshotFile> files)
+    public IReadOnlyList<FileEntry> List(string participantId)
     {
+        var dir = PathFor(participantId);
+        var result = new List<FileEntry>();
+        if (!Directory.Exists(dir)) return result;
+        foreach (var file in Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories))
+        {
+            var rel = Path.GetRelativePath(dir, file).Replace('\\', '/');
+            if (ResolveSafe(participantId, rel) is null) continue;
+            if (new FileInfo(file).Length > MaxFileBytes) continue;
+            result.Add(new FileEntry(rel, Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(file)))));
+        }
+        return result;
+    }
+
+    public List<SnapshotFile> Read(string participantId, IEnumerable<string> paths)
+    {
+        var files = new List<SnapshotFile>();
+        foreach (var rel in paths.Take(500))
+        {
+            var full = ResolveSafe(participantId, rel);
+            if (full is null || !File.Exists(full)) continue;
+            var bytes = File.ReadAllBytes(full);
+            files.Add(new SnapshotFile(rel, Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)), Convert.ToBase64String(bytes)));
+        }
+        return files;
+    }
+
+    public (int written, List<string> rejected) Save(string participantId, IEnumerable<SnapshotFile> files, IEnumerable<string>? deleted = null)
+    {
+        foreach (var rel in (deleted ?? Array.Empty<string>()).Take(500))
+        {
+            var gone = ResolveSafe(participantId, rel);
+            if (gone is not null && File.Exists(gone)) File.Delete(gone);
+        }
         var written = 0;
         var rejected = new List<string>();
         Directory.CreateDirectory(PathFor(participantId));
-        foreach (var f in files)
+        foreach (var f in files.Take(500))
         {
             var target = ResolveSafe(participantId, f.Path);
             byte[] bytes;
@@ -89,5 +122,7 @@ public sealed class WorkspaceStore
     }
 }
 
+public sealed record FileEntry(string Path, string Sha256);
 public sealed record SnapshotFile(string Path, string Sha256, string ContentBase64);
-public sealed record SnapshotRequest(List<SnapshotFile> Files);
+public sealed record SnapshotRequest(List<SnapshotFile> Files, List<string>? Deleted = null);
+public sealed record FetchRequest(List<string> Paths);

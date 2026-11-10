@@ -5,29 +5,20 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
   </PropertyGroup>
-  <PropertyGroup Condition="'$(KioskOnly)' == 'true'">
-    <DefineConstants>$(DefineConstants);KIOSK_ONLY</DefineConstants>
-    <OutputPath>bin\KioskRelease\net9.0-windows\</OutputPath>
-    <IntermediateOutputPath>obj\KioskRelease\net9.0-windows\</IntermediateOutputPath>
-    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
-  </PropertyGroup>
-  <ItemGroup Condition="'$(KioskOnly)' == 'true'">
-    <Compile Remove="AdminWindow.xaml.cs" />
-    <Page Remove="AdminWindow.xaml" />
-  </ItemGroup>
   <ItemGroup>
-    <Using Include="System.IO" />
-    <Using Include="System.Net.Http" />
-  </ItemGroup>
-  <ItemGroup>
-    <!-- Pin and verify these exist on nuget.org before first restore (AGENTS.md rule). -->
+    <!-- Pin and verify these versions exist on nuget.org before the first restore (AGENTS.md rule). -->
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="9.0.2" />
-    <PackageReference Include="EasyWindowsTerminalControl" Version="1.0.38" />
     <PackageReference Include="AvalonEdit" Version="6.3.1.120" />
   </ItemGroup>
   <ItemGroup>
     <None Update="kiosk.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- xterm.js files are placed here -->
+    <Content Include="Assets\terminal\**" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The clean website ships inside the kiosk so a fresh workspace can be created offline. -->
+    <Content Include="..\..\site\**" Exclude="..\..\site\node_modules\**;..\..\site\data.db*;..\..\site\test\**"
+             Link="site-template\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

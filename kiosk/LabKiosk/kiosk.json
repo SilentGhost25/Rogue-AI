@@ -2,6 +2,10 @@
   "ServerUrl": "http://127.0.0.1:5080",
   "SiteUrl": "http://127.0.0.1:3000",
   "WorkspacePath": "C:\\BreachWorkspace",
-  "DeskId": "DESK-01",
-  "DeskToken": ""
+  "NodePath": "node",
+  "AgyPath": "%LOCALAPPDATA%\\agy\\bin\\agy.exe",
+  "OpenCodePath": "opencode",
+  "OpenCodeModel": "",
+  "OpenCodePort": 4096,
+  "OpenCodeCap": 200
 }

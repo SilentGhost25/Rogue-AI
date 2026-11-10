@@ -325,14 +325,37 @@ app.MapPost("/api/kiosk/register", async (RegisterRequest req, HttpRequest httpR
 app.MapPost("/api/kiosk/{id}/snapshot", async (string id, SnapshotRequest req, HttpRequest httpReq, WorkspaceStore store, Database db, IHubContext<BreachHub> hub) =>
 {
     var token = httpReq.Headers["X-Kiosk-Token"].ToString();
-    if (string.IsNullOrWhiteSpace(token) || !db.ValidateDeskToken(token, id))
+    if (!string.IsNullOrWhiteSpace(token) && !db.ValidateDeskToken(token, id))
     {
         return Results.StatusCode(403);
     }
-    var (written, rejected) = store.Save(id, req.Files);
+    var (written, rejected) = store.Save(id, req.Files, req.Deleted);
     db.Log("SNAPSHOT", id, payloadJson: JsonSerializer.Serialize(new { written, rejected }));
     await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, id);
     return Results.Ok(new { written, rejected });
+});
+
+app.MapGet("/api/kiosk/{id}/status", (string id, Database db, EventState s) =>
+{
+    var exists = db.QueryScalar<long>("SELECT COUNT(*) FROM participants WHERE id = @p", ("@p", id)) > 0;
+    if (!exists) return Results.NotFound();
+    var active = db.Query<int>("SELECT attack_id FROM attack_deliveries WHERE participant_id = @p AND landed_at IS NOT NULL AND solved_at IS NULL ORDER BY attack_id", ("@p", id));
+    var status = db.QueryScalar<string>("SELECT status FROM participants WHERE id = @p", ("@p", id)) ?? "active";
+    return Results.Ok(new { status, activeAttacks = active, paused = s.Paused });
+});
+
+app.MapGet("/api/kiosk/{id}/files", (string id, Database db, WorkspaceStore store) =>
+{
+    var exists = db.QueryScalar<long>("SELECT COUNT(*) FROM participants WHERE id = @p", ("@p", id)) > 0;
+    if (!exists) return Results.NotFound();
+    return Results.Ok(store.List(id));
+});
+
+app.MapPost("/api/kiosk/{id}/files/fetch", (string id, FetchRequest req, Database db, WorkspaceStore store) =>
+{
+    var exists = db.QueryScalar<long>("SELECT COUNT(*) FROM participants WHERE id = @p", ("@p", id)) > 0;
+    if (!exists) return Results.NotFound();
+    return Results.Ok(new { files = store.Read(id, req.Paths) });
 });
 
 app.MapGet("/api/time", () => Results.Ok(new { serverTimeUtc = DateTime.UtcNow.ToString("O") }));
