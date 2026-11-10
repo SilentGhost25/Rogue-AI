@@ -3,6 +3,7 @@ param(
     [string]$Command = "",
     [Parameter(Position = 1)]
     [string]$ServerUrl = "",
+    [Alias("Organizer")]
     [switch]$HostMode,
     [switch]$Both,
     [switch]$Participant
@@ -10,7 +11,7 @@ param(
 
 $cmd = $Command.Trim().ToLowerInvariant()
 switch ($cmd) {
-    { $_ -in @("host", "organizer", "-hostmode") } { $HostMode = $true }
+    { $_ -in @("host", "organizer", "-hostmode", "-organizer") } { $HostMode = $true }
     { $_ -in @("play", "participant", "kiosk", "-participant") } { $Participant = $true }
     { $_ -in @("demo", "both", "-both") } { $Both = $true }
 }
@@ -31,7 +32,8 @@ if (Test-Path "$env:LOCALAPPDATA\dotnet" -ErrorAction SilentlyContinue) {
     $env:DOTNET_ROOT = "$env:LOCALAPPDATA\dotnet"
     $env:Path = "$env:LOCALAPPDATA\dotnet;$env:Path"
 }
-$dotnetCmd = if (Test-Path "$env:LOCALAPPDATA\dotnet\dotnet.exe") { "$env:LOCALAPPDATA\dotnet\dotnet.exe" } else { (Get-Command dotnet -ErrorAction SilentlyContinue).Source }
+$localDotnetExe = "$env:LOCALAPPDATA\dotnet\dotnet.exe"
+$dotnetCmd = if (Test-Path $localDotnetExe -ErrorAction SilentlyContinue) { $localDotnetExe } else { (Get-Command dotnet -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Source) }
 $env:PYTHONPATH = "$RogueRoot\engine"
 
 if (-not $env:BREACH_ADMIN_KEY) {
@@ -56,6 +58,7 @@ function Ensure-ControlPlaneBuilt {
         if ($needsBuild) {
             Write-Host "[*] Building Control Plane (updating from source changes)..." -ForegroundColor Cyan
             & $dotnetCmd build $cpProj -c Debug | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "Control Plane build failed with exit code $LASTEXITCODE" }
         }
     }
     return $cpExe
@@ -67,6 +70,13 @@ function Ensure-LabKioskBuilt {
     }
     $kProj = "$RogueRoot\kiosk\LabKiosk\LabKiosk.csproj"
     $kExe = "$RogueRoot\kiosk\LabKiosk\bin\Debug\net9.0-windows\LabKiosk.exe"
+    $scExe = "$RogueRoot\kiosk\LabKiosk\bin\SelfContained\LabKiosk.exe"
+
+    $isLocked = [bool](Get-Process LabKiosk -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $kExe })
+    if ($isLocked -and (Test-Path $scExe)) {
+        return $scExe
+    }
+
     if ((Test-Path $kProj) -and $dotnetCmd) {
         $needsBuild = -not (Test-Path $kExe)
         if (-not $needsBuild) {
@@ -79,10 +89,16 @@ function Ensure-LabKioskBuilt {
         if ($needsBuild) {
             Write-Host "[*] Building LabKiosk application (updating from source changes)..." -ForegroundColor Cyan
             & $dotnetCmd build $kProj -c Debug | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                if (Test-Path $scExe) {
+                    Write-Host "[!] Debug build locked/failed; using up-to-date SelfContained LabKiosk.exe" -ForegroundColor Yellow
+                    return $scExe
+                }
+                throw "LabKiosk build failed with exit code $LASTEXITCODE"
+            }
         }
     }
     if (Test-Path $kExe) { return $kExe }
-    $scExe = "$RogueRoot\kiosk\LabKiosk\bin\SelfContained\LabKiosk.exe"
     if (Test-Path $scExe) { return $scExe }
     return $kExe
 }
@@ -130,7 +146,7 @@ try {
     }
     $wifi = $netIps | Where-Object { $_.InterfaceAlias -match "Wi-Fi|Wireless" } | Select-Object -First 1
     if ($wifi -and $detectedIps.Contains($wifi.IPAddress)) {
-        $detectedIps.Remove($wifi.IPAddress)
+        [void]$detectedIps.Remove($wifi.IPAddress)
         $detectedIps.Insert(0, $wifi.IPAddress)
     }
 } catch { }
@@ -138,7 +154,7 @@ try {
 $primaryLanIp = if ($detectedIps.Count -gt 0) { $detectedIps[0] } else { "127.0.0.1" }
 
 Write-Host "`n[+] Dynamic Network Detection:" -ForegroundColor Green
-Write-Host "    Primary LAN IP:   http://$primaryLanIp:5080" -ForegroundColor White
+Write-Host "    Primary LAN IP:   http://${primaryLanIp}:5080" -ForegroundColor White
 if ($detectedIps.Count -gt 1) {
     Write-Host "    Other Interfaces: $(($detectedIps | Select-Object -Skip 1) -join ', ')" -ForegroundColor DarkGray
 }
@@ -181,8 +197,21 @@ try {
     Write-Host "[!] Note: Using local fallback workspace: $WorkspaceDir" -ForegroundColor Yellow
 }
 
+function Ensure-OpenCodeInstalled {
+    $hasOc = (Get-Command opencode -ErrorAction SilentlyContinue) -or
+             (Test-Path "$env:APPDATA\npm\opencode.cmd") -or
+             (Test-Path "$RogueRoot\vendor\opencode\opencode.exe") -or
+             (Test-Path "$RogueRoot\opencode\opencode.exe") -or
+             (Test-Path "$env:LOCALAPPDATA\BreachKiosk\opencode\opencode.exe")
+    if (-not $hasOc -and (Test-Path "$RogueRoot\scripts\provision-ai-clis.ps1")) {
+        Write-Host "[*] Installing OpenCode CLI automatically..." -ForegroundColor Cyan
+        & "$RogueRoot\scripts\provision-ai-clis.ps1" -SkipAgy
+    }
+}
+
 # If participant-only mode requested without host services
 if ($Participant) {
+    Ensure-OpenCodeInstalled
     $kioskExe = Ensure-LabKioskBuilt
     $targetUrl = $ServerUrl
     if (-not $targetUrl) {
@@ -193,13 +222,30 @@ if ($Participant) {
         } catch { }
     }
     if (-not $targetUrl) {
-        # 2. Try UDP port 5082 LAN discovery
+        # 2. Try UDP port 5082 LAN discovery across all active subnets
         try {
             $udp = New-Object System.Net.Sockets.UdpClient(0)
             $udp.EnableBroadcast = $true
-            $udp.Client.ReceiveTimeout = 1500
+            $udp.Client.ReceiveTimeout = 1800
             $ping = [System.Text.Encoding]::UTF8.GetBytes("ROGUE_AI_DISCOVERY_PING")
-            [void]$udp.Send($ping, $ping.Length, (New-Object System.Net.IPEndPoint([System.Net.IPAddress]::Broadcast, 5082)))
+            $bcasts = [System.Collections.Generic.List[System.Net.IPAddress]]::new()
+            $bcasts.Add([System.Net.IPAddress]::Broadcast)
+            foreach ($ni in [System.Net.NetworkInformation.NetworkInterface]::GetAllNetworkInterfaces()) {
+                if ($ni.OperationalStatus -ne [System.Net.NetworkInformation.OperationalStatus]::Up) { continue }
+                if ($ni.NetworkInterfaceType -eq [System.Net.NetworkInformation.NetworkInterfaceType]::Loopback) { continue }
+                if ($ni.Name -match "vEthernet|Virtual|WSL|VMware|Hyper-V") { continue }
+                foreach ($ua in $ni.GetIPProperties().UnicastAddresses) {
+                    if ($ua.Address.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork -and $ua.IPv4Mask) {
+                        $ipB = $ua.Address.GetAddressBytes(); $mkB = $ua.IPv4Mask.GetAddressBytes()
+                        $bcB = New-Object byte[] 4
+                        for ($k = 0; $k -lt 4; $k++) { $bcB[$k] = [byte]($ipB[$k] -bor (-bnot $mkB[$k] -band 255)) }
+                        $bcasts.Add((New-Object System.Net.IPAddress(,$bcB)))
+                    }
+                }
+            }
+            foreach ($bc in $bcasts) {
+                try { [void]$udp.Send($ping, $ping.Length, (New-Object System.Net.IPEndPoint($bc, 5082))) } catch { }
+            }
             $remote = New-Object System.Net.IPEndPoint([System.Net.IPAddress]::Any, 0)
             $recv = $udp.Receive([ref]$remote)
             $msg = [System.Text.Encoding]::UTF8.GetString($recv)
@@ -210,7 +256,7 @@ if ($Participant) {
         } catch { }
     }
     if (-not $targetUrl) {
-        $targetUrl = "http://$primaryLanIp:5080"
+        $targetUrl = "http://${primaryLanIp}:5080"
     }
     Write-Host "[*] Launching Participant Kiosk (Connecting to $targetUrl)..." -ForegroundColor Green
     Start-Process -FilePath $kioskExe -ArgumentList "--server `"$targetUrl`""
@@ -223,6 +269,7 @@ $siteProc = $null
 
 # 3. Check and Start Python Engine (Port 8000)
 $engineProc = $null
+$engineErrLog = Join-Path $env:TEMP "rogue-engine-err.log"
 $isEngineRunning = $false
 try {
     $resp = Invoke-WebRequest -Uri "http://127.0.0.1:8000/health" -TimeoutSec 1 -UseBasicParsing -ErrorAction SilentlyContinue
@@ -233,11 +280,14 @@ if ($isEngineRunning) {
     Write-Host "[+] Breach Engine already online on http://127.0.0.1:8000" -ForegroundColor Green
 } else {
     Write-Host "[*] Starting Breach Engine (FastAPI) on port 8000..." -ForegroundColor Cyan
-    $engineProc = Start-Process -FilePath "python" -ArgumentList "-m breach_engine.api" -WorkingDirectory "$RogueRoot\engine" -PassThru -WindowStyle Hidden
+    $pyExe = (Get-Command python -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Source)
+    if (-not $pyExe) { $pyExe = "python" }
+    $engineProc = Start-Process -FilePath $pyExe -ArgumentList "-m breach_engine.api" -WorkingDirectory "$RogueRoot\engine" -RedirectStandardError $engineErrLog -PassThru -WindowStyle Hidden
 }
 
 # 4. Check and Start Control Plane (Port 5080)
 $serverProc = $null
+$cpErrLog = Join-Path $env:TEMP "rogue-controlplane-err.log"
 $isServerRunning = $false
 try {
     $resp = Invoke-WebRequest -Uri "http://127.0.0.1:5080/api/state" -TimeoutSec 1 -UseBasicParsing -ErrorAction SilentlyContinue
@@ -249,13 +299,24 @@ if ($isServerRunning) {
 } else {
     Write-Host "[*] Starting Control Plane (ASP.NET Core) on port 5080..." -ForegroundColor Cyan
     $controlPlaneExe = Ensure-ControlPlaneBuilt
-    $serverProc = Start-Process -FilePath $controlPlaneExe -ArgumentList "--urls http://0.0.0.0:5080" -WorkingDirectory "$RogueRoot\server\ControlPlane" -PassThru -WindowStyle Hidden
+    if (-not (Test-Path $controlPlaneExe)) {
+        throw "ControlPlane.exe not found at $controlPlaneExe"
+    }
+    $serverProc = Start-Process -FilePath $controlPlaneExe -ArgumentList "--urls http://0.0.0.0:5080" -WorkingDirectory "$RogueRoot\server\ControlPlane" -RedirectStandardError $cpErrLog -PassThru -WindowStyle Hidden
 }
 
 # Wait for services to be ready
 Write-Host "[*] Verifying background services..." -ForegroundColor Cyan
 $ready = $false
-for ($i = 0; $i -lt 15; $i++) {
+for ($i = 0; $i -lt 25; $i++) {
+    if ($engineProc -and $engineProc.HasExited) {
+        $errTxt = if (Test-Path $engineErrLog) { (Get-Content $engineErrLog -Raw -ErrorAction SilentlyContinue) } else { "" }
+        throw "Breach Engine exited immediately (code $($engineProc.ExitCode)).`n$errTxt"
+    }
+    if ($serverProc -and $serverProc.HasExited) {
+        $errTxt = if (Test-Path $cpErrLog) { (Get-Content $cpErrLog -Raw -ErrorAction SilentlyContinue) } else { "" }
+        throw "Control Plane exited immediately (code $($serverProc.ExitCode)).`n$errTxt"
+    }
     Start-Sleep -Milliseconds 600
     try {
         $c = (Invoke-WebRequest "http://127.0.0.1:5080/api/state" -TimeoutSec 1 -UseBasicParsing -ErrorAction SilentlyContinue).StatusCode
@@ -272,21 +333,23 @@ if ($ready) {
 
 # 5. Launch Kiosk App or Host Mode
 if ($HostMode) {
+    $kioskExe = Ensure-LabKioskBuilt
+
     Write-Host "`n==========================================================" -ForegroundColor Green
     Write-Host " ROGUE AI: ORGANIZER COMMAND CENTER ONLINE (DYNAMIC LAN)  " -ForegroundColor Green
     Write-Host "==========================================================" -ForegroundColor Green
-    Write-Host "Local Admin URL:      http://127.0.0.1:5080/admin/" -ForegroundColor Cyan
+    Write-Host "Local Command UI:     http://127.0.0.1:5080/" -ForegroundColor Cyan
+    Write-Host "Local Admin Console:  http://127.0.0.1:5080/admin/" -ForegroundColor Cyan
     Write-Host "LAN Admin URL:        http://${primaryLanIp}:5080/admin/" -ForegroundColor Cyan
     Write-Host "Participant Download: http://${primaryLanIp}:5080/download" -ForegroundColor Magenta
     Write-Host "Direct Setup Link:    http://${primaryLanIp}:5080/RogueAI-Setup.exe" -ForegroundColor Magenta
     Write-Host "UDP LAN Discovery:    Broadcasting on port 5082 (Zero-Config)" -ForegroundColor Green
-    Write-Host "Credentials:          admin / admin123456" -ForegroundColor Yellow
+    Write-Host "Admin Login (Web):    admin / admin123456" -ForegroundColor Yellow
     Write-Host "==========================================================" -ForegroundColor Green
 
-    # Open Admin Console in default browser
-    Start-Process "http://127.0.0.1:5080/admin/"
-
-    Write-Host "`n[+] Control Plane and Evaluation Engine are active." -ForegroundColor Green
+    Write-Host "`n[*] Launching Organizer Command Center window (--host)..." -ForegroundColor Cyan
+    $kioskProc = Start-Process -FilePath $kioskExe -ArgumentList "--host" -PassThru
+    Write-Host "[+] Organizer Command Center active (PID: $($kioskProc.Id))." -ForegroundColor Green
     Write-Host "[*] Participant kiosks will automatically detect and connect to this host." -ForegroundColor Cyan
     if ($detectedIps.Count -gt 1) {
         Write-Host "[*] Additional network interfaces available:" -ForegroundColor DarkGray
@@ -294,13 +357,13 @@ if ($HostMode) {
             Write-Host "    -> http://${ip}:5080/download" -ForegroundColor DarkGray
         }
     }
-    Write-Host "[*] Press ENTER in this window to stop all services..." -ForegroundColor Yellow
+    Write-Host "[*] Close the Organizer Command Center window (or press Ctrl+C) to stop services..." -ForegroundColor Yellow
     try {
-        [void][System.Console]::ReadLine()
-    } catch {
-        Start-Sleep -Seconds 86400
-    }
+        $kioskProc.WaitForExit()
+        Write-Host "[*] Organizer Command Center closed." -ForegroundColor Cyan
+    } catch { }
 } else {
+    Ensure-OpenCodeInstalled
     $kioskExe = Ensure-LabKioskBuilt
 
     $appArgs = "--server `"http://127.0.0.1:5080`""

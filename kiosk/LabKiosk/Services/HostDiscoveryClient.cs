@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Text;
 
@@ -28,6 +29,35 @@ public static class HostDiscoveryClient
         }
     }
 
+    private static List<IPEndPoint> GetBroadcastEndpoints()
+    {
+        var endpoints = new List<IPEndPoint> { new(IPAddress.Broadcast, DiscoveryPort) };
+        try
+        {
+            foreach (var ni in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (ni.OperationalStatus != OperationalStatus.Up) continue;
+                if (ni.NetworkInterfaceType is NetworkInterfaceType.Loopback or NetworkInterfaceType.Tunnel) continue;
+                var name = ni.Name.ToLowerInvariant();
+                var desc = ni.Description.ToLowerInvariant();
+                if (name.Contains("vethernet") || name.Contains("wsl") || desc.Contains("hyper-v") || desc.Contains("vmware") || desc.Contains("virtual"))
+                    continue;
+
+                foreach (var ua in ni.GetIPProperties().UnicastAddresses)
+                {
+                    if (ua.Address.AddressFamily != AddressFamily.InterNetwork || ua.IPv4Mask is null) continue;
+                    var ipBytes = ua.Address.GetAddressBytes();
+                    var maskBytes = ua.IPv4Mask.GetAddressBytes();
+                    var bcast = new byte[4];
+                    for (var i = 0; i < 4; i++) bcast[i] = (byte)(ipBytes[i] | ~maskBytes[i]);
+                    endpoints.Add(new IPEndPoint(new IPAddress(bcast), DiscoveryPort));
+                }
+            }
+        }
+        catch { }
+        return endpoints;
+    }
+
     public static async Task<string?> DiscoverAsync(int timeoutMs = 1800, CancellationToken ct = default)
     {
         if (await IsHealthyAsync("http://127.0.0.1:5080"))
@@ -37,7 +67,10 @@ public static class HostDiscoveryClient
         {
             using var udp = new UdpClient(new IPEndPoint(IPAddress.Any, 0)) { EnableBroadcast = true };
             var ping = Encoding.UTF8.GetBytes("ROGUE_AI_DISCOVERY_PING");
-            await udp.SendAsync(ping, ping.Length, new IPEndPoint(IPAddress.Broadcast, DiscoveryPort));
+            foreach (var ep in GetBroadcastEndpoints())
+            {
+                try { await udp.SendAsync(ping, ping.Length, ep); } catch { }
+            }
 
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             cts.CancelAfter(timeoutMs);
@@ -61,7 +94,7 @@ public static class HostDiscoveryClient
         }
         catch { /* timeout or UDP blocked */ }
 
-        // Fallback: listen briefly on broadcast port 5082 in case firewall blocked outbound reply
+        // Fallback: listen briefly on broadcast port 5082
         try
         {
             using var listener = new UdpClient();
@@ -93,4 +126,3 @@ public static class HostDiscoveryClient
         return null;
     }
 }
-

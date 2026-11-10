@@ -30,4 +30,5 @@ if "%CHOICE%"=="" set CHOICE=1
 if "%CHOICE%"=="1" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0run.ps1" host
 if "%CHOICE%"=="2" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0run.ps1" play
 if "%CHOICE%"=="3" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0run.ps1" demo
+if errorlevel 1 pause
 goto :eof

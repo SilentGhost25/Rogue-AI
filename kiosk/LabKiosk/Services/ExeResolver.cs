@@ -11,7 +11,7 @@ public static class ExeResolver
 
         var baseName = Path.GetFileNameWithoutExtension(nameOrPath);
 
-        // Check well-known tool locations for agy and gh
+        // Check well-known tool locations for agy, opencode, and gh
         if (baseName.Equals("agy", StringComparison.OrdinalIgnoreCase))
         {
             var u = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
@@ -21,6 +21,24 @@ public static class ExeResolver
                 Path.Combine(l, "agy", "bin", "agy.exe"),
                 Path.Combine(u, ".gemini", "bin", "agy.exe"),
                 Path.Combine(u, ".gemini", "antigravity-cli", "bin", "agy.exe")
+            };
+            foreach (var c in candidates)
+                if (File.Exists(c)) return c;
+        }
+        else if (baseName.Equals("opencode", StringComparison.OrdinalIgnoreCase))
+        {
+            var u = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            var l = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            var a = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            var candidates = new[]
+            {
+                Path.Combine(AppContext.BaseDirectory, "opencode", "opencode.exe"),
+                Path.Combine(AppContext.BaseDirectory, "nodejs", "opencode.cmd"),
+                Path.Combine(a, "npm", "opencode.exe"),
+                Path.Combine(a, "npm", "opencode.cmd"),
+                Path.Combine(l, "BreachKiosk", "opencode", "opencode.exe"),
+                Path.Combine(l, "BreachKiosk", "opencode", "node_modules", ".bin", "opencode.cmd"),
+                Path.Combine(u, ".opencode", "bin", "opencode.exe")
             };
             foreach (var c in candidates)
                 if (File.Exists(c)) return c;

@@ -197,6 +197,8 @@ public partial class MainWindow : Window
             {
                 try
                 {
+                    if (!await HostDiscoveryClient.IsHealthyAsync(_s.ServerUrl))
+                        throw new HttpRequestException($"Organizer unreachable at {_s.ServerUrl}");
                     _pid = await _api.RegisterAsync(_s.DisplayName, _s.KioskId, _s.DeskId, _s.Password, _s.GitHubHandle, _s.GoogleAccount);
                 }
                 catch (Exception ex)
@@ -326,6 +328,11 @@ public partial class MainWindow : Window
         _oc.PromptCounted += total => Dispatcher.InvokeAsync(() => OnPrompt(total));
         _oc.Problem += Status;
         var ocPath = ExeResolver.Resolve(_s.OpenCodePath);
+        if (ocPath is null)
+        {
+            Status("Installing OpenCode AI CLI...");
+            ocPath = await OpenCodeHost.EnsureInstalledAsync(_s.DataPath, _s.OpenCodePath);
+        }
         if (ocPath is null)
         {
             TermOc.Launch(new LaunchSpec("", "", _s.WorkspacePath, new Dictionary<string, string?>(),

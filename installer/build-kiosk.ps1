@@ -23,7 +23,7 @@ $root = Resolve-Path (Join-Path $PSScriptRoot "..")
 $kioskProj = Join-Path $root "kiosk\LabKiosk\LabKiosk.csproj"
 $kioskSelfContained = Join-Path $root "kiosk\LabKiosk\bin\SelfContained"
 $cpProj = Join-Path $root "server\ControlPlane\ControlPlane.csproj"
-$cpRelease = Join-Path $root "server\ControlPlane\bin\Release\net9.0"
+$cpRelease = Join-Path $root "server\ControlPlane\bin\SelfContained"
 $issPath = Join-Path $root "installer\setup.iss"
 $distExe = Join-Path $root "dist\RogueAI-Setup.exe"
 $legacyKioskExe = Join-Path $root "dist\RogueAI-Kiosk-Setup.exe"
@@ -34,6 +34,27 @@ if (Test-Path $legacyKioskExe) {
     Write-Host "[*] Removed obsolete standalone $legacyKioskExe" -ForegroundColor Gray
 }
 
+# 1b. Stage OpenCode binary for offline bundling into RogueAI-Setup.exe
+$vendorOcDir = Join-Path $root "vendor\opencode"
+$vendorOcExe = Join-Path $vendorOcDir "opencode.exe"
+if (-not (Test-Path $vendorOcExe)) {
+    $npmOcExe = Join-Path $env:APPDATA "npm\node_modules\opencode-ai\node_modules\opencode-windows-x64\bin\opencode.exe"
+    if (-not (Test-Path $npmOcExe)) {
+        $provScript = Join-Path $root "scripts\provision-ai-clis.ps1"
+        if (Test-Path $provScript) {
+            Write-Host "[*] Provisioning OpenCode CLI before packaging..." -ForegroundColor Cyan
+            & powershell -NoProfile -ExecutionPolicy Bypass -File $provScript -SkipAgy
+        }
+    }
+    if (Test-Path $npmOcExe) {
+        New-Item -ItemType Directory -Path $vendorOcDir -Force | Out-Null
+        Copy-Item -Path $npmOcExe -Destination $vendorOcExe -Force
+        Write-Host "[*] Staged opencode.exe into $vendorOcExe" -ForegroundColor Green
+    } else {
+        Write-Warning "opencode.exe not found locally; installer will fetch opencode during setup."
+    }
+}
+
 # 2. Publish Self-Contained LabKiosk (.NET 9 runtime bundled)
 Write-Host "[1/4] Publishing self-contained LabKiosk..." -ForegroundColor Yellow
 & $dotnetCmd publish "$kioskProj" -c Release -r win-x64 --self-contained true -o "$kioskSelfContained"
@@ -42,9 +63,9 @@ if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
 
-# 3. Publish ControlPlane
-Write-Host "[2/4] Publishing ControlPlane..." -ForegroundColor Yellow
-& $dotnetCmd publish "$cpProj" -c Release -o "$cpRelease"
+# 3. Publish Self-Contained ControlPlane (.NET 9 runtime bundled)
+Write-Host "[2/4] Publishing self-contained ControlPlane..." -ForegroundColor Yellow
+& $dotnetCmd publish "$cpProj" -c Release -r win-x64 --self-contained true -o "$cpRelease"
 if ($LASTEXITCODE -ne 0) {
     Write-Error "ControlPlane publish failed with exit code $LASTEXITCODE"
     exit $LASTEXITCODE

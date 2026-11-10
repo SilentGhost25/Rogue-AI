@@ -133,6 +133,75 @@ public sealed class OpenCodeHost : IDisposable
         return total;
     }
 
+    public static async Task<string?> EnsureInstalledAsync(string dataPath, string configuredPath = "opencode")
+    {
+        var existing = ExeResolver.Resolve(configuredPath);
+        if (existing is not null) return existing;
+
+        try
+        {
+            var destDir = Path.Combine(dataPath, "opencode");
+            Directory.CreateDirectory(destDir);
+            var exePath = Path.Combine(destDir, "opencode.exe");
+            if (File.Exists(exePath)) return exePath;
+
+            var nodeCandidates = new[]
+            {
+                Path.Combine(AppContext.BaseDirectory, "nodejs", "node.exe"),
+                Path.Combine(AppContext.BaseDirectory, "node", "node.exe"),
+                ExeResolver.Resolve("node") ?? "node"
+            };
+            var nodeExe = nodeCandidates.FirstOrDefault(File.Exists);
+            if (nodeExe is null) return null;
+
+            var js = """
+const https = require("https"), fs = require("fs"), path = require("path"), zlib = require("zlib");
+const get = (u) => new Promise((res, rej) => https.get(u, { headers: { "User-Agent": "rogue-ai-kiosk" } }, (r) => {
+  if (r.statusCode >= 300 && r.statusCode < 400 && r.headers.location) return get(r.headers.location).then(res, rej);
+  if (r.statusCode !== 200) return rej(new Error("HTTP " + r.statusCode));
+  const chunks = []; r.on("data", c => chunks.push(c)); r.on("end", () => res(Buffer.concat(chunks)));
+}).on("error", rej));
+(async () => {
+  const meta = JSON.parse((await get("https://registry.npmjs.org/opencode-windows-x64/latest")).toString());
+  const tgz = await get(meta.dist.tarball);
+  const tar = zlib.gunzipSync(tgz);
+  let off = 0;
+  while (off + 512 <= tar.length) {
+    const hdr = tar.subarray(off, off + 512); off += 512;
+    if (hdr.every(b => b === 0)) break;
+    const name = hdr.subarray(0, 100).toString("utf8").replace(/\0.*$/, "");
+    const size = parseInt(hdr.subarray(124, 136).toString("utf8").replace(/\0.*$/, "").trim() || "0", 8);
+    if (name.endsWith("bin/opencode.exe") && size > 0) {
+      fs.writeFileSync(path.join(process.argv[1], "opencode.exe"), tar.subarray(off, off + size));
+      return;
+    }
+    off += Math.ceil(size / 512) * 512;
+  }
+  throw new Error("bin/opencode.exe not found");
+})();
+""";
+            var tmpJs = Path.Combine(destDir, "_fetch_opencode.js");
+            await File.WriteAllTextAsync(tmpJs, js);
+            var psi = new ProcessStartInfo(nodeExe)
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            psi.ArgumentList.Add(tmpJs);
+            psi.ArgumentList.Add(destDir);
+            using var p = Process.Start(psi);
+            if (p is not null)
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+                await p.WaitForExitAsync(cts.Token);
+            }
+            try { File.Delete(tmpJs); } catch { }
+            if (File.Exists(exePath)) return exePath;
+        }
+        catch { }
+        return ExeResolver.Resolve(configuredPath);
+    }
+
     public void Stop()
     {
         _cts?.Cancel();

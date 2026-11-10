@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Text;
 
@@ -6,8 +7,7 @@ namespace ControlPlane.Services;
 
 /// <summary>
 /// Background service that provides zero-configuration LAN auto-discovery.
-/// Broadcasts UDP beacon on port 5082 and responds to discovery queries from participant kiosks,
-/// allowing kiosks on any network or IP to find the host automatically without manual typing.
+/// Broadcasts UDP beacon on port 5082 across all active IPv4 subnets and responds to discovery queries.
 /// </summary>
 public sealed class HostDiscoveryBroadcaster : BackgroundService
 {
@@ -18,6 +18,35 @@ public sealed class HostDiscoveryBroadcaster : BackgroundService
     public HostDiscoveryBroadcaster(ILogger<HostDiscoveryBroadcaster> logger)
     {
         _logger = logger;
+    }
+
+    private static List<IPEndPoint> GetBroadcastEndpoints()
+    {
+        var endpoints = new List<IPEndPoint> { new(IPAddress.Broadcast, DiscoveryPort) };
+        try
+        {
+            foreach (var ni in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (ni.OperationalStatus != OperationalStatus.Up) continue;
+                if (ni.NetworkInterfaceType is NetworkInterfaceType.Loopback or NetworkInterfaceType.Tunnel) continue;
+                var name = ni.Name.ToLowerInvariant();
+                var desc = ni.Description.ToLowerInvariant();
+                if (name.Contains("vethernet") || name.Contains("wsl") || desc.Contains("hyper-v") || desc.Contains("vmware") || desc.Contains("virtual"))
+                    continue;
+
+                foreach (var ua in ni.GetIPProperties().UnicastAddresses)
+                {
+                    if (ua.Address.AddressFamily != AddressFamily.InterNetwork || ua.IPv4Mask is null) continue;
+                    var ipBytes = ua.Address.GetAddressBytes();
+                    var maskBytes = ua.IPv4Mask.GetAddressBytes();
+                    var bcast = new byte[4];
+                    for (var i = 0; i < 4; i++) bcast[i] = (byte)(ipBytes[i] | ~maskBytes[i]);
+                    endpoints.Add(new IPEndPoint(new IPAddress(bcast), DiscoveryPort));
+                }
+            }
+        }
+        catch { }
+        return endpoints;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -38,7 +67,6 @@ public sealed class HostDiscoveryBroadcaster : BackgroundService
         }
 
         using var client = udpServer ?? new UdpClient { EnableBroadcast = true };
-        var broadcastEp = new IPEndPoint(IPAddress.Broadcast, DiscoveryPort);
         var beaconBytes = Encoding.UTF8.GetBytes($"ROGUE_AI_BEACON:{ControlPlanePort}");
 
         // Listener loop for incoming discovery pings
@@ -69,16 +97,19 @@ public sealed class HostDiscoveryBroadcaster : BackgroundService
             }
         }, stoppingToken);
 
-        // Periodic broadcast loop
+        // Periodic broadcast loop across all physical subnets
         while (!stoppingToken.IsCancellationRequested)
         {
-            try
+            foreach (var ep in GetBroadcastEndpoints())
             {
-                await client.SendAsync(beaconBytes, beaconBytes.Length, broadcastEp);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogDebug("UDP broadcast tick exception: {Message}", ex.Message);
+                try
+                {
+                    await client.SendAsync(beaconBytes, beaconBytes.Length, ep);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug("UDP broadcast tick exception: {Message}", ex.Message);
+                }
             }
 
             try
@@ -92,4 +123,3 @@ public sealed class HostDiscoveryBroadcaster : BackgroundService
         _logger.LogInformation("HostDiscoveryBroadcaster stopped.");
     }
 }
-
