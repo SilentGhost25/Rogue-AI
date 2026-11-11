@@ -3,11 +3,11 @@ title: "Parameter Pollution & Mass Assignment"
 name: "Parameter Pollution & Mass Assignment"
 codename: "MASS_ASSIGN"
 band: 2
-sequence_slot: reserve
+sequence_slot: 5
 fires_at: "17:30"
 window_minutes: 45
 dispatch: { mode: manual, time: "17:30:00", imminent_seconds: 10 }
-payload: { path: "payload/", format: full }
+payload: { path: "payload/", format: full, conflict_files: ["routes/comments.js"] }
 tests:
   path: "tests/"
   tiers:

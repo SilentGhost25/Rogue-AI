@@ -3,7 +3,7 @@ name: "SQL Injection"
 title: "SQL Injection"
 codename: "QUERY_DRIFT"
 band: 2
-sequence_slot: 3
+sequence_slot: reserve
 fires_at: "09:45"
 touches:
   - routes/traffic.js

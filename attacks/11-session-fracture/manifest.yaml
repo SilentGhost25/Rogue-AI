@@ -3,7 +3,7 @@ name: "Session Fracture"
 title: "Session Fracture"
 codename: "JANUS"
 band: 5
-sequence_slot: 6
+sequence_slot: 8
 fires_at: "11:05"
 window_minutes: 28
 touches:

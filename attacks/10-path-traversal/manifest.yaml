@@ -3,11 +3,11 @@ title: "Static File Path Traversal"
 name: "Static File Path Traversal"
 codename: "PATH_TRAVERSAL"
 band: 3
-sequence_slot: reserve
+sequence_slot: 6
 fires_at: "18:00"
 window_minutes: 45
 dispatch: { mode: manual, time: "18:00:00", imminent_seconds: 10 }
-payload: { path: "payload/", format: full }
+payload: { path: "payload/", format: full, conflict_files: ["lib/web.js"] }
 tests:
   path: "tests/"
   tiers:

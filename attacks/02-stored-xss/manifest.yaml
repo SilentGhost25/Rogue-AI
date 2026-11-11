@@ -3,7 +3,7 @@ name: "Stored XSS"
 title: "Stored XSS"
 codename: "PERSISTENT_ECHO"
 band: 2
-sequence_slot: reserve
+sequence_slot: 4
 fires_at: "09:30"
 touches:
   - routes/comments.js

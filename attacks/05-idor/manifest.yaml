@@ -3,7 +3,7 @@ name: "Privilege Escalation"
 title: "Privilege Escalation"
 codename: "GHOST_KEYS"
 band: 4
-sequence_slot: 2
+sequence_slot: 3
 fires_at: "10:15"
 touches:
   - routes/vault.js
