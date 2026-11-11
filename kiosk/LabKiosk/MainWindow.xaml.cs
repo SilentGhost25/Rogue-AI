@@ -125,6 +125,7 @@ public partial class MainWindow : Window
     private bool _capLockScheduled;
     private DispatcherTimer? _statusTimer;
     private CancellationTokenSource? _submitTimeoutCts;
+    private bool _cleanedOnClose;
 
     public MainWindow(KioskSettings? settings = null)
     {
@@ -133,15 +134,33 @@ public partial class MainWindow : Window
         _api = new ApiClient(_s.ServerUrl);
         _budget.OpenCodeCap = _s.OpenCodeCap;
         Loaded += async (_, _) => await StartAsync();
-        Closed += (_, _) =>
-        {
-            try { _activeIncidentWindow?.Close(); } catch { }
-            _statusTimer?.Stop();
-            _submitTimeoutCts?.Cancel();
-            _sync?.Dispose(); _site?.Dispose(); _oc?.Dispose();
-            TermAgy.Dispose(); TermOc.Dispose(); Code.Dispose();
-            _ = _hub?.DisposeAsync();
-        };
+        Closed += (_, _) => CleanupAndResetWorkspace();
+    }
+
+    protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+    {
+        CleanupAndResetWorkspace();
+        base.OnClosing(e);
+    }
+
+    private void CleanupAndResetWorkspace()
+    {
+        if (_cleanedOnClose) return;
+        _cleanedOnClose = true;
+        try { _activeIncidentWindow?.Close(); } catch { }
+        try { _statusTimer?.Stop(); } catch { }
+        try { _submitTimeoutCts?.Cancel(); } catch { }
+        try { _sync?.Dispose(); } catch { }
+        try { _site?.Dispose(); } catch { }
+        try { _oc?.Dispose(); } catch { }
+        try { TermAgy.Dispose(); } catch { }
+        try { TermOc.Dispose(); } catch { }
+        try { Code.Dispose(); } catch { }
+        try { _ = _hub?.DisposeAsync(); } catch { }
+
+        // Strict Workspace Reset: wipe workspace & site DB on close so every reopen starts clean.
+        try { WorkspaceBackup.WipeWorkspaceContents(_s.WorkspacePath); } catch { }
+        try { WorkspaceBackup.WipeSiteDb(_s.DataPath); } catch { }
     }
 
     private void Status(string text) => Dispatcher.InvokeAsync(() => StatusText.Text = text);
@@ -158,19 +177,19 @@ public partial class MainWindow : Window
                                 && !File.Exists(Path.Combine(_s.WorkspacePath, "routes", "traffic.js"));
             var templateIsAegis = Directory.Exists(_s.SiteTemplatePath)
                                 && File.Exists(Path.Combine(_s.SiteTemplatePath, "routes", "traffic.js"));
-            if ((!File.Exists(Path.Combine(_s.WorkspacePath, "server.js")) || (hasLegacyHarbour && templateIsAegis))
-                && Directory.Exists(_s.SiteTemplatePath))
+            if (hasLegacyHarbour && templateIsAegis)
             {
-                if (hasLegacyHarbour)
+                WorkspaceBackup.Snapshot(_s.WorkspacePath, "legacy-harbour-notes");
+                foreach (var staleDir in new[] { "routes", "views", "lib", "public", "test" })
                 {
-                    WorkspaceBackup.Snapshot(_s.WorkspacePath, "legacy-harbour-notes");
-                    foreach (var staleDir in new[] { "routes", "views", "lib", "public", "test" })
-                    {
-                        var p = Path.Combine(_s.WorkspacePath, staleDir);
-                        if (Directory.Exists(p)) try { Directory.Delete(p, true); } catch { }
-                    }
+                    var p = Path.Combine(_s.WorkspacePath, staleDir);
+                    if (Directory.Exists(p)) try { Directory.Delete(p, true); } catch { }
                 }
-                CopyTree(_s.SiteTemplatePath, _s.WorkspacePath);
+                WorkspaceBackup.CopyCleanTemplate(_s.SiteTemplatePath, _s.WorkspacePath);
+            }
+            else
+            {
+                WorkspaceBackup.EnsurePristineWorkspace(_s.WorkspacePath, _s.SiteTemplatePath);
             }
 
             // Autoconfigure AI context by ensuring GEMINI.md and AGENTS.md are in the workspace
@@ -956,22 +975,5 @@ public partial class MainWindow : Window
             File.WriteAllText(path, json);
         }
         catch { /* best effort */ }
-    }
-
-    private static void CopyTree(string src, string dst)
-    {
-        foreach (var f in Directory.EnumerateFiles(src))
-        {
-            var name = Path.GetFileName(f);
-            if (name.EndsWith(".db") || name.EndsWith(".db-wal") || name.EndsWith(".db-shm")) continue;
-            File.Copy(f, Path.Combine(dst, name), overwrite: true);
-        }
-        foreach (var d in Directory.EnumerateDirectories(src))
-        {
-            var name = Path.GetFileName(d);
-            if (name is "node_modules" or ".git") continue;
-            Directory.CreateDirectory(Path.Combine(dst, name));
-            CopyTree(d, Path.Combine(dst, name));
-        }
     }
 }

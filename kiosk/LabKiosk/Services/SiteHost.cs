@@ -160,6 +160,14 @@ public sealed class SiteHost : IDisposable
     {
         _watcher?.Dispose();
         _debounce?.Dispose();
-        try { _proc?.Kill(entireProcessTree: true); } catch { }
+        try
+        {
+            if (_proc is not null && !_proc.HasExited)
+            {
+                _proc.Kill(entireProcessTree: true);
+                _proc.WaitForExit(1500);
+            }
+        }
+        catch { }
     }
 }

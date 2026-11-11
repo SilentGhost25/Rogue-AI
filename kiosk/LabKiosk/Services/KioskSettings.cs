@@ -50,7 +50,26 @@ public sealed class KioskSettings
         if (string.IsNullOrWhiteSpace(s.SiteTemplatePath) || !Directory.Exists(s.SiteTemplatePath))
         {
             var st = Path.Combine(AppContext.BaseDirectory, "site-template");
-            s.SiteTemplatePath = Directory.Exists(st) ? st : Path.Combine(AppContext.BaseDirectory, "site");
+            var appSite = Path.Combine(AppContext.BaseDirectory, "site");
+            if (Directory.Exists(st))
+                s.SiteTemplatePath = st;
+            else if (Directory.Exists(appSite))
+                s.SiteTemplatePath = appSite;
+            else
+            {
+                var probe = new DirectoryInfo(AppContext.BaseDirectory);
+                for (var i = 0; i < 6 && probe is not null; i++, probe = probe.Parent)
+                {
+                    var candidate = Path.Combine(probe.FullName, "site");
+                    if (File.Exists(Path.Combine(candidate, "server.js")))
+                    {
+                        s.SiteTemplatePath = candidate;
+                        break;
+                    }
+                }
+                if (string.IsNullOrWhiteSpace(s.SiteTemplatePath))
+                    s.SiteTemplatePath = appSite;
+            }
         }
 
         return s;
