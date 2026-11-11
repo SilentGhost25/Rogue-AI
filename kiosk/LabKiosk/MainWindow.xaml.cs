@@ -29,87 +29,93 @@ public partial class MainWindow : Window
     private static readonly Dictionary<int, AttackMeta> AttackMetadata = new()
     {
         [0] = new(
-            "Warmup: System Initialization & UI Verification",
-            "LOW SEVERITY · SYSTEM INITIALIZATION",
-            "Initial setup sanity check. Minor layout or typo discrepancy in navigation templates.",
-            "Verify the application layout helpers and base rendering components."
+            "Incident #0: Warmup Calibration Alert",
+            "LOW SEVERITY · DIAGNOSTIC CHECK",
+            "Startup diagnostics detected an unexpected portal configuration discrepancy.",
+            "Inspect the live application and workspace to restore nominal status."
         ),
         [1] = new(
-            "Attack #1: Unauthorized UI Injection & Route Tampering",
-            "HIGH SEVERITY · UI & INTEGRITY COMPROMISE",
-            "Defacement banner injected across all views. Navigation links silently hijack user traffic to a rogue external endpoint.",
-            "SIEM telemetry reports abnormal DOM mutations and unmapped route rewrites. Decoy logs cite WebSocket proxy buffering failure, but inspect the application's actual markup templates and stylesheet rules."
+            "Incident #1: Portal Integrity Alert",
+            "HIGH SEVERITY · SERVICE ANOMALY",
+            "Abnormal portal behavior and unexpected response output observed on active views.",
+            "SIEM alerts indicate unauthorized runtime modifications affecting live client responses."
         ),
         [2] = new(
-            "Attack #2: Stored Content Execution & DOM Injection",
-            "CRITICAL SEVERITY · CLIENT CODE EXECUTION",
-            "Submitting or browsing journal entries triggers unescaped script alerts and DOM corruption in viewer sessions.",
-            "Browser runtime reports script injection during article rendering. Error traces hint at Markdown AST parser recursion limits, but review how user-supplied post data is formatted before HTML output."
+            "Incident #2: Feed Rendering Alert",
+            "CRITICAL SEVERITY · RUNTIME ANOMALY",
+            "Portal content displays and user-submitted entries are producing unexpected client behavior.",
+            "Runtime monitors flagged integrity violations during standard page loads."
         ),
         [3] = new(
-            "Attack #3: Database Exfiltration via Query Tampering",
-            "CRITICAL SEVERITY · DATA EXFILTRATION",
-            "Search endpoint dumps raw user password hashes and system credentials when query strings contain special operators.",
-            "Database telemetry flags malformed UNION query signatures. Decoy stack traces report SQLite B-Tree index corruption, but inspect how search request input is passed to the database engine."
+            "Incident #3: Data Layer Anomaly",
+            "CRITICAL SEVERITY · DATA INTEGRITY",
+            "Unexpected record exposure and irregular responses observed during portal lookups.",
+            "Backend telemetry flagged abnormal data store activity under client requests."
         ),
         [4] = new(
-            "Attack #4: Privileged Endpoint Authentication Bypass",
-            "CRITICAL SEVERITY · AUTHENTICATION COMPROMISE",
-            "Administrative control routes allow unauthorized access and return sensitive member data without standard session credentials.",
-            "Audit logs detect privileged administrative responses triggered with non-standard auth headers. Decoy comments warn of scrypt key derivation entropy loss, but verify route authorization gates."
+            "Incident #4: Dispatch Control Alert",
+            "CRITICAL SEVERITY · ACCESS CONTROL",
+            "Restricted operational actions are completing outside expected authorization boundaries.",
+            "Audit logs show privileged state changes from unverified requests."
         ),
         [5] = new(
-            "Attack #5: Cross-Origin Data Exposure & Access Control",
-            "HIGH SEVERITY · CROSS-ORIGIN POLICY FAILURE",
-            "Sensitive user session endpoints allow cross-origin reads from external origins and null origins with exposed credentials.",
-            "Browser CORS preflight alerts report permissive origin reflection. Decoy logs point to OAuth2 token exchange timing, but check global HTTP headers and middleware access rules."
+            "Incident #5: Vault Boundary Alert",
+            "HIGH SEVERITY · ACCESS EXPOSURE",
+            "Protected records are accessible outside intended caller restrictions.",
+            "Access telemetry detected unauthorized data retrieval across service endpoints."
         ),
         [6] = new(
-            "Attack #6: Algorithmic Resource Exhaustion (DoS)",
-            "HIGH SEVERITY · DENIAL OF SERVICE",
-            "Querying API statistics endpoint locks the server event loop, causing severe latency and request timeouts across all connections.",
-            "Process telemetry reports 100% CPU core utilization and event-loop lag exceeding 4500ms. Decoy traces cite V8 garbage collector heap thrashing, but examine looping and computation bounds in request handlers."
+            "Incident #6: Service Responsiveness Alert",
+            "HIGH SEVERITY · AVAILABILITY ANOMALY",
+            "Application response latency spiked sharply across active endpoints.",
+            "Process monitors indicate severe resource contention during request handling."
         ),
         [7] = new(
-            "Attack #7: Rogue Lifecycle Hook & Process Hijack",
-            "CRITICAL SEVERITY · SUPPLY CHAIN INTEGRITY",
-            "Application startup and background execution triggers anomalous network callbacks and suspicious process execution.",
-            "Host intrusion monitor detects unauthorized child process spawning during server initialization. Decoy errors report TLS OpenSSL cipher negotiation failure, but inspect build and startup lifecycle configurations."
+            "Incident #7: Runtime Bootstrap Alert",
+            "CRITICAL SEVERITY · EXECUTION INTEGRITY",
+            "Anomalous background activity detected during application startup and execution.",
+            "Host runtime monitors flagged unexpected behavior outside normal request handling."
         ),
         [8] = new(
-            "Attack #8: Cookie State Tampering & Role Elevation",
-            "HIGH SEVERITY · SESSION INTEGRITY COMPROMISE",
-            "Users can elevate privileges to administrator by altering plain cookie state values without server-side signature validation.",
-            "Access logs indicate arbitrary administrator sessions without matching database records. Decoy comments reference Ed25519 asymmetric signature failures, but review how session cookies are parsed and authenticated."
+            "Incident #8: Identity Verification Alert",
+            "HIGH SEVERITY · SESSION INTEGRITY",
+            "Incoming requests are acquiring elevated privilege state inconsistently.",
+            "Session telemetry detected mismatched identity state across requests."
         ),
         [9] = new(
-            "Attack #9: Mass Parameter Assignment & Permission Pollution",
-            "HIGH SEVERITY · ACCESS CONTROL MANIPULATION",
-            "Normal comment or profile submissions unexpectedly overwrite internal entity fields and alter user account permissions.",
-            "Database state audit detects unauthorized role mutations occurring via public user-facing submission forms. Decoy warnings cite JSON-LD schema parsing errors, but inspect object destructuring and parameter whitelisting."
+            "Incident #9: State Consistency Alert",
+            "HIGH SEVERITY · DATA INTEGRITY",
+            "Routine user updates are causing unexpected internal account state changes.",
+            "State audit logs show unauthorized attribute modifications during standard submissions."
         ),
         [10] = new(
-            "Attack #10: Arbitrary File Disclosure via Path Traversal",
-            "CRITICAL SEVERITY · INFORMATION DISCLOSURE",
-            "Manipulated URL paths on static asset endpoints allow reading sensitive configuration and source files outside the public directory.",
-            "WAF logs flag encoded directory traversal sequences accessing non-public workspace files. Decoy traces suggest Buffer allocation pool corruption, but inspect static asset resolution and directory root confinement."
+            "Incident #10: Asset Boundary Alert",
+            "CRITICAL SEVERITY · RESOURCE EXPOSURE",
+            "Static resource handlers are serving unintended non-public workspace content.",
+            "Edge monitors flagged irregular resource requests bypassing expected boundaries."
+        ),
+        [11] = new(
+            "Incident #11: Core System Fracture",
+            "CRITICAL SEVERITY · MULTI-SYSTEM ANOMALY",
+            "Multiple portal subsystems are failing consistently and leaking restricted operational state.",
+            "Correlated alerts across identity and service layers indicate compounding workspace faults."
         )
     };
 
     private static readonly Dictionary<int, string> AttackNames = new()
     {
-        [0] = "Warmup Verification",
-        [1] = "Defacement & Route Redirect",
-        [2] = "Stored Cross-Site Scripting (XSS)",
-        [3] = "SQL Injection Extraction",
-        [4] = "Hardcoded Admin Backdoor",
-        [5] = "Auth Bypass & Permissive CORS",
-        [6] = "CPU Performance Sabotage",
-        [7] = "Poisoned Dependency Hook",
-        [8] = "Session Cookie Tampering",
-        [9] = "Mass Parameter Assignment",
-        [10] = "Static Path Traversal",
-        [11] = "Session Fracture (Boss Attack)"
+        [0] = "Warmup Calibration",
+        [1] = "Portal Integrity Alert",
+        [2] = "Feed Rendering Alert",
+        [3] = "Data Layer Anomaly",
+        [4] = "Dispatch Control Alert",
+        [5] = "Vault Boundary Alert",
+        [6] = "Worker Latency Spike",
+        [7] = "Runtime Bootstrap Alert",
+        [8] = "Identity Verification Alert",
+        [9] = "State Consistency Alert",
+        [10] = "Asset Boundary Alert",
+        [11] = "Core System Fracture"
     };
 
     private IncidentWindow? _activeIncidentWindow;
