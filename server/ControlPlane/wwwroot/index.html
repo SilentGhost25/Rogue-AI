@@ -146,7 +146,7 @@
       <div style="margin-bottom:0.8rem">
         <label style="font-size:11px; color:var(--mute); display:block; margin-bottom:4px">Target Scope:</label>
         <select id="targetScope" style="width:100%">
-          <option value="">&bull; ALL ACTIVE PARTICIPANTS (50 Nodes)</option>
+          <option value="">&bull; ALL ACTIVE PARTICIPANTS</option>
         </select>
       </div>
       <div id="attacksDeck"></div>
@@ -337,7 +337,7 @@ async function refreshKiosks() {
 
   // Update target selector dropdown
   const currentTarget = $('targetScope').value;
-  let options = '<option value="">&bull; ALL ACTIVE PARTICIPANTS (50 Nodes)</option>';
+  let options = '<option value="">&bull; ALL ACTIVE PARTICIPANTS</option>';
   for (const k of kiosksCache) {
     options += `<option value="${k.id}">${k.name} (${k.id})</option>`;
   }

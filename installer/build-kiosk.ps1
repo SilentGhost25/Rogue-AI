@@ -70,6 +70,7 @@ if ($LASTEXITCODE -ne 0) {
     Write-Error "ControlPlane publish failed with exit code $LASTEXITCODE"
     exit $LASTEXITCODE
 }
+Remove-Item (Join-Path $cpRelease "Data"), (Join-Path $cpRelease "data") -Recurse -Force -ErrorAction SilentlyContinue
 
 # 4. Compile Inno Setup installer
 Write-Host "[3/4] Compiling Inno Setup unified installer (setup.iss)..." -ForegroundColor Yellow

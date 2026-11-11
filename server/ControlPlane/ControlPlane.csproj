@@ -3,6 +3,7 @@
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <DefaultItemExcludes>$(DefaultItemExcludes);Data\workspaces\**;Data\backups\**;Data\*.db*</DefaultItemExcludes>
   </PropertyGroup>
   <ItemGroup>
     <!-- Pin and verify on nuget.org before first restore (AGENTS.md rule). -->
