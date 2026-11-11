@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Sockets;
@@ -34,7 +35,7 @@ public sealed class OpenCodeHost : IDisposable
 
     public OpenCodeHost(string exe, string workspace, int port, string model, string dataPath)
     {
-        _exe = exe; _workspace = workspace; _port = port; _model = model;
+        _exe = exe; _workspace = workspace; _port = AllocatePort(port); _model = model;
         Directory.CreateDirectory(dataPath);
         _configPath = Path.Combine(dataPath, "opencode.json");   // outside the workspace: participants cannot edit it
         _http = new HttpClient { BaseAddress = new Uri(Url), Timeout = TimeSpan.FromSeconds(5) };
@@ -42,8 +43,28 @@ public sealed class OpenCodeHost : IDisposable
             Convert.ToBase64String(Encoding.UTF8.GetBytes($"opencode:{_password}")));
     }
 
+    private static int AllocatePort(int preferredPort)
+    {
+        try
+        {
+            using var l = new TcpListener(IPAddress.Loopback, preferredPort);
+            l.Start();
+            l.Stop();
+            return preferredPort;
+        }
+        catch (SocketException)
+        {
+            using var fallback = new TcpListener(IPAddress.Loopback, 0);
+            fallback.Start();
+            var assigned = ((IPEndPoint)fallback.LocalEndpoint).Port;
+            fallback.Stop();
+            return assigned;
+        }
+    }
+
     public IReadOnlyDictionary<string, string?> Environment => new Dictionary<string, string?>
     {
+        ["OPENCODE_SERVER_USERNAME"] = "opencode",
         ["OPENCODE_SERVER_PASSWORD"] = _password,
         ["OPENCODE_CONFIG"] = _configPath,
         // Only the free provider is allowed; remove keys that could unlock paid ones.
@@ -60,12 +81,20 @@ public sealed class OpenCodeHost : IDisposable
         foreach (var (k, v) in Environment) { if (v is null) psi.Environment.Remove(k); else psi.Environment[k] = v; }
         _serve = Process.Start(psi);
 
-        for (var i = 0; i < 60; i++)   // wait up to 15 s for the port
+        for (var i = 0; i < 60; i++)   // wait up to 15 s for authenticated HTTP readiness
         {
             if (_serve is null || _serve.HasExited) throw new InvalidOperationException("opencode serve exited at startup.");
-            try { using var c = new TcpClient(); await c.ConnectAsync("127.0.0.1", _port); break; }
-            catch (SocketException) { await Task.Delay(250); }
-            if (i == 59) throw new TimeoutException("opencode serve did not open its port.");
+            try
+            {
+                using var res = await _http.GetAsync("/session");
+                if (res.IsSuccessStatusCode) break;
+                if (res.StatusCode == HttpStatusCode.Unauthorized)
+                    throw new InvalidOperationException("OpenCode server on port " + _port + " rejected authentication (port conflict).");
+            }
+            catch (HttpRequestException) { }
+            catch (TaskCanceledException) { }
+            await Task.Delay(250);
+            if (i == 59) throw new TimeoutException("opencode serve did not become ready.");
         }
 
         _cts?.Cancel();

@@ -30,16 +30,24 @@ public static class ExeResolver
             var u = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
             var l = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
             var a = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            var candidates = new[]
+            var candidates = new List<string>
             {
                 Path.Combine(AppContext.BaseDirectory, "opencode", "opencode.exe"),
-                Path.Combine(AppContext.BaseDirectory, "nodejs", "opencode.cmd"),
-                Path.Combine(a, "npm", "opencode.exe"),
-                Path.Combine(a, "npm", "opencode.cmd"),
-                Path.Combine(l, "BreachKiosk", "opencode", "opencode.exe"),
-                Path.Combine(l, "BreachKiosk", "opencode", "node_modules", ".bin", "opencode.cmd"),
-                Path.Combine(u, ".opencode", "bin", "opencode.exe")
             };
+            // Check repo vendor/opencode/opencode.exe when running from bin/Debug or repo root
+            var probe = new DirectoryInfo(AppContext.BaseDirectory);
+            for (var i = 0; i < 6 && probe is not null; i++, probe = probe.Parent)
+                candidates.Add(Path.Combine(probe.FullName, "vendor", "opencode", "opencode.exe"));
+            candidates.AddRange(new[]
+            {
+                Path.Combine(a, "npm", "node_modules", "opencode-ai", "node_modules", "opencode-windows-x64", "bin", "opencode.exe"),
+                Path.Combine(a, "npm", "opencode.exe"),
+                Path.Combine(l, "BreachKiosk", "opencode", "opencode.exe"),
+                Path.Combine(u, ".opencode", "bin", "opencode.exe"),
+                Path.Combine(AppContext.BaseDirectory, "nodejs", "opencode.cmd"),
+                Path.Combine(a, "npm", "opencode.cmd"),
+                Path.Combine(l, "BreachKiosk", "opencode", "node_modules", ".bin", "opencode.cmd"),
+            });
             foreach (var c in candidates)
                 if (File.Exists(c)) return c;
         }
