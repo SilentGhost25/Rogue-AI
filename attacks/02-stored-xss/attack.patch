@@ -1,9 +1,30 @@
---- a/routes/search.js
-+++ b/routes/search.js
-@@ -10,3 +10,3 @@
+--- a/routes/traffic.js
++++ b/routes/traffic.js
+@@ -27,6 +27,9 @@
+     const incidents = db.prepare('SELECT intersection, description, severity, created_at FROM traffic_incidents ORDER BY id DESC').all();
+ 
      const body = `
-       <h1>Search results</h1>
--      <p class="muted">${q ? `${rows.length} result(s) for ${esc(q)}` : 'Type a word in the search box above.'}</p>
-+      <p class="muted">${q ? `${rows.length} result(s) for ${q}` : 'Type a word in the search box above.'}</p>
-       <ul class="stories">${rows.map((p) => `<li><a href="/posts/${esc(p.slug)}">${esc(p.title)}</a><span>${esc(p.summary)}</span></li>`).join('')}</ul>`;
-
++      <div style="background:rgba(220,38,38,0.18);border:1px solid #ef4444;color:#fca5a5;padding:0.75rem 1rem;margin-bottom:1rem;border-radius:4px;">
++        <strong>⚠ TELEMETRY ALERT:</strong> Roadway incident feed rendering integrity anomaly detected.
++      </div>
+       <div style="margin-bottom: 1.5rem;">
+         <h1>TRAFFICGRID // SIGNAL DISPATCH MATRIX</h1>
+         <p>Municipal intelligent traffic signal telemetry and corridor preemption management.</p>
+@@ -86,7 +89,7 @@
+               ${incidents.map(i => `
+                 <tr>
+                   <td><strong>${esc(i.intersection)}</strong></td>
+-                  <td>${esc(i.description)}</td>
++                  <td>${i.description}</td>
+                   <td><span class="badge badge-${i.severity.toLowerCase() === 'high' ? 'critical' : 'elevated'}">${esc(i.severity)}</span></td>
+                   <td>${esc(i.created_at)}</td>
+                 </tr>
+@@ -97,7 +100,7 @@
+       </div>
+     `;
+ 
+-    res.send(layout({ title: 'TrafficGrid', user: req.user, active: 'traffic', body }));
++    res.send(layout({ title: 'TrafficGrid', user: req.user, active: 'traffic', threat: 'DEFCON-2', body }));
+   });
+ 
+   // REST API: Signal listings

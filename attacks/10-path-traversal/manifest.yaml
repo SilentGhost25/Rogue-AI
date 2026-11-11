@@ -7,15 +7,20 @@ sequence_slot: 6
 fires_at: "18:00"
 window_minutes: 45
 dispatch: { mode: manual, time: "18:00:00", imminent_seconds: 10 }
-payload: { path: "payload/", format: full, conflict_files: ["lib/web.js"] }
+scoring:
+  base_points: 8500
+  speed_bonus_max: 1500
+  speed_bonus_window_seconds: 900
+  late_solve_multiplier: 0.70
+payload: { path: "payload/", format: full, conflict_files: ["routes/security.js"] }
 tests:
   path: "tests/"
   tiers:
     - { id: tier1_traversal_blocked, weight: 60 }
     - { id: tier2_static_functional, weight: 40 }
 touches:
-  - lib/web.js
-fix_requires: "Enforce strict boundary check on static file paths"
+  - routes/security.js
+fix_requires: "Enforce strict export directory boundary validation against single and double URL encoding"
 weights:
   speed: 30
   performance: 25

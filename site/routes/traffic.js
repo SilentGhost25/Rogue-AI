@@ -151,6 +151,28 @@ module.exports = function (db) {
     res.json(incidents);
   });
 
+  r.post('/api/traffic/incidents', (req, res) => {
+    const { intersection = 'Sector Alpha', description, severity = 'MEDIUM' } = req.body || {};
+    const text = String(description ?? '').trim();
+    if (!text) {
+      return res.status(400).json({ error: 'Missing incident description' });
+    }
+    const now = new Date().toISOString();
+    const info = db.prepare(`
+      INSERT INTO traffic_incidents (intersection, description, severity, created_at)
+      VALUES (?, ?, ?, ?)
+    `).run(String(intersection).trim() || 'Sector Alpha', text, String(severity).trim() || 'MEDIUM', now);
+
+    res.status(201).json({
+      ok: true,
+      id: Number(info.lastInsertRowid),
+      intersection: String(intersection).trim() || 'Sector Alpha',
+      description: esc(text),
+      severity: String(severity).trim() || 'MEDIUM',
+      created_at: now
+    });
+  });
+
   return r;
 };
 

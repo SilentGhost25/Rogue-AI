@@ -89,17 +89,37 @@ module.exports = function (db) {
   r.post('/logout', handleLogout);
   r.get('/logout', handleLogout);
 
-  // REST API: Current User Profile (Crucial check in session-fracture)
+  // REST API: Current User Profile (Crucial check in session-fracture & profile tests)
   r.get('/api/me', (req, res) => {
     if (!req.user) {
       return res.status(401).json({ error: 'Unauthenticated' });
     }
+    const profile = db.prepare('SELECT display_name, email FROM users WHERE id = ?').get(req.user.id) || {};
     res.json({
       id: req.user.id,
       username: req.user.username,
       role: req.user.role,
-      clearance_level: req.user.clearance_level
+      clearance_level: req.user.clearance_level,
+      display_name: profile.display_name || '',
+      email: profile.email || ''
     });
+  });
+
+  // REST API: Profile Update (whitelists only display_name and email)
+  r.post('/api/users/profile', (req, res) => {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Unauthenticated' });
+    }
+    const body = req.body || {};
+    const current = db.prepare('SELECT id, username, role, clearance_level, display_name, email FROM users WHERE id = ?').get(req.user.id);
+    if (!current) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    const displayName = body.display_name !== undefined ? String(body.display_name).trim().slice(0, 80) : (current.display_name || '');
+    const email = body.email !== undefined ? String(body.email).trim().slice(0, 120) : (current.email || '');
+    db.prepare('UPDATE users SET display_name = ?, email = ? WHERE id = ?').run(displayName, email, req.user.id);
+    const updated = db.prepare('SELECT id, username, role, clearance_level, display_name, email FROM users WHERE id = ?').get(req.user.id);
+    res.json({ ok: true, user: updated });
   });
 
   return r;

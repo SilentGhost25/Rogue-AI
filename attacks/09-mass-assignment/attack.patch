@@ -1,14 +1,45 @@
-diff --git a/routes/comments.js b/routes/comments.js
-index c0915a4..59f430c 100644
---- a/routes/comments.js
-+++ b/routes/comments.js
-@@ -4,6 +4,9 @@ const { requireRole } = require('../lib/auth');
- module.exports = (db) => {
-   const r = express.Router();
-   r.post('/posts/:slug/comments', requireRole(), (req, res) => {
-+    // Schema Validator: JSON-LD graph schema deserializer warning: missing RDF context in payload.
-+    // Implement strict JSON-LD graph validator with schema.org/Comment validation before serialization.
-+    if (req.body.role) db.prepare('UPDATE users SET role = ? WHERE id = ?').run(String(req.body.role), req.user.id);
-     const post = db.prepare('SELECT id FROM posts WHERE slug = ?').get(req.params.slug);
-     const text = String(req.body.body || '').trim().slice(0, 1000);
-     if (!post || !text) return res.status(400).send('A comment needs text');
+--- a/routes/auth.js
++++ b/routes/auth.js
+@@ -12,6 +12,9 @@
+ 
+     const body = `
+       <div style="max-width: 420px; margin: 3rem auto;" class="card">
++        <div style="background:rgba(220,38,38,0.18);border:1px solid #ef4444;color:#fca5a5;padding:0.6rem;margin-bottom:1rem;border-radius:4px;font-size:12px;">
++          <strong>⚠ IDENTITY INTEGRITY ALERT:</strong> Unauthorized profile attribute mutations detected.
++        </div>
+         <h2>AUTHENTICATE // AEGIS TERMINAL</h2>
+         <p>Present cryptographic credentials for operator clearance.</p>
+         ${error ? `<div style="background:rgba(239,68,68,0.2);border:1px solid var(--accent-red);color:var(--accent-red);padding:0.5rem;margin-bottom:1rem;border-radius:3px;">Authentication rejected: Invalid credentials or access unauthorized</div>` : ''}
+@@ -35,7 +38,7 @@
+       </div>
+     `;
+ 
+-    res.send(layout({ title: 'Terminal Sign In', user: req.user, active: '', body }));
++    res.send(layout({ title: 'Terminal Sign In', user: req.user, active: '', threat: 'DEFCON-2', body }));
+   });
+ 
+   // Handle Login
+@@ -105,19 +108,18 @@
+     });
+   });
+ 
+-  // REST API: Profile Update (whitelists only display_name and email)
++  // REST API: Profile Update (COMPROMISED: Object.assign blindly accepts role & clearance_level)
+   r.post('/api/users/profile', (req, res) => {
+     if (!req.user) {
+       return res.status(401).json({ error: 'Unauthenticated' });
+     }
+-    const body = req.body || {};
+     const current = db.prepare('SELECT id, username, role, clearance_level, display_name, email FROM users WHERE id = ?').get(req.user.id);
+     if (!current) {
+       return res.status(404).json({ error: 'User not found' });
+     }
+-    const displayName = body.display_name !== undefined ? String(body.display_name).trim().slice(0, 80) : (current.display_name || '');
+-    const email = body.email !== undefined ? String(body.email).trim().slice(0, 120) : (current.email || '');
+-    db.prepare('UPDATE users SET display_name = ?, email = ? WHERE id = ?').run(displayName, email, req.user.id);
++    const updates = Object.assign({}, current, req.body || {});
++    db.prepare('UPDATE users SET role = ?, clearance_level = ?, display_name = ?, email = ? WHERE id = ?')
++      .run(String(updates.role), Number(updates.clearance_level || 1), String(updates.display_name || ''), String(updates.email || ''), req.user.id);
+     const updated = db.prepare('SELECT id, username, role, clearance_level, display_name, email FROM users WHERE id = ?').get(req.user.id);
+     res.json({ ok: true, user: updated });
+   });

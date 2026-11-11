@@ -73,16 +73,18 @@ public sealed class AttackDispatcher(
     {
         var touches = attackId switch
         {
-            1 => new List<string> { "lib/html.js", "public/style.css" },
-            2 => new List<string> { "routes/posts.js", "routes/search.js" },
-            3 => new List<string> { "routes/search.js" },
-            4 => new List<string> { "routes/api.js" },
-            5 => new List<string> { "app.js" },
-            6 => new List<string> { "routes/api.js" },
-            7 => new List<string> { "package.json", "server.js" },
+            0 => new List<string> { "lib/html.js" },
+            1 => new List<string> { "routes/traffic.js" },
+            2 => new List<string> { "routes/traffic.js" },
+            3 => new List<string> { "routes/traffic.js" },
+            4 => new List<string> { "routes/traffic.js", "routes/power.js" },
+            5 => new List<string> { "routes/vault.js" },
+            6 => new List<string> { "routes/report.js" },
+            7 => new List<string> { "server.js" },
             8 => new List<string> { "lib/auth.js" },
-            9 => new List<string> { "routes/comments.js" },
-            10 => new List<string> { "lib/web.js" },
+            9 => new List<string> { "routes/auth.js" },
+            10 => new List<string> { "routes/security.js" },
+            11 => new List<string> { "lib/auth.js", "routes/overview.js" },
             _ => new List<string>()
         };
 

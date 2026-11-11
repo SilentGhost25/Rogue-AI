@@ -10,7 +10,9 @@ function open(file) {
       username TEXT UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
       role TEXT NOT NULL DEFAULT 'viewer',
-      clearance_level INTEGER NOT NULL DEFAULT 1
+      clearance_level INTEGER NOT NULL DEFAULT 1,
+      display_name TEXT NOT NULL DEFAULT '',
+      email TEXT NOT NULL DEFAULT ''
     );
 
     CREATE TABLE IF NOT EXISTS sessions (
@@ -81,6 +83,8 @@ function open(file) {
       created_at TEXT NOT NULL
     );
   `);
+  try { db.exec("ALTER TABLE users ADD COLUMN display_name TEXT NOT NULL DEFAULT ''"); } catch {}
+  try { db.exec("ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''"); } catch {}
   return db;
 }
 
