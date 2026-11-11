@@ -79,16 +79,18 @@ if ($foundAgy) {
     Write-Warning "agy.exe not found locally; participant laptops will need agy.exe pre-installed."
 }
 
-# 2. Publish Self-Contained LabKiosk (.NET 9 runtime bundled)
+# 2. Clean previous publish outputs and publish Self-Contained LabKiosk (.NET 9 runtime bundled)
 Write-Host "[1/4] Publishing self-contained LabKiosk..." -ForegroundColor Yellow
+if (Test-Path $kioskSelfContained) { Remove-Item $kioskSelfContained -Recurse -Force -ErrorAction SilentlyContinue }
 & $dotnetCmd publish "$kioskProj" -c Release -r win-x64 --self-contained true -o "$kioskSelfContained"
 if ($LASTEXITCODE -ne 0) {
     Write-Error "LabKiosk publish failed with exit code $LASTEXITCODE"
     exit $LASTEXITCODE
 }
 
-# 3. Publish Self-Contained ControlPlane (.NET 9 runtime bundled)
+# 3. Clean previous publish outputs and publish Self-Contained ControlPlane (.NET 9 runtime bundled)
 Write-Host "[2/4] Publishing self-contained ControlPlane..." -ForegroundColor Yellow
+if (Test-Path $cpRelease) { Remove-Item $cpRelease -Recurse -Force -ErrorAction SilentlyContinue }
 & $dotnetCmd publish "$cpProj" -c Release -r win-x64 --self-contained true -o "$cpRelease"
 if ($LASTEXITCODE -ne 0) {
     Write-Error "ControlPlane publish failed with exit code $LASTEXITCODE"

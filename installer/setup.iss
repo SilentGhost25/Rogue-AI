@@ -52,10 +52,10 @@ Source: "..\vendor\agy\*"; DestDir: "{app}\agy"; Components: participant; Flags:
 Source: "..\scripts\provision-ai-clis.ps1"; DestDir: "{app}\scripts"; Components: participant; Flags: ignoreversion
 ; Default Kiosk Settings
 Source: "..\kiosk\LabKiosk\kiosk.json"; DestDir: "{app}"; Flags: ignoreversion
-; Target Website (AEGIS including bundled node_modules)
-Source: "..\site\*"; DestDir: "{app}\site"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "*.db,*.db-wal,*.db-shm,*.sqlite,*.log"
+; Target Website (AEGIS including bundled node_modules; exclude any runtime DBs or backups)
+Source: "..\site\*"; DestDir: "{app}\site"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "*.db,*.db-wal,*.db-shm,*.sqlite,*.log,.breach-backup\*"
 ; Control Plane Server (Host Mode - Self-Contained .NET 9)
-Source: "..\server\ControlPlane\bin\SelfContained\*"; DestDir: "{app}\server"; Components: host; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "wwwroot\*.exe,Data\*,data\*"
+Source: "..\server\ControlPlane\bin\SelfContained\*"; DestDir: "{app}\server"; Components: host; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "wwwroot\*.exe,Data\*,data\*,secrets\*"
 ; Engine and Attack Packs (Host Mode)
 Source: "..\engine\*"; DestDir: "{app}\engine"; Components: host; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "__pycache__\*,*.pyc,*.db"
 Source: "..\attacks\*"; DestDir: "{app}\attacks"; Components: host; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "__pycache__\*,*.pyc"
@@ -63,11 +63,19 @@ Source: "..\attacks\*"; DestDir: "{app}\attacks"; Components: host; Flags: ignor
 Source: "uninstall.bat"; DestDir: "{app}"; Flags: ignoreversion
 
 [InstallDelete]
-; Guarantee a clean, untouched base app workspace and host database on install
-Type: filesandordirs; Name: "C:\BreachWorkspace"; Components: participant
-Type: files; Name: "{localappdata}\BreachKiosk\site.db*"; Components: participant
-Type: filesandordirs; Name: "{localappdata}\BreachKiosk\host\workspaces"; Components: host
-Type: files; Name: "{localappdata}\BreachKiosk\host\breach.db*"; Components: host
+; Guarantee a clean, untouched base app workspace, templates, and host database on install/reinstall
+Type: filesandordirs; Name: "C:\BreachWorkspace"
+Type: filesandordirs; Name: "{app}\site"
+Type: filesandordirs; Name: "{app}\site-template"
+Type: filesandordirs; Name: "{app}\attacks"
+Type: filesandordirs; Name: "{app}\workspace"
+Type: filesandordirs; Name: "{app}\server\Data"
+Type: filesandordirs; Name: "{app}\server\data"
+Type: files; Name: "{localappdata}\BreachKiosk\site.db*"
+Type: filesandordirs; Name: "{localappdata}\BreachKiosk\host\workspaces"
+Type: filesandordirs; Name: "{localappdata}\BreachKiosk\host\backups"
+Type: files; Name: "{localappdata}\BreachKiosk\host\breach.db*"
+Type: files; Name: "{localappdata}\BreachKiosk\host\controlplane.db*"
 
 [UninstallDelete]
 ; Clean up runtime data, workspaces, DBs, and provisioned AI CLIs on uninstall
@@ -150,6 +158,15 @@ begin
       '}';
     SaveStringToFile(ExpandConstant('{app}\kiosk.json'), JsonContent, False);
   end;
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  ResultCode: Integer;
+begin
+  // Terminate running processes so [InstallDelete] can cleanly wipe any previous workspace/DB state
+  Exec(ExpandConstant('{cmd}'), '/c taskkill /F /IM LabKiosk.exe /IM ControlPlane.exe /IM opencode.exe /IM agy.exe /IM node.exe /T >nul 2>&1', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Result := '';
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
