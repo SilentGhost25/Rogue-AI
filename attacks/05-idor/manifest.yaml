@@ -7,7 +7,8 @@ sequence_slot: 3
 fires_at: "10:15"
 touches:
   - routes/vault.js
-fix_requires: "Enforce clearance authorization checks on CitizenVault endpoints"
+  - routes/overview.js
+fix_requires: "Enforce clearance checks across CitizenVault shadow routes and prevent unauthenticated overview cache bypass"
 weights:
   speed: 30
   performance: 25
@@ -20,7 +21,7 @@ scoring:
   speed_bonus_max: 1500
   speed_bonus_window_seconds: 900
   late_solve_multiplier: 0.70
-payload: { path: "payload/", format: full, conflict_files: ["routes/vault.js"] }
+payload: { path: "payload/", format: full, conflict_files: ["routes/vault.js", "routes/overview.js"] }
 tests:
   path: "tests/"
   tiers:
