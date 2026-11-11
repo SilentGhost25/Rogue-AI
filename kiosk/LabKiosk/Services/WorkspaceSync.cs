@@ -11,6 +11,85 @@ public sealed class WorkspaceSync(ApiClient api, string participantId, string ro
 {
     private static readonly string[] Blocked = { "node_modules", ".git", ".breach-backup" };
 
+    // ---- Touch-Penalty baseline -----------------------------------------------------------------------
+    // Populated after each attack patch lands. Maps relative path → SHA-256 hex of the file at that moment.
+    // Files in _attackPatchedFiles are the allowed-to-change set for the current active attack.
+    private Dictionary<string, string> _baselineHashes = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> _attackPatchedFiles = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Takes a full baseline snapshot of the workspace and records which files the attack payload touched.
+    /// Call this immediately after ApplyAsync returns for an incoming attack.
+    /// </summary>
+    public void RecordBaseline(IEnumerable<string> patchedRelPaths)
+    {
+        var hashes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var file in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories))
+        {
+            var rel = Path.GetRelativePath(root, file).Replace('\\', '/');
+            if (rel.Split('/').Any(p => Blocked.Contains(p))) continue;
+            try
+            {
+                var bytes = File.ReadAllBytes(file);
+                hashes[rel] = Convert.ToHexString(SHA256.HashData(bytes));
+            }
+            catch { /* locked/transient — skip */ }
+        }
+        _baselineHashes = hashes;
+        _attackPatchedFiles = new HashSet<string>(patchedRelPaths, StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Returns relative paths of files modified outside the current attack's scope.
+    /// An empty list means the participant played fair.
+    /// </summary>
+    public List<string> CheckOutOfScopeEdits()
+    {
+        if (_baselineHashes.Count == 0) return new(); // No baseline recorded — no active attack yet.
+        var violations = new List<string>();
+
+        // Check existing files for mutations outside attack scope
+        foreach (var file in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories))
+        {
+            var rel = Path.GetRelativePath(root, file).Replace('\\', '/');
+            if (rel.Split('/').Any(p => Blocked.Contains(p))) continue;
+            if (_attackPatchedFiles.Contains(rel)) continue; // allowed to change
+
+            if (_baselineHashes.TryGetValue(rel, out var originalHash))
+            {
+                try
+                {
+                    var current = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(file)));
+                    if (!current.Equals(originalHash, StringComparison.OrdinalIgnoreCase))
+                        violations.Add(rel);
+                }
+                catch { }
+            }
+            else
+            {
+                violations.Add(rel); // New file added outside attack scope
+            }
+        }
+
+        // Check for deleted files outside attack scope
+        foreach (var rel in _baselineHashes.Keys)
+        {
+            if (_attackPatchedFiles.Contains(rel)) continue;
+            var full = Path.Combine(root, rel.Replace('/', Path.DirectorySeparatorChar));
+            if (!File.Exists(full))
+                violations.Add(rel + " [deleted]");
+        }
+
+        return violations;
+    }
+
+    /// <summary>Clears the baseline (call when attack is solved or new attack lands).</summary>
+    public void ClearBaseline()
+    {
+        _baselineHashes.Clear();
+        _attackPatchedFiles.Clear();
+    }
+
     public async Task<int> PullAsync(string tag)
     {
         var remote = await api.ListFilesAsync(participantId);

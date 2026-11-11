@@ -409,8 +409,20 @@ public partial class MainWindow : Window
         try
         {
             int n;
-            try { n = await _pull.ApplyAsync($"attack-{attackId}", await _api.GetAttackPayloadAsync(_pid!, attackId)); }
-            catch { n = await _pull.PullAsync($"attack-{attackId}"); }
+            List<string> patchedPaths;
+            try
+            {
+                var payload = await _api.GetAttackPayloadAsync(_pid!, attackId);
+                patchedPaths = payload.Select(f => f.Path).ToList();
+                n = await _pull.ApplyAsync($"attack-{attackId}", payload);
+            }
+            catch
+            {
+                n = await _pull.PullAsync($"attack-{attackId}");
+                patchedPaths = new List<string>();
+            }
+            // Record baseline AFTER attack files land — anything outside patchedPaths is off-limits
+            _pull.RecordBaseline(patchedPaths);
             _pulled.Add(attackId);
             _activeAttacks.Add(attackId);
             var name = AttackNames.TryGetValue(attackId, out var nm) ? nm : $"Attack #{attackId}";
@@ -563,6 +575,7 @@ public partial class MainWindow : Window
                 _activeAttacks.Remove(id);
                 _solvedAttacks.Add(id);
                 parts.Add($"#{id} SOLVED +{v.GetProperty("points").GetDouble():0.#} pts");
+                _pull?.ClearBaseline(); // penalty window closed — attack is done
             }
             else
             {
@@ -644,6 +657,31 @@ public partial class MainWindow : Window
         SubmitButton.IsEnabled = false;
         try
         {
+            // ---- Touch-Penalty gate ----------------------------------------------------------------
+            if (_pull is not null)
+            {
+                var violations = _pull.CheckOutOfScopeEdits();
+                if (violations.Count > 0)
+                {
+                    var fileList = string.Join("\n  • ", violations.Take(8));
+                    var msg = $"⛔ SUBMISSION BLOCKED — UNAUTHORIZED FILE MODIFICATION\n\n" +
+                              $"You modified {violations.Count} file(s) outside the scope of the active attack.\n\n" +
+                              $"  • {fileList}\n\n" +
+                              $"Only the files listed in the attack's conflict_files are permitted to change.\n" +
+                              $"A -300 penalty will be applied. Revert those files and re-submit.";
+                    MessageBox.Show(msg, "Touch Penalty", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    Status($"⛔ Blocked: {violations.Count} out-of-scope file(s) modified. Revert them and re-submit.");
+                    _ = _api.SendTelemetryAsync(_pid, "TOUCH_PENALTY", new
+                    {
+                        reason = "UNAUTHORIZED_FILE_MODIFICATION",
+                        files = violations,
+                        penalty = -300
+                    });
+                    SubmitButton.IsEnabled = !_eliminated;
+                    return;
+                }
+            }
+            // ---- Normal submit flow ----------------------------------------------------------------
             Status("Uploading your fix to evaluation engine...");
             await _sync.FlushAsync(force: true);
             await _api.SubmitAsync(_pid);
