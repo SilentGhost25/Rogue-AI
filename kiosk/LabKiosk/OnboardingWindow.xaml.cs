@@ -720,6 +720,13 @@ public partial class OnboardingWindow : Window
 
 
 
+    private void OnModelComplianceChanged(object sender, RoutedEventArgs e)
+    {
+        BtnLaunch.IsEnabled = ChkModelCompliance.IsChecked == true;
+    }
+
+
+
     private void OnLaunchClick(object sender, RoutedEventArgs e)
 
     {
