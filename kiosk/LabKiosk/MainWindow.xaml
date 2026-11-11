@@ -358,6 +358,10 @@
 
                         Style="{StaticResource ActionBtn}" Click="OnProfileClick" ToolTip="Review participant identity &amp; accounts"/>
 
+                <Button x:Name="BtnRestartServer" DockPanel.Dock="Right" Content="&#x21BB; Restart Server" Padding="10,6" Margin="6,10"
+
+                        Style="{StaticResource ActionBtn}" Click="OnRestartServerClick" ToolTip="Restart the local AEGIS Node server"/>
+
                 <Button x:Name="AdminButton" DockPanel.Dock="Right" Content="&#x2699; Admin Console" Padding="12,6" Margin="6,10"
 
                         Style="{StaticResource ActionBtn}" Click="OnAdminConsole" AutomationProperties.Name="Open organizer console"/>
@@ -529,6 +533,19 @@
             </Grid>
 
         </Grid>
+
+        <!-- Sentinel Lazy-Fix Warning Overlay (Non-blocking visual flash on FAILED/PARTIAL verdicts) -->
+        <Border x:Name="SentinelBanner" Grid.Row="2" Visibility="Collapsed" IsHitTestVisible="False"
+                VerticalAlignment="Top" HorizontalAlignment="Center" Margin="0,18,0,0" Padding="24,14"
+                Background="#E62B0B0B" BorderBrush="{StaticResource Alert}" BorderThickness="2" CornerRadius="6">
+            <Border.Effect>
+                <DropShadowEffect Color="#E5533D" ShadowDepth="0" BlurRadius="24" Opacity="0.9"/>
+            </Border.Effect>
+            <StackPanel HorizontalAlignment="Center">
+                <TextBlock Text="[SENTINEL: LAZY FIX DETECTED]" Foreground="#FF6B57" FontWeight="Bold" FontSize="17" HorizontalAlignment="Center"/>
+                <TextBlock x:Name="SentinelDetailText" Text="Submission rejected by evaluation checks. Fix all security &amp; functional tiers." Foreground="#FFE4E0" FontSize="12" Margin="0,4,0,0" HorizontalAlignment="Center"/>
+            </StackPanel>
+        </Border>
 
     </Grid>
 

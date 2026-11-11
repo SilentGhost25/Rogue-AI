@@ -204,20 +204,9 @@ public partial class MainWindow : Window
             Code.Initialize(_s.WorkspacePath);
 
             // 2. Start the live website immediately so participant view renders even while host connects.
-            _site = new SiteHost(_s.NodePath, _s.WorkspacePath, _s.SiteUrl, _s.DataPath);
-            _site.ReloadRequested += () => Dispatcher.InvokeAsync(() =>
-            {
-                if (Site.CoreWebView2?.Source?.StartsWith("http", StringComparison.OrdinalIgnoreCase) == true)
-                    Site.Reload();
-                else
-                    NavigateSiteToRoute("/");
-                Code.RefreshAll();
-            });
-            _site.SiteDown += () => Dispatcher.InvokeAsync(ShowSiteDownInWebView);
-            _site.Problem += Status;
-            _site.Start();
+            CreateAndStartSiteHost();
             await Site.EnsureCoreWebView2Async(await WebViewEnv.GetAsync());
-            if (!await _site.WaitHealthyAsync(15)) Status("The website did not start. Check Node.js (NodePath in kiosk.json).");
+            if (!await _site!.WaitHealthyAsync(15)) Status("The website did not start. Check Node.js (NodePath in kiosk.json).");
             Site.CoreWebView2.NavigationStarting += (_, e) =>
             {
                 var host = new Uri(e.Uri).Host;
@@ -585,11 +574,59 @@ public partial class MainWindow : Window
         }
     }
 
+    private void CreateAndStartSiteHost()
+    {
+        _site?.Dispose();
+        _site = new SiteHost(_s.NodePath, _s.WorkspacePath, _s.SiteUrl, _s.DataPath);
+        _site.ReloadRequested += () => Dispatcher.InvokeAsync(() =>
+        {
+            if (Site.CoreWebView2?.Source?.StartsWith("http", StringComparison.OrdinalIgnoreCase) == true)
+                Site.Reload();
+            else
+                NavigateSiteToRoute("/");
+            Code.RefreshAll();
+        });
+        _site.SiteDown += () => Dispatcher.InvokeAsync(ShowSiteDownInWebView);
+        _site.Problem += Status;
+        _site.Start();
+    }
+
+    private async void OnRestartServerClick(object sender, RoutedEventArgs e)
+    {
+        BtnRestartServer.IsEnabled = false;
+        try
+        {
+            SentinelBanner.Visibility = Visibility.Collapsed;
+            Status("Restarting local AEGIS Node server...");
+            await Task.Run(() => CreateAndStartSiteHost());
+            var healthy = _site is not null && await _site.WaitHealthyAsync(15);
+            if (healthy)
+            {
+                NavigateSiteToRoute("/");
+                Status("✔ Local AEGIS server restarted and healthy.");
+            }
+            else
+            {
+                ShowSiteDownInWebView();
+                Status("⚠ Server restarted but failed health check. Inspect recent workspace edits.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Status($"Server restart failed: {ex.Message}");
+        }
+        finally
+        {
+            BtnRestartServer.IsEnabled = true;
+        }
+    }
+
     private void OnVerdict(string submissionId, JsonElement verdicts, string note)
     {
         _submitTimeoutCts?.Cancel();
         var parts = new List<string>();
         var anySolved = false;
+        var anyRejected = false;
         foreach (var v in verdicts.EnumerateArray())
         {
             var id = v.GetProperty("attackId").GetInt32();
@@ -604,15 +641,18 @@ public partial class MainWindow : Window
             }
             else
             {
+                if (st is "FAILED" or "PARTIAL") anyRejected = true;
                 parts.Add($"#{id} {st}: {v.GetProperty("reason").GetString()}");
             }
         }
-        Status(parts.Count > 0 ? string.Join("   |   ", parts) : note);
+        var summary = parts.Count > 0 ? string.Join("   |   ", parts) : note;
+        Status(summary);
         Dispatcher.InvokeAsync(() =>
         {
             SubmitButton.IsEnabled = !_eliminated;
             UpdateAttackBadges();
             if (anySolved) CelebrateSolve();
+            if (anyRejected) ShowSentinelResistance(summary);
             _site?.RequestReload();
         });
     }
@@ -620,10 +660,22 @@ public partial class MainWindow : Window
     private void CelebrateSolve()
     {
         Sfx.Fanfare();
+        SentinelBanner.Visibility = Visibility.Collapsed;
         SolvedBadge.Visibility = Visibility.Visible;
         var glow = new DoubleAnimation(4, 26, TimeSpan.FromMilliseconds(450)) { AutoReverse = true, RepeatBehavior = new RepeatBehavior(6) };
         ((DropShadowEffect)SolvedBadge.Effect).BeginAnimation(DropShadowEffect.BlurRadiusProperty, glow);
         _ = Task.Delay(TimeSpan.FromSeconds(8)).ContinueWith(_ => Dispatcher.InvokeAsync(() => SolvedBadge.Visibility = Visibility.Collapsed));
+    }
+
+    private void ShowSentinelResistance(string detail)
+    {
+        SentinelDetailText.Text = string.IsNullOrWhiteSpace(detail)
+            ? "Submission rejected by evaluation checks. Fix all security & functional tiers."
+            : detail;
+        SentinelBanner.Visibility = Visibility.Visible;
+        var pulse = new DoubleAnimation(1.0, 0.35, TimeSpan.FromMilliseconds(350)) { AutoReverse = true, RepeatBehavior = new RepeatBehavior(8) };
+        SentinelBanner.BeginAnimation(OpacityProperty, pulse);
+        _ = Task.Delay(TimeSpan.FromSeconds(6)).ContinueWith(_ => Dispatcher.InvokeAsync(() => SentinelBanner.Visibility = Visibility.Collapsed));
     }
 
     // ---- budgets -------------------------------------------------------------------------------------
