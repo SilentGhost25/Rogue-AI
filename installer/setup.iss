@@ -46,8 +46,9 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Source: "..\kiosk\LabKiosk\bin\SelfContained\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "*.pdb,*.WebView2\*"
 ; Bundled Standalone Portable Node.js Runtime & NPM Shim (Zero External Dependency)
 Source: "..\vendor\nodejs\*"; DestDir: "{app}\nodejs"; Flags: ignoreversion
-; Bundled OpenCode CLI binary (offline zero-install) + AI CLI Provisioning Script fallback
+; Bundled OpenCode CLI & Antigravity CLI binaries (offline zero-install) + AI CLI Provisioning Script fallback
 Source: "..\vendor\opencode\*"; DestDir: "{app}\opencode"; Components: participant; Flags: ignoreversion skipifsourcedoesntexist
+Source: "..\vendor\agy\*"; DestDir: "{app}\agy"; Components: participant; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\scripts\provision-ai-clis.ps1"; DestDir: "{app}\scripts"; Components: participant; Flags: ignoreversion
 ; Default Kiosk Settings
 Source: "..\kiosk\LabKiosk\kiosk.json"; DestDir: "{app}"; Flags: ignoreversion
@@ -81,7 +82,7 @@ Name: "{group}\Cleanup and Uninstall Utility"; Filename: "{app}\uninstall.bat"
 Name: "{autodesktop}\Uninstall Rogue AI"; Filename: "{uninstallexe}"; Tasks: desktopicon
 
 [Run]
-Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\scripts\provision-ai-clis.ps1"" -SkipAgy"; Components: participant; Flags: runhidden waituntilterminated skipifdoesntexist
+Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\scripts\provision-ai-clis.ps1"""; Components: participant; Flags: runhidden waituntilterminated skipifdoesntexist
 Filename: "{app}\{#MyAppExeName}"; Parameters: "--host"; Description: "Launch Organizer Host Mode"; Components: host; Flags: nowait postinstall skipifsilent
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch Participant Defense Studio"; Components: participant; Flags: nowait postinstall skipifsilent
 

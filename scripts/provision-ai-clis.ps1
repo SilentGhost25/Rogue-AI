@@ -146,41 +146,33 @@ if (-not $SkipAgy) {
     $agyExe = Join-Path $agyDir "agy.exe"
     $agyCmd = Join-Path $agyDir "agy.cmd"
 
-    if (Test-Path $agyExe) {
+    # Locate real agy.exe from bundled app dir, repo vendor, user .gemini, or PATH
+    $realAgySources = @(
+        (Join-Path $appRoot "agy\agy.exe"),
+        (Join-Path $appRoot "vendor\agy\agy.exe"),
+        (Join-Path $env:USERPROFILE ".gemini\bin\agy.exe"),
+        (Join-Path $env:USERPROFILE ".gemini\antigravity-cli\bin\agy.exe")
+    )
+    $sourceAgy = $realAgySources | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if (-not $sourceAgy) {
+        $existingAgy = Get-Command agy.exe -ErrorAction SilentlyContinue
+        if ($existingAgy) { $sourceAgy = $existingAgy.Source }
+    }
+
+    if ($sourceAgy) {
+        if (-not (Test-Path $agyExe) -or $ForceReinstall -or ((Get-Item $sourceAgy).Length -ne (Get-Item $agyExe).Length)) {
+            Copy-Item -Path $sourceAgy -Destination $agyExe -Force
+            Write-Host "  [OK] Provisioned agy.exe from $sourceAgy -> $agyExe" -ForegroundColor Green
+        } else {
+            Write-Host "  [OK] Official agy binary found at: $agyExe" -ForegroundColor Green
+        }
+        if (Test-Path $agyCmd) { Remove-Item $agyCmd -Force -ErrorAction SilentlyContinue }
+    }
+    elseif (Test-Path $agyExe) {
         Write-Host "  [OK] Official agy binary found at: $agyExe" -ForegroundColor Green
     }
-    elseif (Test-Path $agyCmd) {
-        Write-Host "  [OK] agy wrapper script found at: $agyCmd" -ForegroundColor Green
-    }
     else {
-        # Check if agy exists elsewhere on the system
-        $existingAgy = Get-Command agy -ErrorAction SilentlyContinue
-        if ($existingAgy) {
-            Write-Host "  -> Found existing agy at: $($existingAgy.Source)" -ForegroundColor Green
-            try {
-                Copy-Item -Path $existingAgy.Source -Destination $agyExe -Force
-                Write-Host "  [OK] Linked agy binary to $agyExe" -ForegroundColor Green
-            } catch {
-                Write-Warning "Could not copy $($existingAgy.Source) to ${agyExe}: $_"
-            }
-        }
-        else {
-            Write-Host "  -> Official agy.exe not found in $agyDir." -ForegroundColor Yellow
-            Write-Host "  -> Creating local dev/test fallback stub ($agyCmd)..." -ForegroundColor Gray
-            $stubContent = @"
-@echo off
-echo ===================================================
-echo [Antigravity CLI Dev/Test Stub]
-echo Connected to workspace: %CD%
-echo Run your edits or prompts here.
-echo (In production campus image, official agy.exe replaces this stub)
-echo ===================================================
-cmd /k
-"@
-            Set-Content -Path $agyCmd -Value $stubContent -Encoding ASCII
-            Write-Host "  [OK] Created local dev/test stub at: $agyCmd" -ForegroundColor Green
-            Write-Host "       (For the live 13 Nov event, deploy the official Go binary to $agyExe)" -ForegroundColor Gray
-        }
+        Write-Warning "Official agy.exe was not found in $appRoot\agy or $agyDir."
     }
 }
 

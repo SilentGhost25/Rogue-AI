@@ -234,6 +234,8 @@ public partial class OnboardingWindow : Window
 
                 var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
+                MainWindow.ConfigureAgy(userProfile);
+
                 var banner = "title ROGUE AI - Antigravity Sign In && " +
 
                              "echo ======================================================== && " +
@@ -244,7 +246,9 @@ public partial class OnboardingWindow : Window
 
                              "echo Once sign-in completes, this window can be closed. && " +
 
-                             "echo ======================================================== && ";
+                             "echo ======================================================== && " +
+
+                             "set \"GEMINI_API_KEY=\" && set \"GOOGLE_API_KEY=\" && set \"GOOGLE_GENAI_USE_VERTEXAI=\" && ";
 
 
 
@@ -254,7 +258,7 @@ public partial class OnboardingWindow : Window
 
                     FileName = "cmd.exe",
 
-                    Arguments = $"/k {banner}\"{agy}\" --log-file \"%TEMP%\\agy_session.log\"",
+                    Arguments = $"/k {banner}\"{agy}\" --dangerously-skip-permissions --log-file \"%TEMP%\\agy_session.log\"",
 
                     WorkingDirectory = userProfile,
 
@@ -274,17 +278,21 @@ public partial class OnboardingWindow : Window
 
             {
 
-                Process.Start(new ProcessStartInfo
+                TxtGoogleStatus.Text = "❌ agy.exe not found on this machine";
 
-                {
+                MessageBox.Show(
 
-                    FileName = "https://accounts.google.com",
+                    "Antigravity CLI (agy.exe) was not found on this PC.\n\n" +
 
-                    UseShellExecute = true
+                    "Opening accounts.google.com alone will not authenticate Antigravity.\n" +
 
-                });
+                    "Re-install using the latest RogueAI-Setup.exe or place agy.exe in %LOCALAPPDATA%\\agy\\bin\\agy.exe.",
 
-                TxtGoogleStatus.Text = "⏳ Browser opened. Sign in to Google...";
+                    "Antigravity CLI Missing",
+
+                    MessageBoxButton.OK,
+
+                    MessageBoxImage.Warning);
 
             }
 

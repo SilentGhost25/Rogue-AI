@@ -930,7 +930,7 @@ public partial class MainWindow : Window
     /// <summary>
     /// Ensures agy's settings file exists, is writable (never ReadOnly), and contains workspace in trustedWorkspaces.
     /// </summary>
-    private static void ConfigureAgy(string workspacePath)
+    internal static void ConfigureAgy(string workspacePath)
     {
         try
         {

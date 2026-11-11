@@ -18,6 +18,7 @@ secrets/
 *desk_tokens_slips*
 dist/
 vendor/opencode/
+vendor/agy/
 server/ControlPlane/wwwroot/*.exe
 *.log
 .vscode/

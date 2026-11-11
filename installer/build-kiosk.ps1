@@ -55,6 +55,30 @@ if (-not (Test-Path $vendorOcExe)) {
     }
 }
 
+# 1c. Stage Antigravity CLI binary (agy.exe) for offline bundling into RogueAI-Setup.exe
+$vendorAgyDir = Join-Path $root "vendor\agy"
+$vendorAgyExe = Join-Path $vendorAgyDir "agy.exe"
+$agySources = @(
+    (Join-Path $env:USERPROFILE ".gemini\bin\agy.exe"),
+    (Join-Path $env:USERPROFILE ".gemini\antigravity-cli\bin\agy.exe"),
+    (Join-Path $env:LOCALAPPDATA "agy\bin\agy.exe")
+)
+$foundAgy = $agySources | Where-Object { Test-Path $_ } | Select-Object -First 1
+if (-not $foundAgy) {
+    $cmdAgy = Get-Command agy.exe -ErrorAction SilentlyContinue
+    if ($cmdAgy) { $foundAgy = $cmdAgy.Source }
+}
+if ($foundAgy) {
+    $copyAgy = (-not (Test-Path $vendorAgyExe)) -or ((Get-Item $foundAgy).Length -ne (Get-Item $vendorAgyExe).Length)
+    if ($copyAgy) {
+        New-Item -ItemType Directory -Path $vendorAgyDir -Force | Out-Null
+        Copy-Item -Path $foundAgy -Destination $vendorAgyExe -Force
+        Write-Host "[*] Staged agy.exe ($foundAgy) into $vendorAgyExe" -ForegroundColor Green
+    }
+} elseif (-not (Test-Path $vendorAgyExe)) {
+    Write-Warning "agy.exe not found locally; participant laptops will need agy.exe pre-installed."
+}
+
 # 2. Publish Self-Contained LabKiosk (.NET 9 runtime bundled)
 Write-Host "[1/4] Publishing self-contained LabKiosk..." -ForegroundColor Yellow
 & $dotnetCmd publish "$kioskProj" -c Release -r win-x64 --self-contained true -o "$kioskSelfContained"

@@ -16,12 +16,16 @@ public static class ExeResolver
         {
             var u = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
             var l = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            var candidates = new[]
+            var candidates = new List<string>
             {
+                Path.Combine(AppContext.BaseDirectory, "agy", "agy.exe"),
                 Path.Combine(l, "agy", "bin", "agy.exe"),
                 Path.Combine(u, ".gemini", "bin", "agy.exe"),
-                Path.Combine(u, ".gemini", "antigravity-cli", "bin", "agy.exe")
+                Path.Combine(u, ".gemini", "antigravity-cli", "bin", "agy.exe"),
             };
+            var probe = new DirectoryInfo(AppContext.BaseDirectory);
+            for (var i = 0; i < 6 && probe is not null; i++, probe = probe.Parent)
+                candidates.Add(Path.Combine(probe.FullName, "vendor", "agy", "agy.exe"));
             foreach (var c in candidates)
                 if (File.Exists(c)) return c;
         }

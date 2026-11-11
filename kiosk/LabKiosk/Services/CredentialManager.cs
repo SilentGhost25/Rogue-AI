@@ -77,6 +77,11 @@ public static class CredentialManager
                         var match = Regex.Match(json, @"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+");
                         if (match.Success) return match.Value.Trim();
                     }
+                    if (!string.IsNullOrWhiteSpace(cred.UserName))
+                    {
+                        var userMatch = Regex.Match(cred.UserName, @"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+");
+                        if (userMatch.Success) return userMatch.Value.Trim();
+                    }
                 }
                 finally
                 {
@@ -86,29 +91,40 @@ public static class CredentialManager
         }
         catch { /* best effort */ }
 
-        // Fallback: Check latest CLI session log for logged-in user
+        // Fallback: Check session logs (%TEMP%\agy_session.log, antigravity-cli/log/cli-*.log, antigravity/cli.log)
         try
         {
             var userDir = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            var candidateLogs = new List<string>();
+            var tempLog = Path.Combine(Path.GetTempPath(), "agy_session.log");
+            if (File.Exists(tempLog)) candidateLogs.Add(tempLog);
+
+            var mainCliLog = Path.Combine(userDir, ".gemini", "antigravity", "cli.log");
+            if (File.Exists(mainCliLog)) candidateLogs.Add(mainCliLog);
+
             var logDir = Path.Combine(userDir, ".gemini", "antigravity-cli", "log");
             if (Directory.Exists(logDir))
             {
-                var latestLog = new DirectoryInfo(logDir)
-                    .GetFiles("cli-*.log")
-                    .OrderByDescending(f => f.LastWriteTimeUtc)
-                    .FirstOrDefault();
+                candidateLogs.AddRange(
+                    new DirectoryInfo(logDir)
+                        .GetFiles("cli-*.log")
+                        .OrderByDescending(f => f.LastWriteTimeUtc)
+                        .Take(3)
+                        .Select(f => f.FullName));
+            }
 
-                if (latestLog is not null)
+            foreach (var logPath in candidateLogs)
+            {
+                using var stream = new FileStream(logPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                using var reader = new StreamReader(stream);
+                string? email = null;
+                string? line;
+                while ((line = reader.ReadLine()) != null)
                 {
-                    using var stream = new FileStream(latestLog.FullName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-                    using var reader = new StreamReader(stream);
-                    string? line;
-                    while ((line = reader.ReadLine()) != null)
-                    {
-                        var m = Regex.Match(line, @"applyAuthResult:\s*email=([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)");
-                        if (m.Success) return m.Groups[1].Value.Trim();
-                    }
+                    var m = Regex.Match(line, @"(?:applyAuthResult:\s*email=|signed-in\s+user:\s*)([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)", RegexOptions.IgnoreCase);
+                    if (m.Success) email = m.Groups[1].Value.Trim();
                 }
+                if (!string.IsNullOrWhiteSpace(email)) return email;
             }
         }
         catch { /* best effort */ }
