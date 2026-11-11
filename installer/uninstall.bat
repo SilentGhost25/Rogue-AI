@@ -3,14 +3,16 @@ setlocal
 cd /d "%~dp0"
 
 echo ==========================================================
-echo       ROGUE AI -- UNINSTALLER & CLEANUP UTILITY
+echo       ROGUE AI -- UNINSTALLER ^& CLEANUP UTILITY
 echo ==========================================================
 echo.
 echo [*] Terminating any active Rogue AI processes...
-taskkill /F /IM LabKiosk.exe 2>nul
-taskkill /F /IM node.exe 2>nul
-taskkill /F /IM ControlPlane.exe 2>nul
-taskkill /F /IM python.exe 2>nul
+taskkill /F /IM LabKiosk.exe /T 2>nul
+taskkill /F /IM opencode.exe /T 2>nul
+taskkill /F /IM agy.exe /T 2>nul
+taskkill /F /IM node.exe /T 2>nul
+taskkill /F /IM ControlPlane.exe /T 2>nul
+taskkill /F /IM python.exe /T 2>nul
 echo [+] Background processes cleared.
 echo.
 
@@ -22,11 +24,25 @@ if exist "%~dp0unins000.exe" (
 )
 
 echo.
+echo [*] Cleaning runtime state, local databases, and provisioned CLIs...
+if exist "%LOCALAPPDATA%\BreachKiosk" (
+    rd /s /q "%LOCALAPPDATA%\BreachKiosk" 2>nul
+    echo [+] Cleared %LOCALAPPDATA%\BreachKiosk
+)
+if exist "%LOCALAPPDATA%\agy" (
+    rd /s /q "%LOCALAPPDATA%\agy" 2>nul
+    echo [+] Cleared %LOCALAPPDATA%\agy
+)
+if exist "%TEMP%\agy_session.log" (
+    del /f /q "%TEMP%\agy_session.log" 2>nul
+)
+
+echo.
 set /p CLEAN_WS="Do you also want to remove C:\BreachWorkspace? (y/N): "
 if /i "%CLEAN_WS%"=="y" (
     if exist "C:\BreachWorkspace" (
         echo [*] Removing C:\BreachWorkspace...
-        rd /s /q "C:\BreachWorkspace"
+        rd /s /q "C:\BreachWorkspace" 2>nul
         echo [+] Workspace directory deleted.
     )
 )

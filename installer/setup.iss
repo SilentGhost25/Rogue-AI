@@ -69,6 +69,17 @@ Type: files; Name: "{localappdata}\BreachKiosk\site.db*"; Components: participan
 Type: filesandordirs; Name: "{localappdata}\BreachKiosk\host\workspaces"; Components: host
 Type: files; Name: "{localappdata}\BreachKiosk\host\breach.db*"; Components: host
 
+[UninstallDelete]
+; Clean up runtime data, workspaces, DBs, and provisioned AI CLIs on uninstall
+Type: filesandordirs; Name: "C:\BreachWorkspace"
+Type: filesandordirs; Name: "{localappdata}\BreachKiosk"
+Type: filesandordirs; Name: "{localappdata}\agy"
+Type: files; Name: "{app}\kiosk.json"
+Type: filesandordirs; Name: "{app}\agy"
+Type: filesandordirs; Name: "{app}\opencode"
+Type: filesandordirs; Name: "{app}\workspace"
+Type: dirifempty; Name: "{app}"
+
 [Icons]
 ; Participant Mode
 Name: "{group}\Rogue AI - Participant Defense Studio"; Filename: "{app}\{#MyAppExeName}"; Components: participant
@@ -138,5 +149,16 @@ begin
       '  "DeskToken": ""' + #13#10 +
       '}';
     SaveStringToFile(ExpandConstant('{app}\kiosk.json'), JsonContent, False);
+  end;
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  ResultCode: Integer;
+begin
+  if CurUninstallStep = usUninstall then
+  begin
+    // Terminate running processes cleanly so binaries and workspace handles are unlocked before removal
+    Exec(ExpandConstant('{cmd}'), '/c taskkill /F /IM LabKiosk.exe /IM ControlPlane.exe /IM opencode.exe /IM agy.exe /IM node.exe /T >nul 2>&1', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   end;
 end;
