@@ -180,7 +180,15 @@ public partial class MainWindow : Window
 
             // 2. Start the live website immediately so participant view renders even while host connects.
             _site = new SiteHost(_s.NodePath, _s.WorkspacePath, _s.SiteUrl, _s.DataPath);
-            _site.ReloadRequested += () => Dispatcher.InvokeAsync(() => { Site.Reload(); Code.RefreshAll(); });
+            _site.ReloadRequested += () => Dispatcher.InvokeAsync(() =>
+            {
+                if (Site.CoreWebView2?.Source?.StartsWith("http", StringComparison.OrdinalIgnoreCase) == true)
+                    Site.Reload();
+                else
+                    NavigateSiteToRoute("/");
+                Code.RefreshAll();
+            });
+            _site.SiteDown += () => Dispatcher.InvokeAsync(ShowSiteDownInWebView);
             _site.Problem += Status;
             _site.Start();
             await Site.EnsureCoreWebView2Async(await WebViewEnv.GetAsync());
@@ -358,6 +366,42 @@ public partial class MainWindow : Window
         await _hub.AckImminentAsync(attackId);
     }
 
+    private static string RouteForAttack(int attackId) => attackId switch
+    {
+        1 or 3 or 4 => "/traffic",
+        5 => "/vault",
+        _ => "/",
+    };
+
+    private void NavigateSiteToRoute(string route)
+    {
+        var target = _s.SiteUrl.TrimEnd('/') + route;
+        if (Site.CoreWebView2 is not null)
+        {
+            var current = Site.CoreWebView2.Source?.TrimEnd('/');
+            if (string.Equals(current, target.TrimEnd('/'), StringComparison.OrdinalIgnoreCase))
+                Site.CoreWebView2.Reload();
+            else
+                Site.CoreWebView2.Navigate(target);
+        }
+        else
+        {
+            Site.Source = new Uri(target);
+        }
+    }
+
+    private void ShowSiteDownInWebView()
+    {
+        if (Site.CoreWebView2 is null) return;
+        Site.CoreWebView2.NavigateToString("""
+            <!doctype html><html><body style="background:#05080f;color:#fee2e2;font-family:Consolas,monospace;padding:3rem;">
+            <div style="border:1px solid #ef4444;border-left:4px solid #ef4444;background:rgba(127,29,29,0.45);padding:1.5rem;border-radius:6px;max-width:720px;margin:2rem auto;">
+            <h1 style="color:#ef4444;margin-top:0;">AEGIS SERVICE OFFLINE // RUNTIME FAULT</h1>
+            <p>The local municipal web service failed to restart or exited unexpectedly. Inspect the workspace entrypoint and recent changes.</p>
+            </div></body></html>
+            """);
+    }
+
     private async Task HandleAttackAsync(int attackId)
     {
         if (_sync is null || _pull is null) return;
@@ -371,10 +415,14 @@ public partial class MainWindow : Window
             _activeAttacks.Add(attackId);
             var name = AttackNames.TryGetValue(attackId, out var nm) ? nm : $"Attack #{attackId}";
             Status($"🚨 ATTACK #{attackId} ({name}) LANDED! ({n} files changed). Fix the code, then submit.");
-            _site?.RequestReload();
+            var healthy = _site is not null && await _site.WaitRestartHealthyAsync();
             Code.RefreshAll();
-            Dispatcher.Invoke(() =>
+            await Dispatcher.InvokeAsync(() =>
             {
+                if (_site is null || healthy)
+                    NavigateSiteToRoute(RouteForAttack(attackId));
+                else
+                    ShowSiteDownInWebView();
                 UpdateAttackBadges();
                 ShowIncident(attackId);
             });

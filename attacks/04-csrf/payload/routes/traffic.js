@@ -27,9 +27,10 @@ module.exports = function (db) {
     const incidents = db.prepare('SELECT intersection, description, severity, created_at FROM traffic_incidents ORDER BY id DESC').all();
 
     const body = `
+      <div class="breach-alert">CONTROL GATE BYPASSED: Signal override dispatch reachable without operator authorization</div>
       <div style="margin-bottom: 1.5rem;">
-        <h1>TRAFFICGRID // SIGNAL DISPATCH MATRIX</h1>
-        <p>Municipal intelligent traffic signal telemetry and corridor preemption management.</p>
+        <h1>TRAFFICGRID // SIGNAL DISPATCH MATRIX <span class="badge badge-breach">UNPROTECTED</span></h1>
+        <p style="color:#fca5a5;">Dispatch endpoints responding to unverified override callers.</p>
       </div>
 
       <form class="search-form" action="/traffic" method="get">
@@ -40,8 +41,8 @@ module.exports = function (db) {
 
       ${q ? `<p style="font-size: 13px; color: var(--accent-cyan);">Search results for query: <code>${esc(q)}</code> (${signals.length} intersections matched)</p>` : ''}
 
-      <div class="card" style="margin-bottom: 1.5rem;">
-        <h2>Active Intersections</h2>
+      <div class="card card-compromised" style="margin-bottom: 1.5rem;">
+        <h2>Active Intersections — Override Gate Offline</h2>
         <div class="table-container">
           <table>
             <thead>
@@ -97,7 +98,7 @@ module.exports = function (db) {
       </div>
     `;
 
-    res.send(layout({ title: 'TrafficGrid', user: req.user, active: 'traffic', body }));
+    res.send(layout({ title: 'TrafficGrid', user: req.user, active: 'traffic', threat: 'DEFCON-2', body }));
   });
 
   // REST API: Signal listings

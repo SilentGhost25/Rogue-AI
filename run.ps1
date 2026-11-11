@@ -177,6 +177,7 @@ try {
             Write-Host "[*] Initializing Breach Workspace at $WorkspaceDir..." -ForegroundColor Cyan
         }
         Copy-Item -Path "$RogueRoot\site\*" -Destination $WorkspaceDir -Recurse -Force -ErrorAction Stop
+        Remove-Item "$WorkspaceDir\*.db*" -Force -ErrorAction SilentlyContinue
     }
 } catch {
     # If C:\ root is restricted, seamlessly fall back to local project workspace
@@ -193,6 +194,7 @@ try {
         }
         Write-Host "[*] Initializing Breach Workspace at $WorkspaceDir..." -ForegroundColor Cyan
         Copy-Item -Path "$RogueRoot\site\*" -Destination $WorkspaceDir -Recurse -Force
+        Remove-Item "$WorkspaceDir\*.db*" -Force -ErrorAction SilentlyContinue
     }
     Write-Host "[!] Note: Using local fallback workspace: $WorkspaceDir" -ForegroundColor Yellow
 }

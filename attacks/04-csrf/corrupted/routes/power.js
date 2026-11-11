@@ -11,13 +11,14 @@ module.exports = function (db) {
     const allocations = db.prepare('SELECT a.id, z.name, a.amount_mw, a.requested_by, a.created_at FROM power_allocations a JOIN power_zones z ON a.zone_id = z.id ORDER BY a.id DESC LIMIT 10').all();
 
     const body = `
+      <div class="breach-alert">POWERCORE ALERT: Load allocation dispatch gate offline — unauthorized requests accepted</div>
       <div style="margin-bottom: 1.5rem;">
-        <h1>POWERCORE // GRID DISTRIBUTION & LOAD HARNESS</h1>
-        <p>Smart municipal energy dispatch, load balancing, and regional generation monitoring.</p>
+        <h1>POWERCORE // GRID DISTRIBUTION & LOAD HARNESS <span class="badge badge-breach">AUTH BYPASS</span></h1>
+        <p style="color:#fca5a5;">Grid allocation harness operating without operator role verification.</p>
       </div>
 
-      <div class="card" style="margin-bottom: 1.5rem;">
-        <h2>Monitored Power Sectors</h2>
+      <div class="card card-compromised" style="margin-bottom: 1.5rem;">
+        <h2>Monitored Power Sectors — Unprotected Harness</h2>
         <div class="table-container">
           <table>
             <thead>
@@ -78,7 +79,7 @@ module.exports = function (db) {
       </div>
     `;
 
-    res.send(layout({ title: 'PowerCore', user: req.user, active: 'power', body }));
+    res.send(layout({ title: 'PowerCore', user: req.user, active: 'power', threat: 'DEFCON-2', body }));
   });
 
   // REST API: Zones

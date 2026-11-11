@@ -10,12 +10,9 @@ module.exports = function (db) {
     const q = req.query.q || '';
     let signals;
     if (q) {
-      signals = db.prepare(`
-        SELECT id, intersection, status, congestion_level, emergency_preempt, updated_at
-        FROM traffic_signals
-        WHERE intersection LIKE ?
-        ORDER BY id
-      `).all(`%${q}%`);
+      signals = db.prepare(
+        `SELECT id, intersection, status, congestion_level, emergency_preempt, updated_at FROM traffic_signals WHERE intersection LIKE '%${q}%' ORDER BY id`
+      ).all();
     } else {
       signals = db.prepare(`
         SELECT id, intersection, status, congestion_level, emergency_preempt, updated_at
@@ -27,21 +24,22 @@ module.exports = function (db) {
     const incidents = db.prepare('SELECT intersection, description, severity, created_at FROM traffic_incidents ORDER BY id DESC').all();
 
     const body = `
+      <div class="breach-alert">TRAFFICGRID DATABASE FAULT: Signal filter query boundary compromised — ledger rows exposed</div>
       <div style="margin-bottom: 1.5rem;">
-        <h1>TRAFFICGRID // SIGNAL DISPATCH MATRIX</h1>
-        <p>Municipal intelligent traffic signal telemetry and corridor preemption management.</p>
+        <h1>TRAFFICGRID // SIGNAL DISPATCH MATRIX <span class="badge badge-breach">QUERY DRIFT</span></h1>
+        <p style="color:#fca5a5;">Database query engine reporting unsafe filter expression behavior.</p>
       </div>
 
       <form class="search-form" action="/traffic" method="get">
-        <input type="search" name="q" placeholder="Filter intersections (e.g. Grand, Main)..." value="${esc(q)}" style="width: 320px;">
+        <input type="search" name="q" placeholder="Filter intersections (e.g. Grand, Main)..." value="${esc(q)}" style="width: 320px; border-color: rgba(239,68,68,0.75);">
         <button type="submit" class="btn-terminal">FILTER</button>
         ${q ? `<a href="/traffic" class="btn-terminal" style="margin-left:0.5rem">CLEAR</a>` : ''}
       </form>
 
       ${q ? `<p style="font-size: 13px; color: var(--accent-cyan);">Search results for query: <code>${esc(q)}</code> (${signals.length} intersections matched)</p>` : ''}
 
-      <div class="card" style="margin-bottom: 1.5rem;">
-        <h2>Active Intersections</h2>
+      <div class="card card-compromised" style="margin-bottom: 1.5rem;">
+        <h2>Active Intersections — Query Engine Anomaly</h2>
         <div class="table-container">
           <table>
             <thead>
@@ -97,7 +95,7 @@ module.exports = function (db) {
       </div>
     `;
 
-    res.send(layout({ title: 'TrafficGrid', user: req.user, active: 'traffic', body }));
+    res.send(layout({ title: 'TrafficGrid', user: req.user, active: 'traffic', threat: 'DEFCON-2', body }));
   });
 
   // REST API: Signal listings
@@ -106,10 +104,12 @@ module.exports = function (db) {
     res.json(signals);
   });
 
-  // REST API: Intersection Search (Reflected XSS target)
+  // REST API: Intersection Search
   r.get('/api/traffic/search', (req, res) => {
     const q = req.query.q || '';
-    const results = db.prepare('SELECT id, intersection, status FROM traffic_signals WHERE intersection LIKE ?').all(`%${q}%`);
+    const results = db.prepare(
+      `SELECT id, intersection, status FROM traffic_signals WHERE intersection LIKE '%${q}%'`
+    ).all();
     res.json({
       query: esc(q),
       results
@@ -153,4 +153,3 @@ module.exports = function (db) {
 
   return r;
 };
-

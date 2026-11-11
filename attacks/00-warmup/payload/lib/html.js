@@ -6,7 +6,7 @@ const esc = (s) => String(s ?? '')
   .replace(/"/g, '&quot;')
   .replace(/'/g, '&#39;');
 
-function layout({ title = 'Command', user = null, active = 'overview', threat = 'DEFCON-4', body = '' }) {
+function layout({ title = 'Command', user = null, active = 'overview', threat = 'DEFCON-1', body = '' }) {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -16,15 +16,15 @@ function layout({ title = 'Command', user = null, active = 'overview', threat = 
 <link rel="stylesheet" href="/aegis.css">
 </head>
 <body>
-<header class="aegis-header">
+<header class="aegis-header header-compromised">
   <div class="header-left">
     <div class="brand">
       <span class="shield-glyph">&#x25C7;</span>
-      <span class="brand-title">AEGIS // OPERATOINS</span>
+      <span class="brand-title" style="color:#f87171;text-shadow:0 0 12px rgba(239,68,68,0.6)">AEGIS // OPERATOINS</span>
     </div>
     <div class="system-status">
       <span class="threat-badge threat-${threat.toLowerCase()}">${esc(threat)}</span>
-      <span class="status-indicator live">SYSTEM ONLINE</span>
+      <span class="status-indicator compromised">HEADER FAULT</span>
     </div>
   </div>
   <nav class="nav-links">
@@ -50,6 +50,7 @@ function layout({ title = 'Command', user = null, active = 'overview', threat = 
   </div>
 </header>
 <main class="aegis-container">
+  <div class="breach-alert">INTEGRITY WARNING: Header layout template tampered — anomalous branding string detected.</div>
   ${body}
 </main>
 <footer class="aegis-footer">

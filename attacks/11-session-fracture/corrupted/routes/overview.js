@@ -13,35 +13,36 @@ module.exports = function (db) {
     const recentAudit = db.prepare('SELECT event_type, actor, details, created_at FROM audit_log ORDER BY id DESC LIMIT 5').all();
 
     const body = `
+      <div class="breach-alert">CRITICAL INCIDENT: Session hydration fractured across subsystems — operator identity context dropped</div>
       <div style="margin-bottom: 2rem;">
-        <h1>AEGIS // MUNICIPAL DEFENSE CORE</h1>
-        <p>Operational control center for critical urban infrastructure subsystems.</p>
+        <h1>AEGIS // MUNICIPAL DEFENSE CORE <span class="badge badge-breach">AUTH FRACTURED</span></h1>
+        <p style="color:#fca5a5;">Identity context failing across protected subsystems; telemetry access boundaries degraded.</p>
       </div>
 
       <div class="stats-grid">
-        <div class="card">
+        <div class="card card-compromised">
           <div class="card-title">TrafficGrid Subsystem</div>
           <div class="card-value">${esc(signalCount)}</div>
-          <div class="card-sub">Signals Monitored (100% telemetry)</div>
+          <div class="card-sub" style="color:#fca5a5;">Auth Context Lost</div>
         </div>
-        <div class="card">
+        <div class="card card-compromised">
           <div class="card-title">PowerCore Grid Load</div>
           <div class="card-value">${Math.round(loadStats.total_load || 0)} <span style="font-size:14px;font-weight:normal">/ ${Math.round(loadStats.total_cap || 0)} MW</span></div>
-          <div class="card-sub">Operating within nominal margins</div>
+          <div class="card-sub" style="color:#fca5a5;">Session Gate Degraded</div>
         </div>
-        <div class="card">
+        <div class="card card-compromised">
           <div class="card-title">CitizenVault Ledger</div>
           <div class="card-value">${esc(citizenCount)}</div>
-          <div class="card-sub">Classified identities encrypted</div>
+          <div class="card-sub" style="color:#fca5a5;">Clearance State Null</div>
         </div>
-        <div class="card">
+        <div class="card card-compromised">
           <div class="card-title">Threat Assessment</div>
-          <div class="card-value" style="color: var(--accent-cyan);">DEFCON-4</div>
-          <div class="card-sub">Normal Readiness // No active intrusions</div>
+          <div class="card-value" style="color: #ef4444;">DEFCON-1</div>
+          <div class="card-sub" style="color:#fca5a5;">Session Fracture Active</div>
         </div>
       </div>
 
-      <div class="card">
+      <div class="card card-compromised">
         <h2>Recent Security Audit Trail</h2>
         <div class="table-container">
           <table>
@@ -68,7 +69,7 @@ module.exports = function (db) {
       </div>
     `;
 
-    res.send(layout({ title: 'Overview', user: req.user, active: 'overview', body }));
+    res.send(layout({ title: 'Overview', user: req.user, active: 'overview', threat: 'DEFCON-1', body }));
   });
 
   // REST API: Overview status (requires operator or admin role)

@@ -52,7 +52,7 @@ Source: "..\scripts\provision-ai-clis.ps1"; DestDir: "{app}\scripts"; Components
 ; Default Kiosk Settings
 Source: "..\kiosk\LabKiosk\kiosk.json"; DestDir: "{app}"; Flags: ignoreversion
 ; Target Website (AEGIS including bundled node_modules)
-Source: "..\site\*"; DestDir: "{app}\site"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "*.db,*.sqlite,*.log"
+Source: "..\site\*"; DestDir: "{app}\site"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "*.db,*.db-wal,*.db-shm,*.sqlite,*.log"
 ; Control Plane Server (Host Mode - Self-Contained .NET 9)
 Source: "..\server\ControlPlane\bin\SelfContained\*"; DestDir: "{app}\server"; Components: host; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "wwwroot\*.exe,Data\*,data\*"
 ; Engine and Attack Packs (Host Mode)
@@ -60,6 +60,13 @@ Source: "..\engine\*"; DestDir: "{app}\engine"; Components: host; Flags: ignorev
 Source: "..\attacks\*"; DestDir: "{app}\attacks"; Components: host; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "__pycache__\*,*.pyc"
 ; Uninstaller Helper Script
 Source: "uninstall.bat"; DestDir: "{app}"; Flags: ignoreversion
+
+[InstallDelete]
+; Guarantee a clean, untouched base app workspace and host database on install
+Type: filesandordirs; Name: "C:\BreachWorkspace"; Components: participant
+Type: files; Name: "{localappdata}\BreachKiosk\site.db*"; Components: participant
+Type: filesandordirs; Name: "{localappdata}\BreachKiosk\host\workspaces"; Components: host
+Type: files; Name: "{localappdata}\BreachKiosk\host\breach.db*"; Components: host
 
 [Icons]
 ; Participant Mode

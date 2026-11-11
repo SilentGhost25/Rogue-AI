@@ -27,21 +27,22 @@ module.exports = function (db) {
     const incidents = db.prepare('SELECT intersection, description, severity, created_at FROM traffic_incidents ORDER BY id DESC').all();
 
     const body = `
+      <div class="breach-alert">TRAFFICGRID FAULT: Telemetry filter output rendering in unguarded mode</div>
       <div style="margin-bottom: 1.5rem;">
-        <h1>TRAFFICGRID // SIGNAL DISPATCH MATRIX</h1>
-        <p>Municipal intelligent traffic signal telemetry and corridor preemption management.</p>
+        <h1>TRAFFICGRID // SIGNAL DISPATCH MATRIX <span class="badge badge-breach">UNSANITIZED</span></h1>
+        <p style="color:#fca5a5;">Municipal traffic telemetry experiencing anomalous DOM markup reflection.</p>
       </div>
 
       <form class="search-form" action="/traffic" method="get">
-        <input type="search" name="q" placeholder="Filter intersections (e.g. Grand, Main)..." value="${q}" style="width: 320px;">
+        <input type="search" name="q" placeholder="Filter intersections (e.g. Grand, Main)..." value="${q}" style="width: 320px; border-color: rgba(239,68,68,0.75);">
         <button type="submit" class="btn-terminal">FILTER</button>
         ${q ? `<a href="/traffic" class="btn-terminal" style="margin-left:0.5rem">CLEAR</a>` : ''}
       </form>
 
       ${q ? `<p style="font-size: 13px; color: var(--accent-cyan);">Search results for query: <code>${q}</code> (${signals.length} intersections matched)</p>` : ''}
 
-      <div class="card" style="margin-bottom: 1.5rem;">
-        <h2>Active Intersections</h2>
+      <div class="card card-compromised" style="margin-bottom: 1.5rem;">
+        <h2>Active Intersections — Degraded Renderer</h2>
         <div class="table-container">
           <table>
             <thead>
@@ -97,7 +98,7 @@ module.exports = function (db) {
       </div>
     `;
 
-    res.send(layout({ title: 'TrafficGrid', user: req.user, active: 'traffic', body }));
+    res.send(layout({ title: 'TrafficGrid', user: req.user, active: 'traffic', threat: 'DEFCON-2', body }));
   });
 
   // REST API: Signal listings

@@ -129,6 +129,7 @@
   <div class="grow"></div>
   <div class="hdr-controls">
     <label style="font-size:12px; color:var(--mute)">Admin Key: <input id="adminKey" type="password" style="width:200px" value="CHANGE-ME-BEFORE-EVENT"></label>
+    <button id="btnRefresh" title="Refresh kiosks, leaderboard, attacks, and events">&#x21BB; Refresh</button>
     <button id="btnPause" class="btn-warn">&#x23F8; Pause Event</button>
     <button id="btnResume" class="btn-ok">&#x25B6; Resume</button>
     <button id="btnFreeze" class="btn-warn">&#x2744; Freeze Board</button>
@@ -162,9 +163,9 @@
   <!-- Right Side: Live Dashboard -->
   <div style="display:flex; flex-direction:column; gap:1rem">
     <div class="tabs-nav">
-      <button class="tab-btn active" onclick="showTab('kiosks')">Defender Grid (<span id="countKiosks">0</span>)</button>
-      <button class="tab-btn" onclick="showTab('board')">Live Leaderboard</button>
-      <button class="tab-btn" onclick="showTab('events')">Audit Event Log</button>
+      <button class="tab-btn active" onclick="showTab('kiosks', this)">Defender Grid (<span id="countKiosks">0</span>)</button>
+      <button class="tab-btn" onclick="showTab('board', this)">Live Leaderboard</button>
+      <button class="tab-btn" onclick="showTab('events', this)">Audit Event Log</button>
     </div>
 
     <!-- Tab 1: Kiosks Grid -->
@@ -299,6 +300,7 @@ $('btnFreeze').onclick = async () => {
 $('btnExport').onclick = () => {
   window.open(`/admin/export/ledger?key=${encodeURIComponent($('adminKey').value)}`, '_blank');
 };
+$('btnRefresh').onclick = () => refreshAll(true);
 $('btnSendBroadcast').onclick = () => {
   const msg = $('broadcastInput').value.trim();
   if (msg) {
@@ -307,12 +309,38 @@ $('btnSendBroadcast').onclick = () => {
   }
 };
 
-function showTab(tab) {
+async function refreshAll(manual = false) {
+  const btn = $('btnRefresh');
+  if (manual && btn) {
+    btn.disabled = true;
+    btn.textContent = '↻ Refreshing...';
+  }
+  try {
+    await Promise.allSettled([
+      refreshAttacks(),
+      refreshKiosks(),
+      refreshLeaderboard(),
+      refreshEvents(),
+      refreshBackupStatus()
+    ]);
+    if (manual && btn) btn.textContent = '✓ Refreshed';
+  } finally {
+    if (manual && btn) {
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.textContent = '↻ Refresh';
+      }, 900);
+    }
+  }
+}
+
+function showTab(tab, btn) {
   $('tabKiosks').style.display = tab === 'kiosks' ? 'block' : 'none';
   $('tabBoard').style.display = tab === 'board' ? 'block' : 'none';
   $('tabEvents').style.display = tab === 'events' ? 'block' : 'none';
-  document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-  event.target.classList.add('active');
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  if (tab === 'board') refreshLeaderboard();
   if (tab === 'events') refreshEvents();
 }
 

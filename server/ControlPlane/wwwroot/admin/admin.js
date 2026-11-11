@@ -183,7 +183,7 @@ async function refreshEvaluations() {
     }).join('');
     window.__evalParticipants = list;
   } catch (err) {
-    // Non-fatal if evaluations fail
+    logMessage(`[ERROR] Loading evaluations failed: ${err.message}`);
   }
 }
 
@@ -308,7 +308,7 @@ async function refreshKiosks() {
       </tr>
     `).join('');
   } catch (err) {
-    // Non-fatal if kiosks endpoint fails
+    logMessage(`[ERROR] Loading kiosks failed: ${err.message}`);
   }
 }
 
@@ -447,10 +447,41 @@ async function init() {
     }
   });
 
-  document.getElementById('refresh-btn')?.addEventListener('click', () => {
-    refreshAttacks();
-    refreshEvaluations();
-    refreshKiosks();
+  document.getElementById('refresh-btn')?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    btn.textContent = 'Refreshing...';
+    try {
+      await Promise.allSettled([
+        checkEventStatus(),
+        refreshAttacks(),
+        refreshEvaluations(),
+        refreshKiosks()
+      ]);
+      logMessage('[REFRESH] Dashboard synced with server.');
+      btn.textContent = '✓ Refreshed';
+    } finally {
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.textContent = 'Refresh';
+      }, 900);
+    }
+  });
+
+  document.getElementById('refresh-eval-btn')?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    btn.textContent = 'Refreshing...';
+    try {
+      await Promise.allSettled([refreshEvaluations(), refreshKiosks()]);
+      logMessage('[REFRESH] Participant scorecards synced.');
+      btn.textContent = '✓ Refreshed';
+    } finally {
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.textContent = 'Refresh Evals';
+      }, 900);
+    }
   });
 
   document.getElementById('clear-log-btn')?.addEventListener('click', () => {

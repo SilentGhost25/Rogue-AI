@@ -16,8 +16,10 @@ public sealed class SiteHost : IDisposable
     private FileSystemWatcher? _watcher;
     private System.Threading.Timer? _debounce;
     private int _reloading;
+    private int _reloadPending;
 
     public event Action? ReloadRequested;
+    public event Action? SiteDown;
     public event Action<string>? Problem;
 
     public SiteHost(string nodePath, string workspace, string siteUrl, string dataPath)
@@ -102,30 +104,54 @@ public sealed class SiteHost : IDisposable
         if (Ignored(path)) return;
         // Many editors write several times per save: wait for things to settle, then reload.
         _debounce?.Dispose();
-        _debounce = new System.Threading.Timer(_ => _ = ReloadWhenHealthyAsync(), null, 150, Timeout.Infinite);
+        _debounce = new System.Threading.Timer(_ => _ = ReloadWhenHealthyAsync(), null, 250, Timeout.Infinite);
     }
 
     /// <summary>Ask for a reload after the site has restarted (used after an attack lands and after a verdict).</summary>
     public void RequestReload() => _ = ReloadWhenHealthyAsync();
 
+    /// <summary>Waits for `node --watch` to swap workers and answer on the local port.</summary>
+    public async Task<bool> WaitRestartHealthyAsync(int settleMs = 550)
+    {
+        await Task.Delay(settleMs);
+        for (var i = 0; i < 40; i++)
+        {
+            if (_proc is { HasExited: true }) return false;
+            try
+            {
+                using var res = await Http.GetAsync(_siteUrl + "/api/health");
+                // Accept 2xx or 503 (e.g. compromised entrypoint) so WebView2 renders the current state
+                if (res.IsSuccessStatusCode || (int)res.StatusCode == 503) return true;
+            }
+            catch (HttpRequestException) { }
+            catch (TaskCanceledException) { }
+            await Task.Delay(100);
+        }
+        return false;
+    }
+
     private async Task ReloadWhenHealthyAsync()
     {
-        if (Interlocked.Exchange(ref _reloading, 1) == 1) return;
+        if (Interlocked.Exchange(ref _reloading, 1) == 1)
+        {
+            Interlocked.Exchange(ref _reloadPending, 1);
+            return;
+        }
         try
         {
-            await Task.Delay(150); // give `node --watch` time to restart the process
-            for (var i = 0; i < 40; i++)
+            do
             {
-                try
+                Interlocked.Exchange(ref _reloadPending, 0);
+                if (await WaitRestartHealthyAsync(500))
                 {
-                    using var res = await Http.GetAsync(_siteUrl + "/api/health");
-                    if (res.IsSuccessStatusCode) { ReloadRequested?.Invoke(); return; }
+                    ReloadRequested?.Invoke();
                 }
-                catch (HttpRequestException) { }
-                catch (TaskCanceledException) { }
-                await Task.Delay(75);
-            }
-            Problem?.Invoke("The website is not running. Check your last change.");
+                else
+                {
+                    Problem?.Invoke("The website is not running. Check your last change.");
+                    SiteDown?.Invoke();
+                }
+            } while (Interlocked.CompareExchange(ref _reloadPending, 0, 0) == 1);
         }
         finally { Interlocked.Exchange(ref _reloading, 0); }
     }
