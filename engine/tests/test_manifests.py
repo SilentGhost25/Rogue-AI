@@ -9,7 +9,7 @@ class ManifestTests(unittest.TestCase):
     def test_all_seven_attacks_load(self):
         attacks = load_all(ATTACKS)
         self.assertEqual([a.id for a in attacks], list(range(len(attacks))))
-        self.assertTrue(len(attacks) in (7, 8, 11, 12))
+        self.assertTrue(len(attacks) in (7, 8, 11, 12, 13))
         for a in attacks:
             self.assertEqual(sum(a.weights.values()), 100)
 

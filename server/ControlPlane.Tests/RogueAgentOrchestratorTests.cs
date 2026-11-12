@@ -141,8 +141,8 @@ public class RogueAgentOrchestratorTests : IDisposable
 
         var hub = new DummyHubContext();
         var orch = new RogueAgentOrchestrator(hub, _db, new SystemClock(), NullLogger<RogueAgentOrchestrator>.Instance, config);
-        Assert.Equal(12, orch.Attacks.Count);
-        for (int i = 0; i < 12; i++)
+        Assert.Equal(13, orch.Attacks.Count);
+        for (int i = 0; i < 13; i++)
         {
             Assert.Equal(i, orch.Attacks[i].Id);
         }
@@ -155,6 +155,7 @@ public class RogueAgentOrchestratorTests : IDisposable
         Assert.Equal("6", orch.Get(10).SequenceSlot);
         Assert.Equal("7", orch.Get(7).SequenceSlot);
         Assert.Equal("8", orch.Get(11).SequenceSlot);
+        Assert.Equal("9", orch.Get(12).SequenceSlot);
         Assert.Equal("reserve", orch.Get(3).SequenceSlot);
         Assert.Equal(5, orch.Get(11).Band);
     }
