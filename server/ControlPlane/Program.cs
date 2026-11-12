@@ -38,6 +38,7 @@ builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddSingleton<Database>();
 builder.Services.AddSingleton<EventState>();
 builder.Services.AddSingleton<WorkspaceStore>();
+builder.Services.AddSingleton<GitMirrorService>();
 builder.Services.AddSingleton<AttackDispatcher>();
 builder.Services.AddSingleton<RogueAgentOrchestrator>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<RogueAgentOrchestrator>());
@@ -91,23 +92,59 @@ app.MapMethods("/download/setup", new[] { "GET", "HEAD" }, () =>
     if (exePath == null) return Results.NotFound("RogueAI-Setup.exe not found on server.");
     return Results.File(exePath, "application/octet-stream", "RogueAI-Setup.exe");
 });
+
+// LAN dynamic discovery endpoint for participants on Wi-Fi and Ethernet
+app.MapGet("/api/discovery", () => Results.Ok(new
+{
+    role = "organizer",
+    version = "1.0",
+    name = "Breach Control Plane",
+    port = 5080
+}));
+
 app.MapAdminLogin();
 app.MapHub<BreachHub>("/hub");
 
-var adminKey = Environment.GetEnvironmentVariable("BREACH_ADMIN_KEY") ?? app.Configuration["Breach:AdminKey"] ?? "";
-var enforceEventSecurity = app.Configuration.GetValue<bool>("Breach:EnforceEventSecurity", true);
-
-if (enforceEventSecurity)
+string ResolveAdminKey()
 {
-    if (string.IsNullOrWhiteSpace(adminKey) ||
-        adminKey.Equals("CHANGE-ME-BEFORE-EVENT", StringComparison.OrdinalIgnoreCase) ||
-        adminKey.Equals("change-me-locally", StringComparison.OrdinalIgnoreCase) ||
-        adminKey.Length < 16)
+    var env = Environment.GetEnvironmentVariable("BREACH_ADMIN_KEY");
+    if (!string.IsNullOrWhiteSpace(env) && env.Length >= 16 &&
+        !env.Equals("CHANGE-ME-BEFORE-EVENT", StringComparison.OrdinalIgnoreCase) &&
+        !env.Equals("change-me-locally", StringComparison.OrdinalIgnoreCase))
     {
-        throw new InvalidOperationException(
-            "FATAL SECURITY FAILURE: ControlPlane refused startup. Breach:AdminKey (or BREACH_ADMIN_KEY env var) must be set to a cryptographically random string of at least 16 characters.");
+        return env.Trim();
+    }
+
+    var cfgKey = app.Configuration["Breach:AdminKey"];
+    if (!string.IsNullOrWhiteSpace(cfgKey) && cfgKey.Length >= 16 &&
+        !cfgKey.Equals("CHANGE-ME-BEFORE-EVENT", StringComparison.OrdinalIgnoreCase) &&
+        !cfgKey.Equals("change-me-locally", StringComparison.OrdinalIgnoreCase))
+    {
+        return cfgKey.Trim();
+    }
+
+    // Shared host admin key file across HostSupervisor and ControlPlane
+    var hostDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BreachKiosk", "host");
+    var keyFile = Path.Combine(hostDir, "admin.key");
+    try
+    {
+        Directory.CreateDirectory(hostDir);
+        if (File.Exists(keyFile))
+        {
+            var saved = File.ReadAllText(keyFile).Trim();
+            if (saved.Length >= 16) return saved;
+        }
+        var generated = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
+        File.WriteAllText(keyFile, generated);
+        return generated;
+    }
+    catch
+    {
+        return Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
     }
 }
+
+var adminKey = ResolveAdminKey();
 
 var failedAdminAttempts = new ConcurrentDictionary<string, (int Count, DateTime WindowStart)>();
 var adminLoopbackOnly = app.Configuration.GetValue<bool>("Breach:AdminLoopbackOnly", true);
@@ -433,7 +470,7 @@ app.MapGet("/api/kiosk/{id}/attack-payload/{attackId:int}", async (string id, in
     return Results.Content(content, "application/json");
 });
 
-app.MapPost("/api/kiosk/{id}/submit", (string id, HttpRequest httpReq, Database db, IHttpClientFactory http, IHubContext<BreachHub> hub, EventState eventState, RogueAgentOrchestrator orch) =>
+app.MapPost("/api/kiosk/{id}/submit", (string id, HttpRequest httpReq, Database db, IHttpClientFactory http, IHubContext<BreachHub> hub, EventState eventState, RogueAgentOrchestrator orch, WorkspaceStore wsStore, GitMirrorService gitMirror) =>
 {
     var token = httpReq.Headers["X-Kiosk-Token"].ToString();
     if (string.IsNullOrWhiteSpace(token) || !db.ValidateDeskToken(token, id))
@@ -591,6 +628,7 @@ app.MapPost("/api/kiosk/{id}/submit", (string id, HttpRequest httpReq, Database 
                             ledgerCmd.ExecuteNonQuery();
 
                             db.Log("VERDICT", id, v.Attack_Id, JsonSerializer.Serialize(new { status = "SOLVED", score, centipoints = totalCentipoints, baseCentipoints, speedBonus, v.Reason }));
+                            _ = gitMirror.SyncBranchAsync(id, wsStore.PathFor(id), $"Solve Attack #{v.Attack_Id} (+{score:0.#} pts)");
                         }
                         else
                         {
@@ -653,11 +691,19 @@ app.MapPost("/api/kiosk/{id}/submit", (string id, HttpRequest httpReq, Database 
             }
             else
             {
+                var errText = await evalRes.Content.ReadAsStringAsync();
                 using var conn = db.Open();
                 using var subCmd = conn.CreateCommand();
                 subCmd.CommandText = "UPDATE submissions SET status = 'failed' WHERE id = $sid";
                 subCmd.Parameters.AddWithValue("$sid", sid);
                 subCmd.ExecuteNonQuery();
+
+                foreach (var aid in activeAttacks)
+                {
+                    await hub.Clients.Group($"p:{id}").SendAsync("VERDICT", aid, "FAILED", $"Engine error ({(int)evalRes.StatusCode}): {errText}", 0.0);
+                    await hub.Clients.Group("admins").SendAsync("VERDICT", id, aid, "FAILED", $"Engine error: {errText}", 0.0);
+                }
+                await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, id);
             }
         }
         catch (Exception ex)
@@ -671,7 +717,13 @@ app.MapPost("/api/kiosk/{id}/submit", (string id, HttpRequest httpReq, Database 
                 subCmd.ExecuteNonQuery();
             }
             catch { }
-            await hub.Clients.Group($"p:{id}").SendAsync("VERDICT", 1, "FAILED", $"Evaluator error: {ex.Message}", 0.0);
+
+            foreach (var aid in activeAttacks)
+            {
+                await hub.Clients.Group($"p:{id}").SendAsync("VERDICT", aid, "FAILED", $"Evaluator connection error: {ex.Message}", 0.0);
+                await hub.Clients.Group("admins").SendAsync("VERDICT", id, aid, "FAILED", $"Evaluator error: {ex.Message}", 0.0);
+            }
+            await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, id);
         }
     });
 
@@ -729,6 +781,28 @@ var handleTelemetry = async (string id, TelemetryRequest req, HttpRequest httpRe
             cmd.Parameters.AddWithValue("$t", DateTime.UtcNow.ToString("O"));
             cmd.ExecuteNonQuery();
             await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, id);
+        }
+        catch { }
+    }
+    else if (req.Type == "TOUCH_PENALTY")
+    {
+        try
+        {
+            var pRoot = req.Payload.HasValue ? req.Payload.Value : default;
+            var details = pRoot.ValueKind != JsonValueKind.Undefined && pRoot.TryGetProperty("violations", out var viols)
+                ? viols.ToString()
+                : "UNAUTHORIZED_FILE_MODIFICATION";
+
+            using var c = db.Open();
+            using var cmd = c.CreateCommand();
+            cmd.CommandText = "INSERT INTO score_ledger (participant_id, attack_id, component, points, centipoints, reason, run_id, created_at, final) VALUES ($p, 0, 'penalty', -3.0, -300, $r, 'touch-penalty', $t, 1)";
+            cmd.Parameters.AddWithValue("$p", id);
+            cmd.Parameters.AddWithValue("$r", "Out-of-scope modification: " + (details.Length > 80 ? details[..80] : details));
+            cmd.Parameters.AddWithValue("$t", DateTime.UtcNow.ToString("O"));
+            cmd.ExecuteNonQuery();
+
+            await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, id);
+            await hub.Clients.Group("projectors").SendAsync("SCORE_UPDATE", id, -3.0);
         }
         catch { }
     }
@@ -824,7 +898,9 @@ app.MapGet("/admin/kiosks", (HttpRequest r, Database db) =>
                COUNT(DISTINCT CASE WHEN d.solved_at IS NOT NULL THEN d.attack_id END) AS solved_count,
                COUNT(DISTINCT d.attack_id) AS landed_count,
                COALESCE(q.agy_exhausted, 0) AS agy_exhausted,
-               COALESCE(q.oc_prompts, 0) AS oc_prompts
+               COALESCE(q.oc_prompts, 0) AS oc_prompts,
+               (SELECT GROUP_CONCAT(attack_id) FROM attack_deliveries WHERE participant_id = p.id AND solved_at IS NULL) AS active_attacks,
+               (SELECT MIN(landed_at) FROM attack_deliveries WHERE participant_id = p.id AND solved_at IS NULL) AS active_landed_at
         FROM participants p
         LEFT JOIN score_ledger l ON l.participant_id = p.id
         LEFT JOIN attack_deliveries d ON d.participant_id = p.id
@@ -850,7 +926,10 @@ app.MapGet("/admin/kiosks", (HttpRequest r, Database db) =>
             solvedCount = rd.GetInt32(10),
             landedCount = rd.GetInt32(11),
             agyExhausted = rd.GetInt32(12) == 1,
-            openCodePrompts = rd.GetInt32(13)
+            openCodePrompts = rd.GetInt32(13),
+            activeAttacks = rd.IsDBNull(14) ? "" : rd.GetString(14),
+            activeLandedAt = rd.IsDBNull(15) ? null : rd.GetString(15),
+            gitBranch = $"participant/{rd.GetString(0)}"
         });
     }
     return Results.Ok(list);

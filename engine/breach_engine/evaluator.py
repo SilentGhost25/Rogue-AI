@@ -15,14 +15,38 @@ import sys
 import tarfile
 import threading
 import time
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
 import psutil
 import yaml
+from .scoring import calculate_benchmark_multiplier
 
 SOLVED, FAILED, PARTIAL = "SOLVED", "FAILED", "PARTIAL"
 ROOT_DIR = Path(__file__).resolve().parents[2]
+
+
+def get_user_data_dir() -> Path:
+    local_app_data = os.environ.get("LOCALAPPDATA")
+    if local_app_data:
+        p = Path(local_app_data) / "BreachKiosk" / "engine"
+        try:
+            p.mkdir(parents=True, exist_ok=True)
+            return p
+        except Exception:
+            pass
+    fallback = ROOT_DIR / "data"
+    try:
+        fallback.mkdir(parents=True, exist_ok=True)
+        return fallback
+    except Exception:
+        temp_dir = Path(os.environ.get("TEMP", "/tmp")) / "BreachKiosk" / "engine"
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        return temp_dir
+
+
+USER_DATA_DIR = get_user_data_dir()
 
 
 @dataclass
@@ -34,6 +58,35 @@ class Verdict:
     peak_memory_mb: float = 0.0
     tier_results: dict[str, bool] | None = None
     score_percentage: float = 1.0
+    benchmark_metrics: dict[str, float] | None = None
+
+
+def collect_benchmark_metrics(base_url: str, endpoint: str = "/", count: int = 15, timeout_sec: float = 2.0) -> dict[str, float]:
+    """Measures latency percentiles across consecutive requests."""
+    latencies = []
+    url = f"{base_url.rstrip('/')}{endpoint}"
+    for _ in range(count):
+        t0 = time.perf_counter()
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "BreachBenchmark/1.0"})
+            with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
+                resp.read()
+                elapsed_ms = (time.perf_counter() - t0) * 1000.0
+                latencies.append(elapsed_ms)
+        except Exception:
+            latencies.append(timeout_sec * 1000.0)
+
+    if not latencies:
+        return {"latency_p50_ms": 0.0, "latency_p95_ms": 0.0, "latency_mean_ms": 0.0}
+
+    latencies.sort()
+    p50_idx = int(len(latencies) * 0.50)
+    p95_idx = min(len(latencies) - 1, int(len(latencies) * 0.95))
+    return {
+        "latency_p50_ms": round(latencies[p50_idx], 2),
+        "latency_p95_ms": round(latencies[p95_idx], 2),
+        "latency_mean_ms": round(sum(latencies) / len(latencies), 2),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -217,12 +270,13 @@ class SlotManager:
         for i in range(1, slot_count + 1):
             self.queue.put(i)
         self.host_sandbox_root = Path("C:/BreachSandboxes")
-        self.local_sandbox_root = ROOT_DIR / "data" / "sandboxes"
+        self.local_sandbox_root = USER_DATA_DIR / "sandboxes"
 
     def acquire(self, timeout: float = 60.0) -> int:
         return self.queue.get(timeout=timeout)
 
     def release(self, slot_id: int):
+        time.sleep(0.05)
         self.queue.put(slot_id)
 
     def get_slot_path(self, slot_id: int) -> Path:
@@ -412,6 +466,7 @@ def evaluate_attack(attack_id: int, attack_dir: Path, workspace: Path, timeout_s
         job_sandbox = JobObjectSandbox(max_memory_mb=512, max_processes=16, max_cpu_time_seconds=int(timeout_seconds))
 
         start_time = time.time()
+        deadline = start_time + timeout_seconds
         proc = launch_sandboxed_node(slot_id, slot_dir, env, job_sandbox)
 
         # Wrap in psutil for CPU and memory telemetry
@@ -435,26 +490,25 @@ def evaluate_attack(attack_id: int, attack_dir: Path, workspace: Path, timeout_s
             "get_cpu_times": lambda: ps_proc.cpu_times() if ps_proc and ps_proc.is_running() else None
         }
 
-        # Wait up to 5s for server to start, checking deadline
+        # Wait up to 10s for server to start, checking deadline
         healthy = False
-        deadline = start_time + timeout_seconds
+        startup_deadline = start_time + min(10.0, timeout_seconds)
 
-        for _ in range(50):
-            if time.time() > deadline:
-                return Verdict(attack_id, FAILED, "Application startup timed out (exceeded limit).")
+        for _ in range(80):
+            if time.time() > startup_deadline:
+                return Verdict(attack_id, FAILED, "Application startup timed out (/api/health did not respond within 10s).")
 
             # Check if process crashed or was killed by Job Object limit (e.g. memory limit exceeded)
             if proc.poll() is not None:
-                return Verdict(attack_id, FAILED, f"Application process terminated unexpectedly with code {proc.returncode} (possible memory limit or crash).")
+                return Verdict(attack_id, FAILED, f"Application process terminated unexpectedly with code {proc.returncode} (crash or syntax error).")
 
             try:
-                import urllib.request
-                with urllib.request.urlopen(f"{base_url}/api/health", timeout=0.2) as res:
+                with urllib.request.urlopen(f"{base_url}/api/health", timeout=0.25) as res:
                     if res.status == 200:
                         healthy = True
                         break
             except Exception:
-                time.sleep(0.1)
+                time.sleep(0.08)
 
         if not healthy:
             return Verdict(attack_id, FAILED, "Application failed to boot or /api/health did not respond.")
@@ -505,7 +559,21 @@ def evaluate_attack(attack_id: int, attack_dir: Path, workspace: Path, timeout_s
                 status = SOLVED if score_pct >= 1.0 else (PARTIAL if score_pct > 0.0 else FAILED)
                 passed_ids = [t.get("id") for t in tiers_spec if tier_results.get(t.get("id"), False)]
                 reason = f"Tiers passed: {earned_weight}/{total_weight}% ({', '.join(passed_ids) if passed_ids else 'none'})"
-                return Verdict(attack_id, status, reason, cpu_time_ms, peak_memory_mb, tier_results, score_pct)
+
+                sla_spec = m_data.get("benchmark_sla") if manifest_file.exists() and "m_data" in locals() and m_data else None
+                benchmark_metrics = None
+                if sla_spec:
+                    probe_route = sla_spec.get("probe_route", "/")
+                    b_count = int(sla_spec.get("probe_count", 15))
+                    benchmark_metrics = collect_benchmark_metrics(base_url, probe_route, count=b_count)
+                    benchmark_metrics["cpu_time_ms"] = float(cpu_time_ms)
+                    benchmark_metrics["peak_memory_mb"] = float(peak_memory_mb)
+                    bench_mult = calculate_benchmark_multiplier(benchmark_metrics, sla_spec)
+                    score_pct = round(score_pct * bench_mult, 4)
+                    if bench_mult < 1.0:
+                        reason += f" | SLA multiplier: {int(bench_mult * 100)}% (p95: {benchmark_metrics.get('latency_p95_ms')}ms, SLA: {sla_spec.get('target_p95_ms')}ms)"
+
+                return Verdict(attack_id, status, reason, cpu_time_ms, peak_memory_mb, tier_results, score_pct, benchmark_metrics)
             else:
                 # Default equal weighting across keys
                 total_count = len(tier_results)
@@ -560,6 +628,11 @@ def evaluate_attack(attack_id: int, attack_dir: Path, workspace: Path, timeout_s
                     proc.kill()
                 except Exception:
                     pass
+            try:
+                if hasattr(proc, "wait"):
+                    proc.wait(timeout=1.0)
+            except Exception:
+                pass
 
         if job_sandbox:
             job_sandbox.close()
@@ -642,13 +715,16 @@ class DeepEvalTask:
 
 DEEP_EVAL_QUEUE: queue.Queue[DeepEvalTask] = queue.Queue()
 DEEP_EVAL_RESULTS: dict[str, dict] = {}
-RESULTS_DIR = ROOT_DIR / "data" / "eval_results"
+RESULTS_DIR = USER_DATA_DIR / "eval_results"
 
 
 def get_deep_eval_result(submission_id: str) -> dict | None:
     if submission_id in DEEP_EVAL_RESULTS:
         return DEEP_EVAL_RESULTS[submission_id]
-    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
     f = RESULTS_DIR / f"{submission_id}.json"
     if f.exists():
         try:
@@ -679,7 +755,10 @@ def enqueue_deep_evaluation(
 
 def _deep_worker_loop():
     attacks_dir = ROOT_DIR / "attacks"
-    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
 
     while True:
         try:
@@ -693,6 +772,13 @@ def _deep_worker_loop():
             boot_iters = 100 if degrade else 1000
 
             workspace = Path(task.workspace_dir)
+            if not workspace.exists():
+                DEEP_EVAL_RESULTS[task.submission_id] = {
+                    "submission_id": task.submission_id,
+                    "status": "FAILED",
+                    "reason": "Workspace directory no longer exists"
+                }
+                continue
             all_attacks = {a.id: a for a in from_manifest_load_all(attacks_dir)} if attacks_dir.exists() else {}
 
             per_attack_reports = []

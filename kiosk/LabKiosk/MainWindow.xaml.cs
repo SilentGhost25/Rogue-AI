@@ -101,6 +101,12 @@ public partial class MainWindow : Window
             "CRITICAL SEVERITY · MULTI-SYSTEM ANOMALY",
             "Multiple portal subsystems are failing consistently and leaking restricted operational state.",
             "Correlated alerts across identity and service layers indicate compounding workspace faults."
+        ),
+        [12] = new(
+            "Incident #12: Ouroboros (The Shadow Variable)",
+            "CRITICAL SEVERITY · RBAC DESYNC",
+            "Restricted admin and operator endpoints are accepting lower-privilege sessions despite route guards.",
+            "Audit telemetry indicates centralized role checks are bypassing expected privilege boundaries."
         )
     };
 
@@ -117,7 +123,8 @@ public partial class MainWindow : Window
         [8] = "Identity Verification Alert",
         [9] = "State Consistency Alert",
         [10] = "Asset Boundary Alert",
-        [11] = "Core System Fracture"
+        [11] = "Core System Fracture",
+        [12] = "Ouroboros: The Shadow Variable"
     };
 
     private IncidentWindow? _activeIncidentWindow;
@@ -428,14 +435,16 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ShowSiteDownInWebView()
+    private void ShowSiteDownInWebView(string? lastError = null)
     {
         if (Site.CoreWebView2 is null) return;
-        Site.CoreWebView2.NavigateToString("""
-            <!doctype html><html><body style="background:#05080f;color:#fee2e2;font-family:Consolas,monospace;padding:3rem;">
-            <div style="border:1px solid #ef4444;border-left:4px solid #ef4444;background:rgba(127,29,29,0.45);padding:1.5rem;border-radius:6px;max-width:720px;margin:2rem auto;">
-            <h1 style="color:#ef4444;margin-top:0;">AEGIS SERVICE OFFLINE // RUNTIME FAULT</h1>
-            <p>The local municipal web service failed to restart or exited unexpectedly. Inspect the workspace entrypoint and recent changes.</p>
+        var err = System.Net.WebUtility.HtmlEncode(lastError ?? _site?.LastError ?? "The local municipal web service failed to restart or exited unexpectedly.");
+        Site.CoreWebView2.NavigateToString($$"""
+            <!doctype html><html><body style="background:#05080f;color:#fee2e2;font-family:Consolas,monospace;padding:2.5rem;">
+            <div style="border:1px solid #ef4444;border-left:4px solid #ef4444;background:rgba(127,29,29,0.45);padding:1.5rem;border-radius:6px;max-width:780px;margin:1.5rem auto;">
+            <h1 style="color:#ef4444;margin-top:0;">500 // SERVICE UNHEALTHY (NODE CRASH)</h1>
+            <p>The local municipal web application crashed or failed to boot. Inspect the runtime error trace below, resolve any syntax or runtime exceptions in your code, and save to restart.</p>
+            <pre style="background:#020617;border:1px solid #334155;padding:1rem;border-radius:4px;color:#fca5a5;overflow-x:auto;white-space:pre-wrap;word-break:break-word;max-height:320px;"><code>{{err}}</code></pre>
             </div></body></html>
             """);
     }
@@ -610,7 +619,8 @@ public partial class MainWindow : Window
                 NavigateSiteToRoute("/");
             Code.RefreshAll();
         });
-        _site.SiteDown += () => Dispatcher.InvokeAsync(ShowSiteDownInWebView);
+        _site.SiteDown += err => Dispatcher.InvokeAsync(() => ShowSiteDownInWebView(err));
+        _site.SiteRestored += () => Dispatcher.InvokeAsync(() => NavigateSiteToRoute("/"));
         _site.Problem += Status;
         _site.Start();
     }

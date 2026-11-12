@@ -46,3 +46,4 @@ function requireClearance(minLevel) {
 }
 
 module.exports = { requireAuth, requireRole, requireClearance, configureRoles };
+

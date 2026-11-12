@@ -457,13 +457,13 @@ async function openModal(id) {
     <div style="display:flex; justify-content:space-between; align-items:center; background:var(--panel-sub); padding:0.8rem; border-radius:6px">
       <div>
         <div style="font-size:1.1rem; font-weight:800">${p.name} (${p.id})</div>
-        <div style="color:var(--mute); font-size:12px">Kiosk Hostname: ${p.kioskId} &bull; Registered: ${p.createdAt.substring(11, 19)}</div>
+        <div style="color:var(--mute); font-size:12px">Kiosk Hostname: ${p.kioskId} &bull; Registered: ${p.createdAt.substring(11, 19)} &bull; Status: <span style="color:${p.status === 'disqualified' ? 'var(--accent)' : 'var(--ok)'}; font-weight:700">${(p.status || 'ONLINE').toUpperCase()}</span></div>
         <div style="margin-top:4px; font-size:12px">Git Branch: <code style="color:var(--cyan)">${p.gitBranch}</code></div>
       </div>
       <div>
-        ${p.status === 'alive' 
-          ? `<button class="btn-danger" onclick="disqualifyParticipant('${p.id}')">Disqualify</button>`
-          : `<span style="color:var(--accent); font-weight:800">DISQUALIFIED</span>`}
+        ${p.status === 'disqualified' || p.status === 'eliminated'
+          ? `<span style="color:var(--accent); font-weight:800; border:1px solid var(--accent); padding:4px 8px; border-radius:4px">DISQUALIFIED</span>`
+          : `<button class="btn-danger" onclick="disqualifyParticipant('${p.id}')">Disqualify</button>`}
       </div>
     </div>
 

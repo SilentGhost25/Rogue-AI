@@ -35,3 +35,4 @@ narrative:
   misdirection: "Audit log API routes are returning elevated telemetry to unprivileged sessions."
   broadcast_title: "ATTACK 12: OUROBOROS (THE SHADOW VARIABLE)"
 status: ready
+

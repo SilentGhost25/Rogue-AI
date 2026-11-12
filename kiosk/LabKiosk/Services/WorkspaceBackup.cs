@@ -109,22 +109,28 @@ public static class WorkspaceBackup
             if (!Skip.Contains(Path.GetFileName(d))) Copy(d, Path.Combine(dst, Path.GetFileName(d)));
     }
 
-    /// <summary>Plan section 7: use C:\BreachWorkspace, fall back to a folder next to the app if it is not writable.</summary>
+    /// <summary>Resolve a writable workspace directory with multi-tier resilient fallback.</summary>
     public static string ResolveWorkspace(string preferred)
     {
-        try
+        var candidates = new List<string>();
+        if (!string.IsNullOrWhiteSpace(preferred)) candidates.Add(preferred);
+        candidates.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "BreachWorkspace"));
+        candidates.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BreachKiosk", "workspace"));
+        candidates.Add(Path.Combine(AppContext.BaseDirectory, "workspace"));
+
+        foreach (var c in candidates)
         {
-            Directory.CreateDirectory(preferred);
-            var probe = Path.Combine(preferred, ".write-test");
-            File.WriteAllText(probe, "ok");
-            File.Delete(probe);
-            return preferred;
+            try
+            {
+                Directory.CreateDirectory(c);
+                var probe = Path.Combine(c, ".write-test");
+                File.WriteAllText(probe, "ok");
+                File.Delete(probe);
+                return c;
+            }
+            catch { }
         }
-        catch
-        {
-            var fallback = Path.Combine(AppContext.BaseDirectory, "workspace");
-            Directory.CreateDirectory(fallback);
-            return fallback;
-        }
+
+        return preferred;
     }
 }

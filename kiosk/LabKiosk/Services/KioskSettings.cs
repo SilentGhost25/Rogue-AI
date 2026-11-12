@@ -28,10 +28,42 @@ public sealed class KioskSettings
 
     public static KioskSettings Load()
     {
-        var path = Path.Combine(AppContext.BaseDirectory, "kiosk.json");
-        var s = File.Exists(path)
-            ? JsonSerializer.Deserialize<KioskSettings>(File.ReadAllText(path), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new()
-            : new();
+        var basePath = Path.Combine(AppContext.BaseDirectory, "kiosk.json");
+        var userPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BreachKiosk", "kiosk.json");
+
+        KioskSettings s = new();
+        if (File.Exists(basePath))
+        {
+            try
+            {
+                s = JsonSerializer.Deserialize<KioskSettings>(File.ReadAllText(basePath), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new();
+            }
+            catch { }
+        }
+
+        // Apply user overlay overrides if present
+        if (File.Exists(userPath))
+        {
+            try
+            {
+                var userS = JsonSerializer.Deserialize<KioskSettings>(File.ReadAllText(userPath), new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                if (userS != null)
+                {
+                    if (!string.IsNullOrWhiteSpace(userS.DisplayName)) s.DisplayName = userS.DisplayName;
+                    if (!string.IsNullOrWhiteSpace(userS.KioskId)) s.KioskId = userS.KioskId;
+                    if (!string.IsNullOrWhiteSpace(userS.DeskId)) s.DeskId = userS.DeskId;
+                    if (!string.IsNullOrWhiteSpace(userS.DeskToken)) s.DeskToken = userS.DeskToken;
+                    if (!string.IsNullOrWhiteSpace(userS.Password)) s.Password = userS.Password;
+                    if (userS.Onboarded) s.Onboarded = true;
+                    if (!string.IsNullOrWhiteSpace(userS.GitHubHandle)) s.GitHubHandle = userS.GitHubHandle;
+                    if (!string.IsNullOrWhiteSpace(userS.GoogleAccount)) s.GoogleAccount = userS.GoogleAccount;
+                    if (!string.IsNullOrWhiteSpace(userS.ServerUrl) && userS.ServerUrl != "http://127.0.0.1:5080" && !userS.ServerUrl.Equals("AUTO", StringComparison.OrdinalIgnoreCase)) s.ServerUrl = userS.ServerUrl;
+                    if (!string.IsNullOrWhiteSpace(userS.WorkspacePath)) s.WorkspacePath = userS.WorkspacePath;
+                    if (userS.OpenCodeCap > 0) s.OpenCodeCap = userS.OpenCodeCap;
+                }
+            }
+            catch { }
+        }
 
         s.WorkspacePath = Environment.ExpandEnvironmentVariables(s.WorkspacePath ?? @"C:\BreachWorkspace");
         s.DataPath = Environment.ExpandEnvironmentVariables(s.DataPath ?? @"%LOCALAPPDATA%\BreachKiosk");
@@ -77,11 +109,23 @@ public sealed class KioskSettings
 
     public void Save()
     {
+        var json = JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true });
+
+        // Always save to user overlay (%LOCALAPPDATA%\BreachKiosk\kiosk.json) so standard users never fail
         try
         {
-            var path = Path.Combine(AppContext.BaseDirectory, "kiosk.json");
-            var json = JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(path, json);
+            var userDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BreachKiosk");
+            Directory.CreateDirectory(userDir);
+            var userPath = Path.Combine(userDir, "kiosk.json");
+            File.WriteAllText(userPath, json);
+        }
+        catch { }
+
+        // Also attempt best-effort write to base app directory
+        try
+        {
+            var basePath = Path.Combine(AppContext.BaseDirectory, "kiosk.json");
+            File.WriteAllText(basePath, json);
         }
         catch { }
     }

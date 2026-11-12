@@ -14,19 +14,58 @@ public static class HostDiscoveryClient
 {
     private const int DiscoveryPort = 5082;
     private static readonly HttpClient ProbeHttp = new() { Timeout = TimeSpan.FromMilliseconds(1200) };
+    private static readonly HttpClient FastProbeHttp = new() { Timeout = TimeSpan.FromMilliseconds(400) };
 
     public static async Task<bool> IsHealthyAsync(string serverUrl)
     {
         if (string.IsNullOrWhiteSpace(serverUrl)) return false;
         try
         {
-            using var res = await ProbeHttp.GetAsync(serverUrl.TrimEnd('/') + "/api/state");
+            var clean = serverUrl.TrimEnd('/');
+            using var res = await ProbeHttp.GetAsync(clean + "/api/discovery");
+            if (res.IsSuccessStatusCode) return true;
+        }
+        catch { }
+
+        try
+        {
+            var clean = serverUrl.TrimEnd('/');
+            using var res = await ProbeHttp.GetAsync(clean + "/api/state");
             return res.IsSuccessStatusCode;
         }
         catch
         {
             return false;
         }
+    }
+
+    public static string GetActiveNetworkSummary()
+    {
+        try
+        {
+            var parts = new List<string>();
+            foreach (var ni in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (ni.OperationalStatus != OperationalStatus.Up) continue;
+                if (ni.NetworkInterfaceType is NetworkInterfaceType.Loopback or NetworkInterfaceType.Tunnel) continue;
+                var name = ni.Name.ToLowerInvariant();
+                var desc = ni.Description.ToLowerInvariant();
+                if (name.Contains("vethernet") || name.Contains("wsl") || desc.Contains("virtual") || desc.Contains("hyper-v") || desc.Contains("vmware"))
+                    continue;
+
+                foreach (var ua in ni.GetIPProperties().UnicastAddresses)
+                {
+                    if (ua.Address.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(ua.Address))
+                    {
+                        var typeLabel = ni.NetworkInterfaceType == NetworkInterfaceType.Wireless80211 ? "Wi-Fi" : "LAN";
+                        parts.Add($"{typeLabel} ({ua.Address})");
+                    }
+                }
+            }
+            if (parts.Count > 0) return string.Join(" · ", parts);
+        }
+        catch { }
+        return "Network: Local / Offline";
     }
 
     private static List<IPEndPoint> GetBroadcastEndpoints()
@@ -122,6 +161,98 @@ public static class HostDiscoveryClient
             }
         }
         catch { /* port busy or timeout */ }
+
+        // Fallback: fast parallel HTTP subnet sweep (bypasses Wi-Fi AP client isolation & UDP drops)
+        try
+        {
+            var subnetHit = await ProbeSubnetFastAsync(ct);
+            if (!string.IsNullOrEmpty(subnetHit))
+                return subnetHit;
+        }
+        catch { }
+
+        return null;
+    }
+
+    private static async Task<string?> ProbeSubnetFastAsync(CancellationToken ct)
+    {
+        var activeSubnets = new List<(string Prefix, IPAddress? Gateway)>();
+        try
+        {
+            foreach (var ni in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (ni.OperationalStatus != OperationalStatus.Up) continue;
+                if (ni.NetworkInterfaceType is NetworkInterfaceType.Loopback or NetworkInterfaceType.Tunnel) continue;
+                var name = ni.Name.ToLowerInvariant();
+                var desc = ni.Description.ToLowerInvariant();
+                if (name.Contains("vethernet") || name.Contains("wsl") || desc.Contains("virtual") || desc.Contains("hyper-v"))
+                    continue;
+
+                var ipProps = ni.GetIPProperties();
+                var gw = ipProps.GatewayAddresses.FirstOrDefault(g =>
+                    g.Address.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(g.Address))?.Address;
+
+                foreach (var ua in ipProps.UnicastAddresses)
+                {
+                    if (ua.Address.AddressFamily == AddressFamily.InterNetwork && ua.IPv4Mask != null)
+                    {
+                        var ipBytes = ua.Address.GetAddressBytes();
+                        var maskBytes = ua.IPv4Mask.GetAddressBytes();
+                        if (maskBytes[0] == 255 && maskBytes[1] == 255 && maskBytes[2] == 255)
+                        {
+                            var prefix = $"{ipBytes[0]}.{ipBytes[1]}.{ipBytes[2]}";
+                            activeSubnets.Add((prefix, gw));
+                        }
+                    }
+                }
+            }
+        }
+        catch { }
+
+        if (activeSubnets.Count == 0) return null;
+
+        using var fastCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        fastCts.CancelAfter(1500);
+
+        foreach (var (prefix, gw) in activeSubnets)
+        {
+            if (gw != null && await IsHealthyAsync($"http://{gw}:5080"))
+                return $"http://{gw}:5080";
+
+            var candidates = Enumerable.Range(1, 254)
+                .Select(i => $"http://{prefix}.{i}:5080")
+                .ToList();
+
+            var throttler = new SemaphoreSlim(48);
+            var foundTcs = new TaskCompletionSource<string?>();
+
+            var tasks = candidates.Select(async url =>
+            {
+                await throttler.WaitAsync(fastCts.Token);
+                try
+                {
+                    if (foundTcs.Task.IsCompleted) return;
+                    using var req = new HttpRequestMessage(HttpMethod.Get, url + "/api/discovery");
+                    using var res = await FastProbeHttp.SendAsync(req, fastCts.Token);
+                    if (res.IsSuccessStatusCode)
+                    {
+                        foundTcs.TrySetResult(url);
+                    }
+                }
+                catch { }
+                finally
+                {
+                    throttler.Release();
+                }
+            }).ToList();
+
+            await Task.WhenAny(foundTcs.Task, Task.WhenAll(tasks));
+            if (foundTcs.Task.IsCompleted)
+            {
+                var winner = await foundTcs.Task;
+                if (!string.IsNullOrEmpty(winner)) return winner;
+            }
+        }
 
         return null;
     }
