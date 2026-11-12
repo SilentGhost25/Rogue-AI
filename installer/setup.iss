@@ -24,6 +24,7 @@ Compression=lzma2/ultra
 SolidCompression=yes
 WizardStyle=modern
 PrivilegesRequired=lowest
+PrivilegesRequiredOverridesAllowed=commandline
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -50,6 +51,7 @@ Source: "..\vendor\nodejs\*"; DestDir: "{app}\nodejs"; Flags: ignoreversion
 Source: "..\vendor\opencode\*"; DestDir: "{app}\opencode"; Components: participant; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\vendor\agy\*"; DestDir: "{app}\agy"; Components: participant; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\scripts\provision-ai-clis.ps1"; DestDir: "{app}\scripts"; Components: participant; Flags: ignoreversion
+Source: "..\scripts\uninstall-complete.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
 ; Default Kiosk Settings
 Source: "..\kiosk\LabKiosk\kiosk.json"; DestDir: "{app}"; Flags: ignoreversion
 ; Target Website (AEGIS including bundled node_modules; exclude any runtime DBs or backups)
@@ -76,16 +78,36 @@ Type: filesandordirs; Name: "{localappdata}\BreachKiosk\host\workspaces"
 Type: filesandordirs; Name: "{localappdata}\BreachKiosk\host\backups"
 Type: files; Name: "{localappdata}\BreachKiosk\host\breach.db*"
 Type: files; Name: "{localappdata}\BreachKiosk\host\controlplane.db*"
+Type: files; Name: "{autodesktop}\*Breach*.lnk"
+Type: files; Name: "{autodesktop}\*Rogue*.lnk"
+Type: files; Name: "{commondesktop}\*Breach*.lnk"
+Type: files; Name: "{commondesktop}\*Rogue*.lnk"
+Type: files; Name: "{userdesktop}\*Breach*.lnk"
+Type: files; Name: "{userdesktop}\*Rogue*.lnk"
+Type: filesandordirs; Name: "{userprograms}\*Breach*"
+Type: filesandordirs; Name: "{commonprograms}\*Breach*"
+Type: filesandordirs; Name: "{userprograms}\ROGUE AI*"
+Type: filesandordirs; Name: "{commonprograms}\ROGUE AI*"
 
 [UninstallDelete]
 ; Clean up runtime data, workspaces, DBs, and provisioned AI CLIs on uninstall
 Type: filesandordirs; Name: "C:\BreachWorkspace"
+Type: filesandordirs; Name: "C:\BreachSandboxes"
+Type: filesandordirs; Name: "C:\BreachSecrets"
 Type: filesandordirs; Name: "{localappdata}\BreachKiosk"
 Type: filesandordirs; Name: "{localappdata}\agy"
 Type: files; Name: "{app}\kiosk.json"
 Type: filesandordirs; Name: "{app}\agy"
 Type: filesandordirs; Name: "{app}\opencode"
 Type: filesandordirs; Name: "{app}\workspace"
+Type: files; Name: "{autodesktop}\*Breach*.lnk"
+Type: files; Name: "{autodesktop}\*Rogue*.lnk"
+Type: files; Name: "{commondesktop}\*Breach*.lnk"
+Type: files; Name: "{commondesktop}\*Rogue*.lnk"
+Type: files; Name: "{userdesktop}\*Breach*.lnk"
+Type: files; Name: "{userdesktop}\*Rogue*.lnk"
+Type: filesandordirs; Name: "{userprograms}\*Breach*"
+Type: filesandordirs; Name: "{commonprograms}\*Breach*"
 Type: dirifempty; Name: "{app}"
 
 [Icons]
@@ -172,10 +194,19 @@ end;
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   ResultCode: Integer;
+  PsScript: string;
 begin
   if CurUninstallStep = usUninstall then
   begin
     // Terminate running processes cleanly so binaries and workspace handles are unlocked before removal
-    Exec(ExpandConstant('{cmd}'), '/c taskkill /F /IM LabKiosk.exe /IM ControlPlane.exe /IM opencode.exe /IM agy.exe /IM node.exe /IM python.exe /T >nul 2>&1', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    Exec(ExpandConstant('{cmd}'), '/c taskkill /F /IM LabKiosk.exe /IM ControlPlane.exe /IM opencode.exe /IM agy.exe /IM node.exe /IM python.exe /IM uvicorn.exe /T >nul 2>&1', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  end
+  else if CurUninstallStep = usPostUninstall then
+  begin
+    PsScript := ExpandConstant('{app}\scripts\uninstall-complete.ps1');
+    if FileExists(PsScript) then
+    begin
+      Exec('powershell.exe', '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + PsScript + '" -Silent', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    end;
   end;
 end;
