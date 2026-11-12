@@ -288,74 +288,16 @@ app.MapPost("/api/kiosk/enroll", async (EnrollRequest req, Database db, IHubCont
 app.MapPost("/api/kiosk/register", async (RegisterRequest req, HttpRequest httpReq, Database db, IHubContext<BreachHub> hub) =>
 {
     var remoteIp = httpReq.HttpContext.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1";
-    var desk = !string.IsNullOrWhiteSpace(req.DeskId) ? req.DeskId : req.KioskId;
-    using var c = db.Open();
-    string id;
-    using var find = c.CreateCommand();
-    find.CommandText = "SELECT id FROM participants WHERE kiosk_id = $k OR (desk_id = $d AND desk_id != '')";
-    find.Parameters.AddWithValue("$k", req.KioskId);
-    find.Parameters.AddWithValue("$d", desk);
-    if (find.ExecuteScalar() is string existing)
-    {
-        id = existing;
-        using var upd = c.CreateCommand();
-        upd.CommandText = "UPDATE participants SET name = $n, desk_id = $d, password = $pwd, ip_address = $ip, last_seen_at = $t, status = 'online' WHERE id = $id";
-        upd.Parameters.AddWithValue("$n", req.Name);
-        upd.Parameters.AddWithValue("$d", desk);
-        upd.Parameters.AddWithValue("$pwd", req.Password ?? "");
-        upd.Parameters.AddWithValue("$ip", remoteIp);
-        upd.Parameters.AddWithValue("$t", DateTime.UtcNow.ToString("O"));
-        upd.Parameters.AddWithValue("$id", id);
-        upd.ExecuteNonQuery();
-        db.Log("KIOSK_UPDATED", id, payloadJson: JsonSerializer.Serialize(new { name = req.Name, deskId = desk, ip = remoteIp, github = req.GitHubHandle, google = req.GoogleAccount }));
-        await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, id);
-    }
-    else
-    {
-        id = "p" + Guid.NewGuid().ToString("N")[..10];
-        using var ins = c.CreateCommand();
-        ins.CommandText = "INSERT INTO participants (id, name, kiosk_id, desk_id, password, ip_address, last_seen_at, status, created_at) VALUES ($i,$n,$k,$d,$pwd,$ip,$t,'online',$t)";
-        ins.Parameters.AddWithValue("$i", id);
-        ins.Parameters.AddWithValue("$n", req.Name);
-        ins.Parameters.AddWithValue("$k", req.KioskId);
-        ins.Parameters.AddWithValue("$d", desk);
-        ins.Parameters.AddWithValue("$pwd", req.Password ?? "");
-        ins.Parameters.AddWithValue("$ip", remoteIp);
-        ins.Parameters.AddWithValue("$t", DateTime.UtcNow.ToString("O"));
-        ins.ExecuteNonQuery();
-        db.Log("KIOSK_REGISTERED", id, payloadJson: JsonSerializer.Serialize(new { name = req.Name, deskId = desk, ip = remoteIp, github = req.GitHubHandle, google = req.GoogleAccount }));
-        await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, id);
-    }
+    var (id, _, token, _) = db.RegisterOrUpdateKiosk(
+        req.Name,
+        req.KioskId,
+        req.DeskId,
+        req.Password,
+        remoteIp,
+        req.GitHubHandle,
+        req.GoogleAccount);
 
-    // Bind or issue a valid desk token for this desk/participant so SignalR and Snapshots authorize cleanly
-    string token;
-    using var findTok = c.CreateCommand();
-    findTok.CommandText = "SELECT token FROM desk_tokens WHERE desk_id = $d OR participant_id = $p LIMIT 1";
-    findTok.Parameters.AddWithValue("$d", desk);
-    findTok.Parameters.AddWithValue("$p", id);
-    if (findTok.ExecuteScalar() is string tok)
-    {
-        token = tok;
-        using var updTok = c.CreateCommand();
-        updTok.CommandText = "UPDATE desk_tokens SET participant_id = $p, desk_id = $d, enrolled_at = $t WHERE token = $tok";
-        updTok.Parameters.AddWithValue("$p", id);
-        updTok.Parameters.AddWithValue("$d", desk);
-        updTok.Parameters.AddWithValue("$t", DateTime.UtcNow.ToString("O"));
-        updTok.Parameters.AddWithValue("$tok", token);
-        updTok.ExecuteNonQuery();
-    }
-    else
-    {
-        token = "dt_" + Guid.NewGuid().ToString("N")[..16];
-        using var insTok = c.CreateCommand();
-        insTok.CommandText = "INSERT OR REPLACE INTO desk_tokens (token, desk_id, participant_id, enrolled_at) VALUES ($t, $d, $p, $time)";
-        insTok.Parameters.AddWithValue("$t", token);
-        insTok.Parameters.AddWithValue("$d", desk);
-        insTok.Parameters.AddWithValue("$p", id);
-        insTok.Parameters.AddWithValue("$time", DateTime.UtcNow.ToString("O"));
-        insTok.ExecuteNonQuery();
-    }
-
+    await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, id);
     return Results.Ok(new { participantId = id, token = token });
 });
 

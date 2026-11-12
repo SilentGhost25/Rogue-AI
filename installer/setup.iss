@@ -140,7 +140,7 @@ begin
   ServerPage.Add('Organizer Host IP / URL (or AUTO for dynamic discovery):', False);
   ServerPage.Add('Participant Desk Identifier (e.g. DESK-01, DESK-02):', False);
   ServerPage.Values[0] := 'AUTO';
-  ServerPage.Values[1] := 'DESK-01';
+  ServerPage.Values[1] := GetComputerNameString();
 end;
 
 function ShouldSkipPage(PageID: Integer): Boolean;

@@ -274,6 +274,136 @@ public partial class Database
         return (true, "Enrolled successfully", pid, deskId);
     }
 
+    public (string ParticipantId, string DeskId, string Token, bool IsNew) RegisterOrUpdateKiosk(
+        string name,
+        string kioskId,
+        string? requestedDeskId,
+        string? password,
+        string remoteIp,
+        string? gitHubHandle = null,
+        string? googleAccount = null)
+    {
+        using var c = Open();
+        using var tx = c.BeginTransaction();
+
+        string? existingId = null;
+        string? existingDesk = null;
+        using (var find = c.CreateCommand())
+        {
+            find.Transaction = tx;
+            find.CommandText = "SELECT id, COALESCE(desk_id, '') FROM participants WHERE kiosk_id = $k LIMIT 1";
+            find.Parameters.AddWithValue("$k", kioskId);
+            using var rd = find.ExecuteReader();
+            if (rd.Read())
+            {
+                existingId = rd.GetString(0);
+                existingDesk = rd.GetString(1);
+            }
+        }
+
+        var id = existingId ?? ("p" + Guid.NewGuid().ToString("N")[..10]);
+        var candidateDesk = !string.IsNullOrWhiteSpace(requestedDeskId) ? requestedDeskId.Trim() : kioskId;
+
+        bool IsDeskTakenByAnother(string d)
+        {
+            using var chk = c.CreateCommand();
+            chk.Transaction = tx;
+            chk.CommandText = "SELECT COUNT(*) FROM participants WHERE desk_id = $d AND id != $id";
+            chk.Parameters.AddWithValue("$d", d);
+            chk.Parameters.AddWithValue("$id", id);
+            if (Convert.ToInt64(chk.ExecuteScalar()) > 0) return true;
+
+            using var chkTok = c.CreateCommand();
+            chkTok.Transaction = tx;
+            chkTok.CommandText = "SELECT COUNT(*) FROM desk_tokens WHERE desk_id = $d AND participant_id IS NOT NULL AND participant_id != $id";
+            chkTok.Parameters.AddWithValue("$d", d);
+            chkTok.Parameters.AddWithValue("$id", id);
+            return Convert.ToInt64(chkTok.ExecuteScalar()) > 0;
+        }
+
+        var desk = candidateDesk;
+        if (IsDeskTakenByAnother(desk))
+        {
+            desk = !string.IsNullOrWhiteSpace(existingDesk) && !IsDeskTakenByAnother(existingDesk)
+                ? existingDesk
+                : (!IsDeskTakenByAnother(kioskId) ? kioskId : $"DESK-{id[1..7].ToUpperInvariant()}");
+        }
+
+        var now = DateTime.UtcNow.ToString("O");
+        bool isNew = existingId is null;
+        if (!isNew)
+        {
+            using var upd = c.CreateCommand();
+            upd.Transaction = tx;
+            upd.CommandText = "UPDATE participants SET name = $n, desk_id = $d, password = $pwd, ip_address = $ip, last_seen_at = $t, status = 'online' WHERE id = $id";
+            upd.Parameters.AddWithValue("$n", name);
+            upd.Parameters.AddWithValue("$d", desk);
+            upd.Parameters.AddWithValue("$pwd", password ?? "");
+            upd.Parameters.AddWithValue("$ip", remoteIp);
+            upd.Parameters.AddWithValue("$t", now);
+            upd.Parameters.AddWithValue("$id", id);
+            upd.ExecuteNonQuery();
+        }
+        else
+        {
+            using var ins = c.CreateCommand();
+            ins.Transaction = tx;
+            ins.CommandText = "INSERT INTO participants (id, name, kiosk_id, desk_id, password, ip_address, last_seen_at, status, created_at) VALUES ($i,$n,$k,$d,$pwd,$ip,$t,'online',$t)";
+            ins.Parameters.AddWithValue("$i", id);
+            ins.Parameters.AddWithValue("$n", name);
+            ins.Parameters.AddWithValue("$k", kioskId);
+            ins.Parameters.AddWithValue("$d", desk);
+            ins.Parameters.AddWithValue("$pwd", password ?? "");
+            ins.Parameters.AddWithValue("$ip", remoteIp);
+            ins.Parameters.AddWithValue("$t", now);
+            ins.ExecuteNonQuery();
+        }
+
+        string token;
+        using (var findTok = c.CreateCommand())
+        {
+            findTok.Transaction = tx;
+            findTok.CommandText = "SELECT token FROM desk_tokens WHERE participant_id = $p OR (desk_id = $d AND participant_id IS NULL) ORDER BY CASE WHEN participant_id = $p THEN 0 ELSE 1 END LIMIT 1";
+            findTok.Parameters.AddWithValue("$p", id);
+            findTok.Parameters.AddWithValue("$d", desk);
+            if (findTok.ExecuteScalar() is string tok)
+            {
+                token = tok;
+                using var updTok = c.CreateCommand();
+                updTok.Transaction = tx;
+                updTok.CommandText = "UPDATE desk_tokens SET participant_id = $p, desk_id = $d, enrolled_at = $t WHERE token = $tok";
+                updTok.Parameters.AddWithValue("$p", id);
+                updTok.Parameters.AddWithValue("$d", desk);
+                updTok.Parameters.AddWithValue("$t", now);
+                updTok.Parameters.AddWithValue("$tok", token);
+                updTok.ExecuteNonQuery();
+            }
+            else
+            {
+                token = "dt_" + Guid.NewGuid().ToString("N")[..16];
+                using var insTok = c.CreateCommand();
+                insTok.Transaction = tx;
+                insTok.CommandText = "INSERT INTO desk_tokens (token, desk_id, participant_id, enrolled_at) VALUES ($t, $d, $p, $time)";
+                insTok.Parameters.AddWithValue("$t", token);
+                insTok.Parameters.AddWithValue("$d", desk);
+                insTok.Parameters.AddWithValue("$p", id);
+                insTok.Parameters.AddWithValue("$time", now);
+                insTok.ExecuteNonQuery();
+            }
+        }
+
+        tx.Commit();
+        Log(isNew ? "KIOSK_REGISTERED" : "KIOSK_UPDATED", id, payloadJson: System.Text.Json.JsonSerializer.Serialize(new
+        {
+            name,
+            deskId = desk,
+            ip = remoteIp,
+            github = gitHubHandle,
+            google = googleAccount
+        }));
+        return (id, desk, token, isNew);
+    }
+
     public bool DisqualifyParticipant(string participantId, string? reason = null)
     {
         using var c = Open();

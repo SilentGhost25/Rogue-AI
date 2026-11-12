@@ -148,4 +148,27 @@ public class SecurityHardeningTests : IDisposable
         Assert.True(BackupService.IsHourlySnapshot(hourlyName));
         Assert.False(BackupService.IsHourlySnapshot(rollingName));
     }
+
+    [Fact]
+    public void Different_kiosks_with_default_deskId_do_not_collide()
+    {
+        var r1 = _db.RegisterOrUpdateKiosk("Alice", "LAPTOP-A", "DESK-01", "", "172.110.0.10");
+        var r2 = _db.RegisterOrUpdateKiosk("Bob", "LAPTOP-B", "DESK-01", "", "172.110.1.20");
+        var r3 = _db.RegisterOrUpdateKiosk("Charlie", "LAPTOP-C", "DESK-01", "", "172.110.2.30");
+
+        Assert.NotEqual(r1.ParticipantId, r2.ParticipantId);
+        Assert.NotEqual(r2.ParticipantId, r3.ParticipantId);
+        Assert.NotEqual(r1.ParticipantId, r3.ParticipantId);
+
+        Assert.NotEqual(r1.Token, r2.Token);
+        Assert.NotEqual(r2.Token, r3.Token);
+        Assert.True(_db.ValidateDeskToken(r1.Token, r1.ParticipantId));
+        Assert.True(_db.ValidateDeskToken(r2.Token, r2.ParticipantId));
+        Assert.True(_db.ValidateDeskToken(r3.Token, r3.ParticipantId));
+
+        // Same kiosk restarting with DESK-01 recovers its own ID and token
+        var r2Again = _db.RegisterOrUpdateKiosk("Bob", "LAPTOP-B", "DESK-01", "", "172.110.1.21");
+        Assert.Equal(r2.ParticipantId, r2Again.ParticipantId);
+        Assert.Equal(r2.Token, r2Again.Token);
+    }
 }
