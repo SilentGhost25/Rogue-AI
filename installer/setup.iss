@@ -176,6 +176,6 @@ begin
   if CurUninstallStep = usUninstall then
   begin
     // Terminate running processes cleanly so binaries and workspace handles are unlocked before removal
-    Exec(ExpandConstant('{cmd}'), '/c taskkill /F /IM LabKiosk.exe /IM ControlPlane.exe /IM opencode.exe /IM agy.exe /IM node.exe /T >nul 2>&1', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    Exec(ExpandConstant('{cmd}'), '/c taskkill /F /IM LabKiosk.exe /IM ControlPlane.exe /IM opencode.exe /IM agy.exe /IM node.exe /IM python.exe /T >nul 2>&1', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   end;
 end;
