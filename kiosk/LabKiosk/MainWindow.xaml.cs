@@ -134,7 +134,8 @@ public partial class MainWindow : Window
     private DispatcherTimer? _statusTimer;
     private CancellationTokenSource? _submitTimeoutCts;
     private bool _cleanedOnClose;
-    private readonly KeyboardHook _keyboardHook;
+    private static readonly bool AppLockoutEnabled = false;
+    private readonly KeyboardHook? _keyboardHook;
     private bool _isHostUnlocked;
     private bool _isDisqualifiedBySwitch;
 
@@ -155,9 +156,12 @@ public partial class MainWindow : Window
         InitializeComponent();
         _api = new ApiClient(_s.ServerUrl);
         _budget.OpenCodeCap = _s.OpenCodeCap;
-        _keyboardHook = new KeyboardHook();
-        _keyboardHook.OnHostComboPressed += () => Dispatcher.BeginInvoke(ToggleHostMode);
-        Deactivated += MainWindow_Deactivated;
+        if (AppLockoutEnabled)
+        {
+            _keyboardHook = new KeyboardHook();
+            _keyboardHook.OnHostComboPressed += () => Dispatcher.BeginInvoke(ToggleHostMode);
+            Deactivated += MainWindow_Deactivated;
+        }
         Loaded += async (_, _) => await StartAsync();
         Closed += (_, _) => CleanupAndResetWorkspace();
     }
@@ -172,7 +176,7 @@ public partial class MainWindow : Window
     {
         if (_cleanedOnClose) return;
         _cleanedOnClose = true;
-        try { _keyboardHook.Dispose(); } catch { }
+        try { _keyboardHook?.Dispose(); } catch { }
         try { _activeIncidentWindow?.Close(); } catch { }
         try { _statusTimer?.Stop(); } catch { }
         try { _submitTimeoutCts?.Cancel(); } catch { }
@@ -749,12 +753,12 @@ public partial class MainWindow : Window
 
     private async void MainWindow_Deactivated(object? sender, EventArgs e)
     {
-        if (_isHostUnlocked || _isDisqualifiedBySwitch) return;
+        if (!AppLockoutEnabled || _isHostUnlocked || _isDisqualifiedBySwitch) return;
 
         // Debounce to allow internal WPF modals (IncidentWindow, OnboardingWindow, MessageBox) to become active
         await Task.Delay(150);
 
-        if (_isHostUnlocked || _isDisqualifiedBySwitch || IsActive) return;
+        if (!AppLockoutEnabled || _isHostUnlocked || _isDisqualifiedBySwitch || IsActive) return;
 
         // Ignore deactivation when focus moved to an owned/in-process LabKiosk window
         foreach (Window win in Application.Current.Windows)
@@ -777,11 +781,11 @@ public partial class MainWindow : Window
 
     private void TriggerLockoutViolation()
     {
-        if (_isHostUnlocked || _isDisqualifiedBySwitch) return;
+        if (!AppLockoutEnabled || _isHostUnlocked || _isDisqualifiedBySwitch) return;
         _isDisqualifiedBySwitch = true;
 
         try { _activeIncidentWindow?.Close(); } catch { }
-        _keyboardHook.IsLocked = true;
+        if (_keyboardHook is not null) _keyboardHook.IsLocked = true;
         Topmost = true;
         LockoutOverlay.Visibility = Visibility.Visible;
         LockoutOverlay.Focus();
@@ -796,6 +800,7 @@ public partial class MainWindow : Window
 
     private void ToggleHostMode()
     {
+        if (_keyboardHook is null) return;
         if (!_isHostUnlocked)
         {
             _isHostUnlocked = true;
