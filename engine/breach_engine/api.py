@@ -44,15 +44,32 @@ def resolve_workspace(participant_id: str) -> Path | None:
     candidates = []
     if env_ws:
         candidates.append(Path(env_ws) / participant_id)
+        candidates.append(Path(env_ws))
+
+    local_app_data = os.environ.get("LOCALAPPDATA")
+    if local_app_data:
+        candidates.append(Path(local_app_data) / "BreachKiosk" / "host" / "workspaces" / participant_id)
+        candidates.append(Path(local_app_data) / "BreachKiosk" / "workspace")
+
     candidates.extend([
         REPOS_DIR / participant_id,
         WORKSPACES_DIR / participant_id,
         ROOT / "server" / "data" / "workspaces" / participant_id,
         ROOT / "data" / "workspaces" / participant_id,
+        Path("C:/BreachWorkspace"),
+        Path(os.path.expanduser("~")) / "BreachWorkspace",
+        ROOT / "site",
     ])
     for c in candidates:
         if c.exists():
-            return c
+            if (c / "server.js").exists():
+                return c
+            if c.is_dir():
+                try:
+                    if any(c.iterdir()):
+                        return c
+                except Exception:
+                    pass
     return None
 
 

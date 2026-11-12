@@ -280,6 +280,57 @@ function closeEvalModal() {
   if (modal) modal.style.display = 'none';
 }
 
+const ATTACK_NAMES = {
+  0: "Baseline Calibration",
+  1: "Phantom Heap",
+  2: "Schrodinger Entropy",
+  3: "Hydra WAL Contention",
+  4: "Mirage Route",
+  5: "Polite Intruder (RBAC)",
+  6: "Chameleon Parser",
+  7: "Zombie Worker Emitter",
+  8: "Poison Prototype",
+  9: "Proxy Mirage",
+  10: "Janus Knot Decoupling"
+};
+
+let hubConn = null;
+function initSignalR() {
+  if (typeof signalR === 'undefined') return;
+  try {
+    hubConn = new signalR.HubConnectionBuilder()
+      .withUrl('/hub')
+      .withAutomaticReconnect()
+      .build();
+
+    hubConn.on('ATTACK_LANDED', (deskId, attackId) => {
+      logMessage(`⚡ [SIGNALR] Attack #${attackId} landed on desk: ${deskId}`);
+      refreshKiosks();
+      refreshAttacks();
+      refreshEvaluations();
+    });
+
+    hubConn.on('VERDICT', (deskId, attackId, status, reason, score) => {
+      logMessage(`⚖ [VERDICT] Desk ${deskId} #${attackId}: ${status} (${score >= 0 ? '+' : ''}${score} pts) - ${reason || ''}`);
+      refreshKiosks();
+      refreshEvaluations();
+    });
+
+    hubConn.on('KIOSK_UPDATED', (deskId) => {
+      refreshKiosks();
+      refreshEvaluations();
+    });
+
+    hubConn.start().then(() => {
+      logMessage('[SIGNALR] Live control plane hub connected.');
+    }).catch(err => {
+      console.warn('SignalR init failed:', err);
+    });
+  } catch (ex) {
+    console.warn('SignalR setup exception:', ex);
+  }
+}
+
 async function refreshKiosks() {
   try {
     const kiosks = await api('/admin/kiosks');
@@ -290,25 +341,86 @@ async function refreshKiosks() {
     if (countEl) countEl.textContent = kiosks.length;
 
     if (kiosks.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="6" class="muted">No kiosks connected yet</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="8" class="muted">No kiosks connected yet</td></tr>`;
       return;
     }
 
-    tbody.innerHTML = kiosks.map(k => `
-      <tr>
-        <td class="bold font-mono"><code class="tag">${escapeHtml(k.deskId || k.kioskId || k.id)}</code></td>
-        <td class="bold">${escapeHtml(k.name || k.id)}</td>
-        <td class="font-mono text-muted">${escapeHtml(k.ipAddress || '127.0.0.1')}</td>
-        <td class="font-mono bold" style="color:#22c55e;">${k.totalScore} pts</td>
-        <td>${k.solvedCount} / ${k.landedCount}</td>
-        <td>
-          ${k.agyExhausted ? '<span class="badge danger">AGY Expired</span>' : '<span class="badge success">AGY Active</span>'}
-          <small class="muted font-mono">(${k.openCodePrompts} OC prompts)</small>
-        </td>
-      </tr>
-    `).join('');
+    tbody.innerHTML = kiosks.map(k => {
+      let activeHtml = '<span class="badge success">🛡️ Nominal / Secure</span>';
+      if (k.activeAttacks) {
+        const aids = k.activeAttacks.toString().split(',').filter(Boolean);
+        if (aids.length > 0) {
+          const badges = aids.map(id => {
+            const num = parseInt(id, 10);
+            const name = ATTACK_NAMES[num] || `Attack #${num}`;
+            let elapsedStr = '';
+            if (k.activeLandedAt) {
+              const landed = new Date(k.activeLandedAt).getTime();
+              const now = Date.now();
+              const sec = Math.max(0, Math.floor((now - landed) / 1000));
+              const m = Math.floor(sec / 60).toString().padStart(2, '0');
+              const s = (sec % 60).toString().padStart(2, '0');
+              elapsedStr = ` ⏱ ${m}:${s}`;
+            }
+            return `<span class="badge danger" style="margin-right:4px;">⚡ #${num}: ${escapeHtml(name)}${elapsedStr}</span>`;
+          }).join(' ');
+          activeHtml = `<div>${badges}</div>`;
+        }
+      }
+
+      const gitHtml = k.gitBranch
+        ? `<div style="margin-top:2px;"><a href="https://github.com/Prince649294u83/Rogue-AI-competition/tree/${encodeURIComponent(k.gitBranch)}" target="_blank" rel="noopener noreferrer" style="color:#38bdf8; font-size:11px; text-decoration:none;"><code>${escapeHtml(k.gitBranch)}</code> ↗</a></div>`
+        : '';
+
+      const aiStatus = k.agyExhausted
+        ? '<span class="badge danger">AGY Expired</span>'
+        : '<span class="badge success">AGY Active</span>';
+
+      const deskTag = escapeHtml(k.deskId || k.kioskId || k.id);
+
+      return `
+        <tr>
+          <td class="bold font-mono"><code class="tag">${deskTag}</code></td>
+          <td class="bold">
+            ${escapeHtml(k.name || k.id)}
+            ${k.status === 'disqualified' ? ' <span class="badge danger">DISQUALIFIED</span>' : ''}
+          </td>
+          <td class="font-mono text-muted">${escapeHtml(k.ipAddress || '127.0.0.1')}</td>
+          <td>${activeHtml}</td>
+          <td class="font-mono bold" style="color:#22c55e;">${k.totalScore.toFixed(1)} pts</td>
+          <td>${k.solvedCount} / ${k.landedCount}</td>
+          <td>
+            ${aiStatus} <small class="muted font-mono">(${k.openCodePrompts} OC)</small>
+            ${gitHtml}
+          </td>
+          <td>
+            <button class="btn sm primary" onclick="promptFireOnKiosk('${escapeHtml(k.id)}', '${escapeHtml(k.name || deskTag)}')">
+              ⚡ Fire
+            </button>
+          </td>
+        </tr>`;
+    }).join('');
   } catch (err) {
     logMessage(`[ERROR] Loading kiosks failed: ${err.message}`);
+  }
+}
+
+async function promptFireOnKiosk(kioskId, name) {
+  const attackNum = prompt(`Fire specific attack on participant "${name}" (${kioskId}).\nEnter attack number (0 to 10):`, "1");
+  if (!attackNum) return;
+  const num = parseInt(attackNum.trim(), 10);
+  if (isNaN(num) || num < 0 || num > 10) {
+    alert("Please enter a valid attack number between 0 and 10.");
+    return;
+  }
+  try {
+    await api(`/admin/attacks/${num}/fire?targetId=${encodeURIComponent(kioskId)}`, { method: 'POST' });
+    logMessage(`⚡ Dispatched Attack #${num} directly to desk ${name} (${kioskId})`);
+    await refreshKiosks();
+    await refreshAttacks();
+  } catch (err) {
+    alert(`Failed to fire attack: ${err.message}`);
+    logMessage(`[ERROR] Fire attack #${num} on ${kioskId}: ${err.message}`);
   }
 }
 
@@ -498,6 +610,9 @@ async function init() {
     updateEventTimer();
   }, 1000);
   updateEventTimer();
+
+  // Initialize real-time SignalR event loop
+  initSignalR();
 
   // Initial load & periodic poll
   checkEventStatus();

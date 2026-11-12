@@ -1,0 +1,1 @@
+{"nodes": [{"id": "docs_build_plan_md", "label": "Final Build Plan", "file_type": "document", "source_file": "docs/build-plan.md", "rationale": "End-to-end event plan including AI budget management and Git architecture."}], "edges": [], "hyperedges": []}

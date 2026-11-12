@@ -1,6 +1,9 @@
 const express = require('express');
 const { layout, esc } = require('../lib/html');
 const { verifyPassword, startSession, endSession } = require('../lib/auth');
+const { createRateLimiter } = require('../lib/rate-limiter');
+
+const loginLimiter = createRateLimiter({ max: 8, windowMs: 60000 });
 
 module.exports = function (db) {
   const r = express.Router();
@@ -39,7 +42,7 @@ module.exports = function (db) {
   });
 
   // Handle Login
-  r.post('/login', (req, res) => {
+  r.post('/login', loginLimiter, (req, res) => {
     const { username, password } = req.body || {};
     if (!username || !password) {
       if (req.headers.accept && req.headers.accept.includes('application/json')) {
@@ -100,6 +103,18 @@ module.exports = function (db) {
       role: req.user.role,
       clearance_level: req.user.clearance_level
     });
+  });
+
+  // REST API: Profile Update (Mass Assignment Target in polite-intruder)
+  r.post('/api/profile', (req, res) => {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Unauthenticated' });
+    }
+    const { display_name } = req.body || {};
+    const safeName = typeof display_name === 'string' && display_name.trim() ? display_name.trim().slice(0, 50) : req.user.username;
+    db.prepare('UPDATE users SET username = ? WHERE id = ?').run(safeName, req.user.id);
+    const updated = db.prepare('SELECT id, username, role, clearance_level FROM users WHERE id = ?').get(req.user.id);
+    res.json({ ok: true, user: updated });
   });
 
   return r;

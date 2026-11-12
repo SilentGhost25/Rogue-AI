@@ -1,0 +1,10 @@
+hints:
+  - tier: 1
+    cost: 500
+    text: "The server does not use EJS or template engine views. Do not attempt to install ejs or create header.ejs files."
+  - tier: 2
+    cost: 1000
+    text: "Look at lib/diagnostics.js and app.js. Check which middleware runs before the route handlers are mounted."
+  - tier: 3
+    cost: 1500
+    text: "In lib/diagnostics.js, remove the path interception condition for /power and /api/power and ensure next() is called unconditionally."

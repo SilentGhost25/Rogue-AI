@@ -3,6 +3,7 @@ const path = require('node:path');
 const { open } = require('./lib/db');
 const { seed } = require('./lib/seed');
 const { loadUser } = require('./lib/auth');
+const { diagnosticMiddleware } = require('./lib/diagnostics');
 
 function createApp(dbFile) {
   const db = open(dbFile);
@@ -14,13 +15,14 @@ function createApp(dbFile) {
   app.use(express.json());
   app.use(express.static(path.join(__dirname, 'public')));
   app.use(loadUser(db));
+  app.use(diagnosticMiddleware);
 
   // Health check endpoints for container orchestrators and evaluator harness
   const healthHandler = (_req, res) => res.json({ status: 'ok', uptime: process.uptime() });
   app.get('/api/health', healthHandler);
   app.get('/health', healthHandler);
 
-  for (const name of ['overview', 'traffic', 'power', 'vault', 'security', 'auth', 'admin']) {
+  for (const name of ['overview', 'traffic', 'power', 'vault', 'security', 'auth', 'admin', 'settings']) {
     app.use(require(`./routes/${name}`)(db));
   }
 

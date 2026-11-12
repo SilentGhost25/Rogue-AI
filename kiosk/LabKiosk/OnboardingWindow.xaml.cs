@@ -79,15 +79,13 @@ public partial class OnboardingWindow : Window
 
 
         Loaded += async (_, _) =>
-
         {
-
             CheckGoogleAuth();
-
             CheckGithubAuth(force: false);
-
+            var netSummary = HostDiscoveryClient.GetActiveNetworkSummary();
+            TxtWarning.Text = netSummary;
+            TxtWarning.Foreground = (Brush)FindResource("Mute");
             await AutoDetectServerAsync();
-
         };
 
 
@@ -641,17 +639,12 @@ public partial class OnboardingWindow : Window
             }
 
             else
-
             {
-
-                TxtServerStatus.Text = "";
-
+                TxtServerStatus.Text = "⚠ Not detected on LAN. Enter Organizer IP manually or click Test Link.";
+                TxtServerStatus.Foreground = (Brush)FindResource("Alert");
             }
-
         }
-
         catch { }
-
     }
 
 
@@ -730,14 +723,20 @@ public partial class OnboardingWindow : Window
 
     private void OnModelComplianceChanged(object sender, RoutedEventArgs e)
     {
-        BtnLaunch.IsEnabled = ChkModelCompliance.IsChecked == true;
+        if (ChkModelCompliance.IsChecked == true && TxtWarning.Text.Contains("Integrity Pledge"))
+        {
+            TxtWarning.Text = "";
+        }
     }
 
-
-
     private void OnLaunchClick(object sender, RoutedEventArgs e)
-
     {
+        if (ChkModelCompliance.IsChecked != true)
+        {
+            TxtWarning.Text = "Please check the Integrity Pledge to launch.";
+            TxtWarning.Foreground = (Brush)FindResource("Alert");
+            return;
+        }
 
         var name = TxtDisplayName.Text.Trim();
 
@@ -804,59 +803,12 @@ public partial class OnboardingWindow : Window
 
 
     private void SaveSettings()
-
     {
-
         try
-
         {
-
-            var path = Path.Combine(AppContext.BaseDirectory, "kiosk.json");
-
-            var doc = new Dictionary<string, object>();
-
-            if (File.Exists(path))
-
-            {
-
-                try
-
-                {
-
-                    var existing = File.ReadAllText(path);
-
-                    doc = JsonSerializer.Deserialize<Dictionary<string, object>>(existing) ?? new();
-
-                }
-
-                catch { }
-
-            }
-
-
-
-            doc["DisplayName"] = _settings.DisplayName;
-
-            doc["ServerUrl"] = _settings.ServerUrl;
-
-            doc["GitHubHandle"] = _settings.GitHubHandle;
-
-            doc["GoogleAccount"] = _settings.GoogleAccount;
-
-            doc["Onboarded"] = true;
-
-            doc["OpenCodeCap"] = _settings.OpenCodeCap;
-
-
-
-            var json = JsonSerializer.Serialize(doc, new JsonSerializerOptions { WriteIndented = true });
-
-            File.WriteAllText(path, json);
-
+            _settings.Save();
         }
-
         catch { /* best effort */ }
-
     }
 
 }

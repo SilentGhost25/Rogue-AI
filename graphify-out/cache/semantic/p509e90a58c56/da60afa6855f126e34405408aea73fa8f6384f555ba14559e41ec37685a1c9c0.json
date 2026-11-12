@@ -1,0 +1,1 @@
+{"nodes": [{"id": "server_controlplane_wwwroot_index_html", "label": "Organizer Control Plane", "file_type": "document", "source_file": "server/ControlPlane/wwwroot/index.html", "rationale": "Main dashboard for event organizers to dispatch attacks and monitor participants."}], "edges": [], "hyperedges": []}

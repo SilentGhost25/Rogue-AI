@@ -17,10 +17,21 @@ public sealed class SiteHost : IDisposable
     private System.Threading.Timer? _debounce;
     private int _reloading;
     private int _reloadPending;
+    private readonly System.Text.StringBuilder _stderrLog = new();
+    private readonly object _stderrLock = new();
 
     public event Action? ReloadRequested;
-    public event Action? SiteDown;
+    public event Action? SiteRestored;
+    public event Action<string?>? SiteDown;
     public event Action<string>? Problem;
+
+    public string? LastError
+    {
+        get
+        {
+            lock (_stderrLock) { return _stderrLog.Length > 0 ? _stderrLog.ToString() : null; }
+        }
+    }
 
     public SiteHost(string nodePath, string workspace, string siteUrl, string dataPath)
     {
@@ -39,7 +50,10 @@ public sealed class SiteHost : IDisposable
             ?? throw new FileNotFoundException("Node.js was not found. Set NodePath in kiosk.json.");
         var psi = new ProcessStartInfo(node)
         {
-            WorkingDirectory = _dir, UseShellExecute = false, CreateNoWindow = true,
+            WorkingDirectory = _dir,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardError = true,
         };
         foreach (var a in new[] { "--watch", "--no-warnings", "server.js" }) psi.ArgumentList.Add(a);
         psi.Environment["PORT"] = new Uri(_siteUrl).Port.ToString();
@@ -56,6 +70,24 @@ public sealed class SiteHost : IDisposable
         }
 
         _proc = Process.Start(psi);
+        if (_proc is not null)
+        {
+            _proc.ErrorDataReceived += (_, e) =>
+            {
+                if (!string.IsNullOrEmpty(e.Data))
+                {
+                    lock (_stderrLock)
+                    {
+                        _stderrLog.AppendLine(e.Data);
+                        if (_stderrLog.Length > 16384)
+                        {
+                            _stderrLog.Remove(0, 8192);
+                        }
+                    }
+                }
+            };
+            _proc.BeginErrorReadLine();
+        }
 
         _watcher = new FileSystemWatcher(_dir) { IncludeSubdirectories = true, NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size };
         FileSystemEventHandler h = (_, e) => OnFileEvent(e.FullPath);
@@ -144,12 +176,14 @@ public sealed class SiteHost : IDisposable
                 Interlocked.Exchange(ref _reloadPending, 0);
                 if (await WaitRestartHealthyAsync(500))
                 {
+                    lock (_stderrLock) { _stderrLog.Clear(); }
+                    SiteRestored?.Invoke();
                     ReloadRequested?.Invoke();
                 }
                 else
                 {
                     Problem?.Invoke("The website is not running. Check your last change.");
-                    SiteDown?.Invoke();
+                    SiteDown?.Invoke(LastError);
                 }
             } while (Interlocked.CompareExchange(ref _reloadPending, 0, 0) == 1);
         }

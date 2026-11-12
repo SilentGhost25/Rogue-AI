@@ -11,7 +11,7 @@ public partial class AdminWindow : Window
     private readonly bool _fullscreen;
     private readonly HostSupervisor? _supervisor;
 
-    public AdminWindow(string serverUrl, string adminKey, string path = "/", bool fullscreen = false, HostSupervisor? supervisor = null)
+    public AdminWindow(string serverUrl, string adminKey, string path = "/admin", bool fullscreen = false, HostSupervisor? supervisor = null)
     {
         InitializeComponent();
         _serverUrl = serverUrl.TrimEnd('/'); _adminKey = adminKey; _path = path; _fullscreen = fullscreen; _supervisor = supervisor;

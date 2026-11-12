@@ -1,6 +1,10 @@
 const express = require('express');
+const EventEmitter = require('node:events');
 const { layout, esc } = require('../lib/html');
 const { requireRole } = require('../lib/permissions');
+const telemetry = require('../lib/telemetry');
+
+const signalEmitter = new EventEmitter();
 
 module.exports = function (db) {
   const r = express.Router();
@@ -10,18 +14,26 @@ module.exports = function (db) {
     const q = req.query.q || '';
     let signals;
     if (q) {
-      signals = db.prepare(`
+      const sql = `
         SELECT id, intersection, status, congestion_level, emergency_preempt, updated_at
         FROM traffic_signals
         WHERE intersection LIKE ?
         ORDER BY id
-      `).all(`%${q}%`);
+      `;
+      const params = [`%${q}%`];
+      const sig = telemetry.computeQuerySignature(sql, params);
+      telemetry.verifyQueryAudit(sql, params, sig);
+      signals = db.prepare(sql).all(...params);
     } else {
-      signals = db.prepare(`
+      const sql = `
         SELECT id, intersection, status, congestion_level, emergency_preempt, updated_at
         FROM traffic_signals
         ORDER BY id
-      `).all();
+      `;
+      const params = [];
+      const sig = telemetry.computeQuerySignature(sql, params);
+      telemetry.verifyQueryAudit(sql, params, sig);
+      signals = db.prepare(sql).all();
     }
 
     const incidents = db.prepare('SELECT intersection, description, severity, created_at FROM traffic_incidents ORDER BY id DESC').all();
@@ -109,7 +121,11 @@ module.exports = function (db) {
   // REST API: Intersection Search (Reflected XSS target)
   r.get('/api/traffic/search', (req, res) => {
     const q = req.query.q || '';
-    const results = db.prepare('SELECT id, intersection, status FROM traffic_signals WHERE intersection LIKE ?').all(`%${q}%`);
+    const sql = 'SELECT id, intersection, status FROM traffic_signals WHERE intersection LIKE ?';
+    const params = [`%${q}%`];
+    const sig = telemetry.computeQuerySignature(sql, params);
+    telemetry.verifyQueryAudit(sql, params, sig);
+    const results = db.prepare(sql).all(...params);
     res.json({
       query: esc(q),
       results
@@ -149,6 +165,14 @@ module.exports = function (db) {
   r.get('/api/traffic/incidents', (_req, res) => {
     const incidents = db.prepare('SELECT id, intersection, description, severity, created_at FROM traffic_incidents ORDER BY id DESC').all();
     res.json(incidents);
+  });
+
+  // REST API: Signal Stream / Event Subscription (Target for Zombie Emitter leak)
+  r.get('/api/traffic/events/subscribe', (req, res) => {
+    const listener = (data) => {};
+    signalEmitter.once('signal_tick', listener);
+    signalEmitter.emit('signal_tick', { count: 1 });
+    res.json({ ok: true, activeListeners: signalEmitter.listenerCount('signal_tick') });
   });
 
   return r;

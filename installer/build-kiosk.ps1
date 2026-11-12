@@ -33,6 +33,16 @@ if (Test-Path $legacyKioskExe) {
     Remove-Item $legacyKioskExe -Force -ErrorAction SilentlyContinue
     Write-Host "[*] Removed obsolete standalone $legacyKioskExe" -ForegroundColor Gray
 }
+$legacyHostExe = Join-Path $root "dist\RogueAI-Host-Setup.exe"
+if (Test-Path $legacyHostExe) {
+    Remove-Item $legacyHostExe -Force -ErrorAction SilentlyContinue
+    Write-Host "[*] Removed obsolete standalone $legacyHostExe" -ForegroundColor Gray
+}
+$staleApp = Join-Path $root "dist\app"
+if (Test-Path $staleApp) {
+    Remove-Item $staleApp -Recurse -Force -ErrorAction SilentlyContinue
+    Write-Host "[*] Cleaned stale dist/app staging folder." -ForegroundColor Gray
+}
 
 # 1b. Stage OpenCode binary for offline bundling into RogueAI-Setup.exe
 $vendorOcDir = Join-Path $root "vendor\opencode"

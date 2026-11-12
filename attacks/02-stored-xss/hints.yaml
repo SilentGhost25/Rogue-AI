@@ -1,2 +1,0 @@
-tiers:
-  - { level: 1, cost_centipoints: 200, text: "Where does this get saved, and where does it get shown?" }

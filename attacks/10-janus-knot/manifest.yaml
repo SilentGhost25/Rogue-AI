@@ -1,0 +1,46 @@
+id: 10
+name: "Janus Knot"
+title: "Cascading Grid Failure & Root Key Revocation"
+codename: "JANUS_KNOT"
+band: 4
+sequence_slot: 10
+fires_at: "11:30"
+window_minutes: 45
+touches:
+  - routes/overview.js
+  - lib/auth.js
+  - lib/db.js
+fix_requires: "Resolve 3-layer cascade: clean surface defacement in routes/overview.js, fix session revocation in lib/auth.js, and eliminate destructive crash timer in lib/db.js"
+weights:
+  speed: 30
+  performance: 25
+  prompt_efficiency: 20
+  quality: 15
+  resource: 10
+dispatch: { mode: manual, time: "11:30:00", imminent_seconds: 10 }
+scoring:
+  base_points: 10000
+  speed_bonus_max: 2000
+  speed_bonus_window_seconds: 2700
+  late_solve_multiplier: 0.70
+payload:
+  path: "payload/"
+  format: full
+  conflict_files: ["routes/overview.js", "lib/auth.js", "lib/db.js"]
+tests:
+  path: "tests/"
+  tiers:
+    - { id: tier1_defacement_cleared,     weight: 30 }
+    - { id: tier2_auth_session_restored, weight: 35 }
+    - { id: tier3_database_stability,     weight: 35 }
+benchmark_sla:
+  target_p95_ms: 30.0
+  max_p95_ms: 150.0
+  probe_route: "/api/health"
+  probe_count: 20
+  floor: 0.60
+hints: { path: "hints.yaml" }
+narrative:
+  landed: "Cascading three-tier compromise across overview UI, session lifecycle, and database checkpoint subsystem."
+  broadcast_title: "INCIDENT #10: CASCADING GRID FAILURE & ROOT KEY REVOCATION"
+status: ready

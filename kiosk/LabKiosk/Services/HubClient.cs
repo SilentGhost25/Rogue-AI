@@ -7,6 +7,7 @@ public sealed class HubClient : IAsyncDisposable
 {
     private readonly HubConnection _conn;
     private readonly string _participantId;
+    private readonly string _token;
 
     public event Func<int, int, Task>? Imminent;
     public event Func<int, Task>? Landed;
@@ -16,9 +17,10 @@ public sealed class HubClient : IAsyncDisposable
     public event Action? Paused, Resumed, Eliminated;
     public event Func<Task>? Reconnected;
 
-    public HubClient(string serverUrl, string participantId)
+    public HubClient(string serverUrl, string participantId, string token = "")
     {
         _participantId = participantId;
+        _token = token;
         _conn = new HubConnectionBuilder().WithUrl($"{serverUrl.TrimEnd('/')}/hub").WithAutomaticReconnect().Build();
 
         _conn.On<int, int>("BREACH_IMMINENT", async (id, secs) => { if (Imminent is not null) await Imminent(id, secs); });
@@ -45,7 +47,7 @@ public sealed class HubClient : IAsyncDisposable
 
         _conn.Reconnected += async _ =>
         {
-            try { await _conn.InvokeAsync("RegisterKiosk", _participantId, ""); } catch { }
+            try { await _conn.InvokeAsync("RegisterKiosk", _participantId, _token); } catch { }
             if (Reconnected is not null) await Reconnected();
         };
     }
@@ -53,7 +55,7 @@ public sealed class HubClient : IAsyncDisposable
     public async Task StartAsync()
     {
         await _conn.StartAsync();
-        try { await _conn.InvokeAsync("RegisterKiosk", _participantId, ""); } catch { }
+        try { await _conn.InvokeAsync("RegisterKiosk", _participantId, _token); } catch { }
     }
 
     public Task AckImminentAsync(int attackId) => _conn.InvokeAsync("AckImminent", attackId);

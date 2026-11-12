@@ -1,0 +1,10 @@
+hints:
+  - tier: 1
+    cost: 500
+    text: "Ignore the decoy alert regarding OAuth redirect URI policies. The application uses cookie sessions, not OAuth."
+  - tier: 2
+    cost: 1000
+    text: "Check routes/auth.js: look at how POST /api/profile handles user updates."
+  - tier: 3
+    cost: 1500
+    text: "Use strict property extraction (whitelist) for display_name only. Ensure req.body.role and req.body.clearance_level are never updated into the database."

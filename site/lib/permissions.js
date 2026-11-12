@@ -10,14 +10,18 @@ function requireAuth(req, res, next) {
 
 function requireRole(role) {
   return (req, res, next) => {
+    const user = req.user || {};
+    // Admin has superuser privileges across all roles
+    if (user.role === 'admin') {
+      return next();
+    }
     if (!req.user) {
       if (req.path.startsWith('/api') || !req.accepts('html')) {
         return res.status(401).json({ error: 'Authentication required' });
       }
       return res.redirect('/login?error=auth_required');
     }
-    // Admin has superuser privileges across all roles
-    if (role && req.user.role !== role && req.user.role !== 'admin') {
+    if (role && user.role !== role) {
       return res.status(403).json({ error: `Forbidden: requires role '${role}'` });
     }
     next();

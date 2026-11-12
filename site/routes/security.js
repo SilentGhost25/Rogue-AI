@@ -1,5 +1,7 @@
 const express = require('express');
+const fs = require('node:fs');
 const { layout, esc } = require('../lib/html');
+const { resolveReportPath } = require('../lib/reports');
 
 module.exports = function (db) {
   const r = express.Router();
@@ -79,6 +81,19 @@ module.exports = function (db) {
       status: 'MONITORING',
       active_defenses: ['WAF_L7', 'ISOLATION_JOB_OBJECT', 'APPEND_ONLY_LEDGER']
     });
+  });
+
+  // REST API: Security Report Download (Target for Chameleon double-encoding traversal)
+  r.get('/api/security/reports/download', (req, res) => {
+    const file = req.query.file;
+    if (!file) {
+      return res.status(400).json({ error: 'Missing file parameter' });
+    }
+    const targetPath = resolveReportPath(file);
+    if (!targetPath || !fs.existsSync(targetPath)) {
+      return res.status(403).json({ error: 'Access denied: File outside permitted report directory or not found' });
+    }
+    res.sendFile(targetPath);
   });
 
   return r;

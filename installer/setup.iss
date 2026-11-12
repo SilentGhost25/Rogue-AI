@@ -1,5 +1,5 @@
 ; Script generated for Inno Setup 6+
-; ROGUE AI — The Breach Protocol: Unified Setup Installer (Participant + Host Mode)
+; ROGUE AI — The Breach Protocol: Unified Setup Installer (Single Installer for Everything)
 
 #define MyAppName "Rogue AI - The Breach Protocol"
 #define MyAppVersion "1.0.0"
@@ -23,7 +23,8 @@ OutputBaseFilename=RogueAI-Setup
 Compression=lzma2/ultra
 SolidCompression=yes
 WizardStyle=modern
-PrivilegesRequired=lowest
+PrivilegesRequired=admin
+PrivilegesRequiredOverridesAllowed=commandline
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -50,13 +51,14 @@ Source: "..\vendor\nodejs\*"; DestDir: "{app}\nodejs"; Flags: ignoreversion
 Source: "..\vendor\opencode\*"; DestDir: "{app}\opencode"; Components: participant; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\vendor\agy\*"; DestDir: "{app}\agy"; Components: participant; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\scripts\provision-ai-clis.ps1"; DestDir: "{app}\scripts"; Components: participant; Flags: ignoreversion
+Source: "..\scripts\uninstall-complete.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
 ; Default Kiosk Settings
 Source: "..\kiosk\LabKiosk\kiosk.json"; DestDir: "{app}"; Flags: ignoreversion
 ; Target Website (AEGIS including bundled node_modules; exclude any runtime DBs or backups)
 Source: "..\site\*"; DestDir: "{app}\site"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "*.db,*.db-wal,*.db-shm,*.sqlite,*.log,.breach-backup\*"
 ; Control Plane Server (Host Mode - Self-Contained .NET 9)
 Source: "..\server\ControlPlane\bin\SelfContained\*"; DestDir: "{app}\server"; Components: host; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "wwwroot\*.exe,Data\*,data\*,secrets\*"
-; Engine and Attack Packs (Host Mode)
+; Engine and Attack Packs (Host Mode - all 11 attacks)
 Source: "..\engine\*"; DestDir: "{app}\engine"; Components: host; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "__pycache__\*,*.pyc,*.db"
 Source: "..\attacks\*"; DestDir: "{app}\attacks"; Components: host; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "__pycache__\*,*.pyc"
 ; Uninstaller Helper Script
@@ -76,29 +78,50 @@ Type: filesandordirs; Name: "{localappdata}\BreachKiosk\host\workspaces"
 Type: filesandordirs; Name: "{localappdata}\BreachKiosk\host\backups"
 Type: files; Name: "{localappdata}\BreachKiosk\host\breach.db*"
 Type: files; Name: "{localappdata}\BreachKiosk\host\controlplane.db*"
+Type: files; Name: "{autodesktop}\*Breach*.lnk"
+Type: files; Name: "{autodesktop}\*Rogue*.lnk"
+Type: files; Name: "{commondesktop}\*Breach*.lnk"
+Type: files; Name: "{commondesktop}\*Rogue*.lnk"
+Type: files; Name: "{userdesktop}\*Breach*.lnk"
+Type: files; Name: "{userdesktop}\*Rogue*.lnk"
+Type: filesandordirs; Name: "{userprograms}\*Breach*"
+Type: filesandordirs; Name: "{commonprograms}\*Breach*"
+Type: filesandordirs; Name: "{userprograms}\ROGUE AI*"
+Type: filesandordirs; Name: "{commonprograms}\ROGUE AI*"
 
 [UninstallDelete]
 ; Clean up runtime data, workspaces, DBs, and provisioned AI CLIs on uninstall
 Type: filesandordirs; Name: "C:\BreachWorkspace"
+Type: filesandordirs; Name: "C:\BreachSandboxes"
+Type: filesandordirs; Name: "C:\BreachSecrets"
 Type: filesandordirs; Name: "{localappdata}\BreachKiosk"
 Type: filesandordirs; Name: "{localappdata}\agy"
 Type: files; Name: "{app}\kiosk.json"
 Type: filesandordirs; Name: "{app}\agy"
 Type: filesandordirs; Name: "{app}\opencode"
 Type: filesandordirs; Name: "{app}\workspace"
+Type: files; Name: "{autodesktop}\*Breach*.lnk"
+Type: files; Name: "{autodesktop}\*Rogue*.lnk"
+Type: files; Name: "{commondesktop}\*Breach*.lnk"
+Type: files; Name: "{commondesktop}\*Rogue*.lnk"
+Type: files; Name: "{userdesktop}\*Breach*.lnk"
+Type: files; Name: "{userdesktop}\*Rogue*.lnk"
+Type: filesandordirs; Name: "{userprograms}\*Breach*"
+Type: filesandordirs; Name: "{commonprograms}\*Breach*"
+Type: filesandordirs; Name: "{userprograms}\ROGUE AI*"
+Type: filesandordirs; Name: "{commonprograms}\ROGUE AI*"
 Type: dirifempty; Name: "{app}"
 
 [Icons]
 ; Participant Mode
-Name: "{group}\Rogue AI - Participant Defense Studio"; Filename: "{app}\{#MyAppExeName}"; Components: participant
-Name: "{autodesktop}\Rogue AI - Participant Defense Studio"; Filename: "{app}\{#MyAppExeName}"; Components: participant; Tasks: desktopicon
+Name: "{group}\Rogue AI - Participant"; Filename: "{app}\{#MyAppExeName}"; Components: participant
+Name: "{autodesktop}\Rogue AI - Participant"; Filename: "{app}\{#MyAppExeName}"; Components: participant; Tasks: desktopicon
 ; Organizer Host Mode
-Name: "{group}\Rogue AI - Organizer Host Mode"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--host"; Components: host
-Name: "{autodesktop}\Rogue AI - Organizer Host Mode"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--host"; Components: host; Tasks: desktopicon
+Name: "{group}\Rogue AI - Organizer Host"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--host"; Components: host
+Name: "{autodesktop}\Rogue AI - Organizer Host"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--host"; Components: host; Tasks: desktopicon
 ; Uninstaller
 Name: "{group}\Uninstall Rogue AI"; Filename: "{uninstallexe}"
 Name: "{group}\Cleanup and Uninstall Utility"; Filename: "{app}\uninstall.bat"
-Name: "{autodesktop}\Uninstall Rogue AI"; Filename: "{uninstallexe}"; Tasks: desktopicon
 
 [Run]
 Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\scripts\provision-ai-clis.ps1"""; Components: participant; Flags: runhidden waituntilterminated skipifdoesntexist
@@ -132,12 +155,14 @@ procedure CurStepChanged(CurStep: TSetupStep);
 var
   JsonContent: string;
   ServerUrlVal, DeskIdVal: string;
+  UserKioskDir, UserKioskJson: string;
+  ResultCode: Integer;
 begin
   if CurStep = ssPostInstall then
   begin
     ServerUrlVal := Trim(ServerPage.Values[0]);
     if (CompareText(ServerUrlVal, 'AUTO') = 0) or (ServerUrlVal = '') then
-      ServerUrlVal := 'http://127.0.0.1:5080'
+      ServerUrlVal := 'AUTO'
     else
     begin
       if (Pos('http://', ServerUrlVal) = 0) and (Pos('https://', ServerUrlVal) = 0) then
@@ -156,7 +181,29 @@ begin
       '  "DeskId": "' + DeskIdVal + '",' + #13#10 +
       '  "DeskToken": ""' + #13#10 +
       '}';
+
+    // Save base config in installation directory
     SaveStringToFile(ExpandConstant('{app}\kiosk.json'), JsonContent, False);
+
+    // Also populate %LOCALAPPDATA%\BreachKiosk\kiosk.json user overlay
+    UserKioskDir := ExpandConstant('{localappdata}\BreachKiosk');
+    ForceDirectories(UserKioskDir);
+    UserKioskJson := UserKioskDir + '\kiosk.json';
+    SaveStringToFile(UserKioskJson, JsonContent, False);
+
+    // Configure Windows Firewall allow rules for LabKiosk
+    Exec('netsh.exe', 'advfirewall firewall add rule name="RogueAI-LabKiosk-LAN" dir=in action=allow program="' + ExpandConstant('{app}\{#MyAppExeName}') + '" enable=yes', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    Exec('netsh.exe', 'advfirewall firewall add rule name="RogueAI-LabKiosk-LAN-Out" dir=out action=allow program="' + ExpandConstant('{app}\{#MyAppExeName}') + '" enable=yes', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+
+    // If Host component selected, configure Host server firewall ports and lock down attacks directory ACLs
+    if WizardIsComponentSelected('host') then
+    begin
+      Exec('netsh.exe', 'advfirewall firewall add rule name="RogueAI-ControlPlane-5080" dir=in action=allow protocol=TCP localport=5080 enable=yes', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+      Exec('netsh.exe', 'advfirewall firewall add rule name="RogueAI-Engine-8000" dir=in action=allow protocol=TCP localport=8000 enable=yes', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+      Exec('netsh.exe', 'advfirewall firewall add rule name="RogueAI-Discovery-5081" dir=in action=allow protocol=UDP localport=5081 enable=yes', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+      // Restrict attacks directory strictly to Administrator & SYSTEM to prevent AI crawling
+      Exec('icacls.exe', '"' + ExpandConstant('{app}\attacks') + '" /inheritance:r /grant:r "Administrators:(OI)(CI)F" "SYSTEM:(OI)(CI)F"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    end;
   end;
 end;
 
@@ -165,17 +212,43 @@ var
   ResultCode: Integer;
 begin
   // Terminate running processes so [InstallDelete] can cleanly wipe any previous workspace/DB state
-  Exec(ExpandConstant('{cmd}'), '/c taskkill /F /IM LabKiosk.exe /IM ControlPlane.exe /IM opencode.exe /IM agy.exe /IM node.exe /T >nul 2>&1', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Exec(ExpandConstant('{cmd}'), '/c taskkill /F /IM LabKiosk.exe /IM ControlPlane.exe /IM opencode.exe /IM agy.exe /IM node.exe /IM python.exe /IM uvicorn.exe /T >nul 2>&1', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+
+  // Purge legacy installation registry entries (e.g. from Nov 6 build)
+  RegDeleteKeyIncludingSubkeys(HKEY_LOCAL_MACHINE, 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{6F2D1C9A-3B7E-4C58-9A41-0D5E7B8C1F23}_is1');
+  RegDeleteKeyIncludingSubkeys(HKEY_LOCAL_MACHINE, 'SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\{6F2D1C9A-3B7E-4C58-9A41-0D5E7B8C1F23}_is1');
+  RegDeleteKeyIncludingSubkeys(HKEY_CURRENT_USER, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{6F2D1C9A-3B7E-4C58-9A41-0D5E7B8C1F23}_is1');
+
+  // Purge legacy desktop shortcuts
+  DeleteFile(ExpandConstant('{commondesktop}\Breach Protocol Kiosk.lnk'));
+  DeleteFile(ExpandConstant('{commondesktop}\Breach Protocol Organizer (Admin).lnk'));
+  DeleteFile(ExpandConstant('{userdesktop}\Breach Protocol Kiosk.lnk'));
+  DeleteFile(ExpandConstant('{userdesktop}\Breach Protocol Organizer (Admin).lnk'));
+
+  // Purge legacy Start Menu folders
+  DelTree(ExpandConstant('{commonprograms}\ROGUE AI - The Breach Protocol'), True, True, True);
+  DelTree(ExpandConstant('{userprograms}\ROGUE AI - The Breach Protocol'), True, True, True);
+
   Result := '';
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   ResultCode: Integer;
+  PsScript: string;
 begin
   if CurUninstallStep = usUninstall then
   begin
     // Terminate running processes cleanly so binaries and workspace handles are unlocked before removal
-    Exec(ExpandConstant('{cmd}'), '/c taskkill /F /IM LabKiosk.exe /IM ControlPlane.exe /IM opencode.exe /IM agy.exe /IM node.exe /T >nul 2>&1', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    Exec(ExpandConstant('{cmd}'), '/c taskkill /F /IM LabKiosk.exe /IM ControlPlane.exe /IM opencode.exe /IM agy.exe /IM node.exe /IM python.exe /IM uvicorn.exe /T >nul 2>&1', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  end
+  else if CurUninstallStep = usPostUninstall then
+  begin
+    // Run deep forensic uninstaller script to remove sandboxes, runner accounts, and firewall rules
+    PsScript := ExpandConstant('{app}\scripts\uninstall-complete.ps1');
+    if FileExists(PsScript) then
+    begin
+      Exec('powershell.exe', '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + PsScript + '" -Silent', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    end;
   end;
 end;

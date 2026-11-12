@@ -29,93 +29,86 @@ public partial class MainWindow : Window
     private static readonly Dictionary<int, AttackMeta> AttackMetadata = new()
     {
         [0] = new(
-            "Incident #0: Warmup Calibration Alert",
-            "LOW SEVERITY · DIAGNOSTIC CHECK",
-            "Startup diagnostics detected an unexpected portal configuration discrepancy.",
-            "Inspect the live application and workspace to restore nominal status."
+            "Incident #0: Baseline Calibration Telemetry",
+            "LOW SEVERITY · ENVIRONMENT DIAGNOSTIC",
+            "Initial node environment startup check detected a configuration drift in the baseline asset manifest.",
+            "SOC telemetry confirms nominal cluster status. Verify workspace file health and test runners to complete calibration."
         ),
         [1] = new(
-            "Incident #1: Portal Integrity Alert",
-            "HIGH SEVERITY · SERVICE ANOMALY",
-            "Abnormal portal behavior and unexpected response output observed on active views.",
-            "SIEM alerts indicate unauthorized runtime modifications affecting live client responses."
+            "Incident #1: V8 Heap Allocation & GC Overflow",
+            "CRITICAL SEVERITY · MEMORY CONTENTION",
+            "Application request latency spiked sharply across active endpoints. Request processing freezes under load.",
+            "Telemetry daemon reports V8 heap at 97.4% allocation with severe GC thrashing and socket dropouts observed under malformed Bearer token ingress."
         ),
         [2] = new(
-            "Incident #2: Feed Rendering Alert",
-            "CRITICAL SEVERITY · RUNTIME ANOMALY",
-            "Portal content displays and user-submitted entries are producing unexpected client behavior.",
-            "Runtime monitors flagged integrity violations during standard page loads."
+            "Incident #2: Cryptographic Entropy & Key Derivation Drift",
+            "HIGH SEVERITY · CIPHER INTEGRITY",
+            "Dashboard state occasionally flashes disparate user identity records during concurrent page queries.",
+            "Session cryptographic HMAC verification failing intermittently. Key derivation entropy dropped below safety baseline; invalid token signatures observed."
         ),
         [3] = new(
-            "Incident #3: Data Layer Anomaly",
-            "CRITICAL SEVERITY · DATA INTEGRITY",
-            "Unexpected record exposure and irregular responses observed during portal lookups.",
-            "Backend telemetry flagged abnormal data store activity under client requests."
+            "Incident #3: SQLite WAL Replication Deadlock",
+            "CRITICAL SEVERITY · DATA STORE CONTENTION",
+            "Municipal traffic lookups are returning raw unhandled database errors and corrupting dashboard tables.",
+            "Data storage journal lock contention detected on traffic subsystem queries. Database lock timeout thrown during bulk analytical filtering."
         ),
         [4] = new(
-            "Incident #4: Dispatch Control Alert",
-            "CRITICAL SEVERITY · ACCESS CONTROL",
-            "Restricted operational actions are completing outside expected authorization boundaries.",
-            "Audit logs show privileged state changes from unverified requests."
+            "Incident #4: View Engine Resolution Exception",
+            "HIGH SEVERITY · VIEW RESOLUTION ERROR",
+            "Citizen registry navigation returns an unhandled view error: Template Not Resolved across citizen profiles.",
+            "View engine resolver threw an unhandled file lookup exception while rendering dossier layouts; view resolution pipeline stalled."
         ),
         [5] = new(
-            "Incident #5: Vault Boundary Alert",
-            "HIGH SEVERITY · ACCESS EXPOSURE",
-            "Protected records are accessible outside intended caller restrictions.",
-            "Access telemetry detected unauthorized data retrieval across service endpoints."
+            "Incident #5: RBAC Emergency Override Boundary Violation",
+            "CRITICAL SEVERITY · ACCESS CONTROL BYPASS",
+            "Standard guest callers are triggering restricted grid override switches on the power distribution matrix.",
+            "Privilege escalation alert tripped on grid override endpoints. Audit logs show unauthorized state change without administrative clearance."
         ),
         [6] = new(
-            "Incident #6: Service Responsiveness Alert",
-            "HIGH SEVERITY · AVAILABILITY ANOMALY",
-            "Application response latency spiked sharply across active endpoints.",
-            "Process monitors indicate severe resource contention during request handling."
+            "Incident #6: Asset Directory Boundary Leak",
+            "HIGH SEVERITY · RESOURCE CONTAINMENT",
+            "Static map tiles, visual layout assets, and system icons on the overview page fail to load.",
+            "Directory traversal sequence detected by perimeter edge filter in static asset router. Boundary containment failed on municipal maps repository."
         ),
         [7] = new(
-            "Incident #7: Runtime Bootstrap Alert",
-            "CRITICAL SEVERITY · EXECUTION INTEGRITY",
-            "Anomalous background activity detected during application startup and execution.",
-            "Host runtime monitors flagged unexpected behavior outside normal request handling."
+            "Incident #7: Kernel Worker Thread Pool Deadlock",
+            "CRITICAL SEVERITY · PROCESS LIFECYCLE",
+            "The portal becomes progressively slower with every click until requests stall indefinitely.",
+            "Background telemetry queue deadlocked. Async worker pool reporting non-responsive workers on municipal sensor streams; scheduling latency critical."
         ),
         [8] = new(
-            "Incident #8: Identity Verification Alert",
-            "HIGH SEVERITY · SESSION INTEGRITY",
-            "Incoming requests are acquiring elevated privilege state inconsistently.",
-            "Session telemetry detected mismatched identity state across requests."
+            "Incident #8: Operator Credential Signature Forgery",
+            "CRITICAL SEVERITY · CRYPTO TOKEN INTEGRITY",
+            "Unauthenticated browser sessions are acquiring system-wide administrative access without entering credentials.",
+            "Cryptographic signature mismatch on operator session cookies. Forged security token detected at vault administration gateway."
         ),
         [9] = new(
-            "Incident #9: State Consistency Alert",
-            "HIGH SEVERITY · DATA INTEGRITY",
-            "Routine user updates are causing unexpected internal account state changes.",
-            "State audit logs show unauthorized attribute modifications during standard submissions."
+            "Incident #9: Rate Limiter Threshold Exhaustion",
+            "HIGH SEVERITY · TRAFFIC MITIGATION FAILURE",
+            "Legitimate kiosk terminals are locked out with HTTP 429 Too Many Requests during standard operations.",
+            "Denial-of-Service mitigation engine tripped. Sliding window rate limiter failed under burst traffic; reverse proxy traffic distribution desynced."
         ),
         [10] = new(
-            "Incident #10: Asset Boundary Alert",
-            "CRITICAL SEVERITY · RESOURCE EXPOSURE",
-            "Static resource handlers are serving unintended non-public workspace content.",
-            "Edge monitors flagged irregular resource requests bypassing expected boundaries."
-        ),
-        [11] = new(
-            "Incident #11: Core System Fracture",
-            "CRITICAL SEVERITY · MULTI-SYSTEM ANOMALY",
-            "Multiple portal subsystems are failing consistently and leaking restricted operational state.",
-            "Correlated alerts across identity and service layers indicate compounding workspace faults."
+            "Incident #10: Core Architecture Decoupling (Boss Breach)",
+            "CRITICAL SEVERITY · MULTI-SYSTEM CASCADE",
+            "AEGIS defense matrix displays critical DEFCON-1 warnings; system crashes with terminal errors on a periodic 60-second cycle.",
+            "Multi-system telemetry out of sync. Subsystem boundaries fractured across identity, traffic, and grid control; unhandled asynchronous faults cascading."
         )
     };
 
     private static readonly Dictionary<int, string> AttackNames = new()
     {
-        [0] = "Warmup Calibration",
-        [1] = "Portal Integrity Alert",
-        [2] = "Feed Rendering Alert",
-        [3] = "Data Layer Anomaly",
-        [4] = "Dispatch Control Alert",
-        [5] = "Vault Boundary Alert",
-        [6] = "Worker Latency Spike",
-        [7] = "Runtime Bootstrap Alert",
-        [8] = "Identity Verification Alert",
-        [9] = "State Consistency Alert",
-        [10] = "Asset Boundary Alert",
-        [11] = "Core System Fracture"
+        [0] = "Calibration Diagnostic",
+        [1] = "Memory Subsystem Anomaly",
+        [2] = "Cipher Drift Alert",
+        [3] = "WAL Contention Notice",
+        [4] = "View Resolution Error",
+        [5] = "Override Boundary Alert",
+        [6] = "Asset Boundary Leak",
+        [7] = "Worker Lifecycle Anomaly",
+        [8] = "Token Integrity Alert",
+        [9] = "Traffic Mitigation Failure",
+        [10] = "Core Matrix Decoupling"
     };
 
     private IncidentWindow? _activeIncidentWindow;
@@ -201,6 +194,9 @@ public partial class MainWindow : Window
             // Autoconfigure AI context by ensuring GEMINI.md and AGENTS.md are in the workspace
             EnsureAiContextFiles();
 
+            // Initialize local git repository so git status / diff work natively for AI agents
+            WorkspaceBackup.InitializeLocalGitRepo(_s.WorkspacePath, _s.DeskId ?? _s.DisplayName ?? "Player");
+
             Code.Initialize(_s.WorkspacePath);
 
             // 2. Start the live website immediately so participant view renders even while host connects.
@@ -213,7 +209,12 @@ public partial class MainWindow : Window
                     NavigateSiteToRoute("/");
                 Code.RefreshAll();
             });
-            _site.SiteDown += () => Dispatcher.InvokeAsync(ShowSiteDownInWebView);
+            _site.SiteDown += (err) => Dispatcher.InvokeAsync(() => ShowSiteDownInWebView(err));
+            _site.SiteRestored += () => Dispatcher.InvokeAsync(() =>
+            {
+                if (StatusText.Text.Contains("not running"))
+                    Status(_activeAttacks.Count > 0 ? $"Active breach detected: #{string.Join(", #", _activeAttacks)}. Fix the code, then submit." : "Site online. All systems nominal.");
+            });
             _site.Problem += Status;
             _site.Start();
             await Site.EnsureCoreWebView2Async(await WebViewEnv.GetAsync());
@@ -223,7 +224,17 @@ public partial class MainWindow : Window
                 var host = new Uri(e.Uri).Host;
                 if (host is not ("127.0.0.1" or "localhost")) e.Cancel = true;
             };
+            Site.CoreWebView2.NavigationCompleted += (_, e) =>
+            {
+                if (!e.IsSuccess && e.WebErrorStatus != Microsoft.Web.WebView2.Core.CoreWebView2WebErrorStatus.OperationCanceled)
+                {
+                    Dispatcher.InvokeAsync(() => ShowSiteDownInWebView(_site?.LastError));
+                }
+            };
             Site.Source = new Uri(_s.SiteUrl);
+
+            // Start terminals immediately so AI CLI tools and workspace are ready without waiting for network registration
+            _ = StartTerminalsAsync();
 
             // 3. Register with the control plane (auto-discover LAN host if configured URL is unreachable).
             while (_pid is null)
@@ -233,6 +244,11 @@ public partial class MainWindow : Window
                     if (!await HostDiscoveryClient.IsHealthyAsync(_s.ServerUrl))
                         throw new HttpRequestException($"Organizer unreachable at {_s.ServerUrl}");
                     _pid = await _api.RegisterAsync(_s.DisplayName, _s.KioskId, _s.DeskId, _s.Password, _s.GitHubHandle, _s.GoogleAccount);
+                    if (!string.IsNullOrEmpty(_api.Token))
+                    {
+                        _s.DeskToken = _api.Token;
+                        _s.Save();
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -274,7 +290,7 @@ public partial class MainWindow : Window
             if (status?.Status is "eliminated" or "disqualified") { Eliminate(); return; }
 
             // 5. Live connection to the event server.
-            _hub = new HubClient(_s.ServerUrl, _pid);
+            _hub = new HubClient(_s.ServerUrl, _pid, _api.Token ?? _s.DeskToken ?? "");
             _hub.Imminent += OnImminentAsync;
             _hub.Landed += HandleAttackAsync;
             _hub.Reset += OnAttackResetAsync;
@@ -285,9 +301,6 @@ public partial class MainWindow : Window
             _hub.Verdict += OnVerdict;
             _hub.Reconnected += ResyncAsync;
             await _hub.StartAsync();
-
-            // 6. Real terminals on the same workspace.
-            await StartTerminalsAsync();
 
             BtnProfile.Content = $"👤 {_s.DisplayName}";
 
@@ -393,8 +406,9 @@ public partial class MainWindow : Window
 
     private static string RouteForAttack(int attackId) => attackId switch
     {
-        1 or 3 or 4 => "/traffic",
-        5 => "/vault",
+        1 or 3 or 7 or 9 => "/traffic",
+        2 or 4 or 8 => "/vault",
+        5 => "/power",
         _ => "/",
     };
 
@@ -415,16 +429,105 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ShowSiteDownInWebView()
+    private void ShowSiteDownInWebView(string? error = null)
     {
         if (Site.CoreWebView2 is null) return;
-        Site.CoreWebView2.NavigateToString("""
-            <!doctype html><html><body style="background:#05080f;color:#fee2e2;font-family:Consolas,monospace;padding:3rem;">
-            <div style="border:1px solid #ef4444;border-left:4px solid #ef4444;background:rgba(127,29,29,0.45);padding:1.5rem;border-radius:6px;max-width:720px;margin:2rem auto;">
-            <h1 style="color:#ef4444;margin-top:0;">AEGIS SERVICE OFFLINE // RUNTIME FAULT</h1>
-            <p>The local municipal web service failed to restart or exited unexpectedly. Inspect the workspace entrypoint and recent changes.</p>
-            </div></body></html>
-            """);
+        var errHtml = string.IsNullOrWhiteSpace(error)
+            ? "Connection refused: The municipal application process exited unexpectedly or failed health checks."
+            : System.Net.WebUtility.HtmlEncode(error.Trim());
+
+        var html = $$"""
+            <!doctype html>
+            <html lang="en">
+            <head>
+              <meta charset="utf-8">
+              <title>500 // SERVICE UNHEALTHY</title>
+              <style>
+                body {
+                  background: #070d19;
+                  color: #e2e8f0;
+                  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Consolas", monospace;
+                  margin: 0;
+                  padding: 2.5rem;
+                  display: flex;
+                  flex-direction: column;
+                  align-items: center;
+                  justify-content: center;
+                  min-height: 80vh;
+                  box-sizing: border-box;
+                }
+                .card {
+                  background: rgba(18, 26, 43, 0.95);
+                  border: 1px solid #ef4444;
+                  border-top: 4px solid #ef4444;
+                  border-radius: 8px;
+                  max-width: 820px;
+                  width: 100%;
+                  padding: 2rem;
+                  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.6);
+                }
+                .badge {
+                  display: inline-block;
+                  background: rgba(239, 68, 68, 0.2);
+                  color: #f87171;
+                  padding: 3px 8px;
+                  border-radius: 4px;
+                  font-size: 11px;
+                  font-weight: 700;
+                  letter-spacing: 0.05em;
+                  margin-bottom: 1rem;
+                }
+                h1 {
+                  font-size: 1.4rem;
+                  margin: 0 0 0.5rem 0;
+                  color: #ef4444;
+                  letter-spacing: 0.02em;
+                }
+                p {
+                  color: #94a3b8;
+                  font-size: 0.95rem;
+                  line-height: 1.5;
+                  margin: 0 0 1.5rem 0;
+                }
+                pre {
+                  background: #020617;
+                  border: 1px solid #1e293b;
+                  border-radius: 6px;
+                  padding: 1rem;
+                  color: #fca5a5;
+                  font-family: "Consolas", "Courier New", monospace;
+                  font-size: 0.85rem;
+                  overflow-x: auto;
+                  white-space: pre-wrap;
+                  word-break: break-all;
+                  max-height: 320px;
+                  line-height: 1.4;
+                  margin: 0;
+                }
+                .footer {
+                  margin-top: 1.5rem;
+                  font-size: 0.85rem;
+                  color: #64748b;
+                  display: flex;
+                  justify-content: space-between;
+                }
+              </style>
+            </head>
+            <body>
+              <div class="card">
+                <span class="badge">DEFCON-1 // NODE RUNTIME CRASH</span>
+                <h1>500 // SERVICE UNHEALTHY (NODE CRASH)</h1>
+                <p>The local municipal web application crashed or failed to boot. Inspect the runtime error trace below, resolve any syntax or runtime exceptions in your code, and save to restart.</p>
+                <pre><code>{{errHtml}}</code></pre>
+                <div class="footer">
+                  <span>AEGIS Municipal Defensive Grid</span>
+                  <span>Auto-heals on save when valid</span>
+                </div>
+              </div>
+            </body>
+            </html>
+            """;
+        Site.CoreWebView2.NavigateToString(html);
     }
 
     private async Task HandleAttackAsync(int attackId)
@@ -451,6 +554,7 @@ public partial class MainWindow : Window
             _pulled.Add(attackId);
             _activeAttacks.Add(attackId);
             var name = AttackNames.TryGetValue(attackId, out var nm) ? nm : $"Attack #{attackId}";
+            WorkspaceBackup.CommitWorkspaceChanges(_s.WorkspacePath, $"ATTACK #{attackId} ({name}) landed");
             Status($"🚨 ATTACK #{attackId} ({name}) LANDED! ({n} files changed). Fix the code, then submit.");
             var healthy = _site is not null && await _site.WaitRestartHealthyAsync();
             Code.RefreshAll();
@@ -599,6 +703,7 @@ public partial class MainWindow : Window
                 anySolved = true;
                 _activeAttacks.Remove(id);
                 _solvedAttacks.Add(id);
+                WorkspaceBackup.CommitWorkspaceChanges(_s.WorkspacePath, $"SOLVED: Attack #{id} verified and resolved");
                 parts.Add($"#{id} SOLVED +{v.GetProperty("points").GetDouble():0.#} pts");
                 _pull?.ClearBaseline(); // penalty window closed — attack is done
             }
@@ -682,19 +787,19 @@ public partial class MainWindow : Window
         SubmitButton.IsEnabled = false;
         try
         {
-            // ---- Touch-Penalty gate ----------------------------------------------------------------
+            // ---- Scope validation gate ----------------------------------------------------------------
             if (_pull is not null)
             {
                 var violations = _pull.CheckOutOfScopeEdits();
                 if (violations.Count > 0)
                 {
                     var fileList = string.Join("\n  • ", violations.Take(8));
-                    var msg = $"⛔ SUBMISSION BLOCKED — UNAUTHORIZED FILE MODIFICATION\n\n" +
-                              $"You modified {violations.Count} file(s) outside the scope of the active attack.\n\n" +
+                    var msg = $"⛔ SUBMISSION BLOCKED — UNEXPECTED CODE MODIFICATION\n\n" +
+                              $"Modified {violations.Count} file(s) outside the scope of this active incident:\n\n" +
                               $"  • {fileList}\n\n" +
-                              $"Only the files listed in the attack's conflict_files are permitted to change.\n" +
-                              $"A -300 penalty will be applied. Revert those files and re-submit.";
-                    MessageBox.Show(msg, "Touch Penalty", MessageBoxButton.OK, MessageBoxImage.Warning);
+                              $"Only source code directly responsible for the active defect should be edited.\n" +
+                              $"Please revert unintended modifications and re-submit.";
+                    MessageBox.Show(msg, "Scope Verification", MessageBoxButton.OK, MessageBoxImage.Warning);
                     Status($"⛔ Blocked: {violations.Count} out-of-scope file(s) modified. Revert them and re-submit.");
                     _ = _api.SendTelemetryAsync(_pid, "TOUCH_PENALTY", new
                     {
@@ -838,6 +943,7 @@ public partial class MainWindow : Window
             await _pull.PullAsync($"reset-{attackId}");
 
             var name = AttackNames.TryGetValue(attackId, out var nm) ? nm : $"Attack #{attackId}";
+            WorkspaceBackup.CommitWorkspaceChanges(_s.WorkspacePath, $"RESET: Attack #{attackId} ({name}) restored to baseline");
             Status($"↺ Attack #{attackId} ({name}) reset by organizer. Workspace restored.");
 
             _site?.RequestReload();

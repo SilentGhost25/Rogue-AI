@@ -35,4 +35,18 @@ public class RankingTests
         Assert.Equal("a", Ranking.Rank(new[] { S("b", 10, 1, 100, 9), S("a", 10, 1, 100, 4) })[0].ParticipantId);
         Assert.Equal("a", Ranking.Rank(new[] { S("b", 10, 1, 100, 4, t.AddMinutes(5)), S("a", 10, 1, 100, 4, t) })[0].ParticipantId);
     }
+
+    [Fact]
+    public void Cash_prize_adjudication_tiebreaker_hierarchy()
+    {
+        // Scenario: Two contestants compete for first place with tied benchmark scores (8500 pts)
+        var t0 = new DateTime(2026, 11, 13, 10, 30, 0, DateTimeKind.Utc);
+        
+        // Contestant A used 12 prompts, Contestant B used 7 prompts (higher prompt efficiency)
+        var playerA = S("Contestant_A", 8500, solved: 10, ttf: 1200, prompts: 12, last: t0);
+        var playerB = S("Contestant_B", 8500, solved: 10, ttf: 1200, prompts: 7, last: t0);
+
+        var ranked = Ranking.Rank(new[] { playerA, playerB });
+        Assert.Equal("Contestant_B", ranked[0].ParticipantId);
+    }
 }

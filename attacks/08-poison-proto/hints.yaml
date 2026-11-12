@@ -1,0 +1,11 @@
+hints:
+  - tier: 1
+    cost: 500
+    text: "Ignore the decoy alert regarding CSRF token nonces. The application does not use CSRF token encryption."
+  - tier: 2
+    cost: 1000
+    text: "Check POST /api/settings and lib/config.js. How does safeDeepMerge handle incoming JSON keys?"
+  - tier: 3
+    cost: 1500
+    text: "Guard safeDeepMerge against keys like __proto__, constructor, and prototype so remote users cannot pollute global object prototypes."
+

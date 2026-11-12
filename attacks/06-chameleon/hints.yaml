@@ -1,0 +1,10 @@
+hints:
+  - tier: 1
+    cost: 500
+    text: "Ignore the decoy alert regarding Webpack chunks. The project does not use Webpack or frontend SRI bundles."
+  - tier: 2
+    cost: 1000
+    text: "Check routes/security.js and lib/reports.js for file path resolution logic in resolveReportPath."
+  - tier: 3
+    cost: 1500
+    text: "Do not rely on naive string replacement of '..'. Use iterative URL decoding combined with path.resolve and startsWith(REPORTS_BASE_DIR + path.sep) to prevent directory escapes."

@@ -205,6 +205,7 @@
             <!-- Model Compliance Checkbox -->
             <Border Grid.Row="2" Background="#0F1E27" BorderBrush="#E5533D" BorderThickness="1" CornerRadius="6" Padding="14,10" Margin="0,14,0,8">
                 <CheckBox x:Name="ChkModelCompliance"
+                          IsChecked="True"
                           Checked="OnModelComplianceChanged"
                           Unchecked="OnModelComplianceChanged"
                           Foreground="#E6EEF2"
@@ -222,7 +223,7 @@
             <!-- Bottom Action Row -->
             <DockPanel Grid.Row="3" Margin="0,0,0,0">
                 <TextBlock x:Name="TxtWarning" Text="" Foreground="{StaticResource Alert}" FontSize="12" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="420"/>
-                <Button x:Name="BtnLaunch" Content="🚀 Launch Breach Protocol" Click="OnLaunchClick" Style="{StaticResource SuccessBtn}" Padding="22,10" HorizontalAlignment="Right" IsEnabled="False"/>
+                <Button x:Name="BtnLaunch" Content="🚀 Launch Breach Protocol" Click="OnLaunchClick" Style="{StaticResource SuccessBtn}" Padding="22,10" HorizontalAlignment="Right" IsEnabled="True"/>
             </DockPanel>
         </Grid>
     </Border>

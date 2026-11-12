@@ -31,10 +31,14 @@ public sealed class HostSupervisor : IDisposable
     {
         var env = Environment.GetEnvironmentVariable("BREACH_ADMIN_KEY")
                ?? Environment.GetEnvironmentVariable("ROGUE_ADMIN_KEY");
-        if (!string.IsNullOrWhiteSpace(env)) return env;
+        if (!string.IsNullOrWhiteSpace(env) && env.Length >= 16) return env;
         var file = Path.Combine(_dataDir, "admin.key");
-        if (File.Exists(file)) return File.ReadAllText(file).Trim();
-        var key = Convert.ToHexString(RandomNumberGenerator.GetBytes(12)).ToLowerInvariant();
+        if (File.Exists(file))
+        {
+            var saved = File.ReadAllText(file).Trim();
+            if (saved.Length >= 16) return saved;
+        }
+        var key = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
         File.WriteAllText(file, key);
         return key;
     }
@@ -146,6 +150,7 @@ public sealed class HostSupervisor : IDisposable
             }
 
             psi.Environment["ASPNETCORE_URLS"] = "http://0.0.0.0:5080";
+            psi.Environment["BREACH_ADMIN_KEY"] = AdminKey;
             psi.Environment["Breach__AdminKey"] = AdminKey;
             psi.Environment["Breach__DatabasePath"] = repoRoot is not null
                 ? Path.Combine(workDir, "data", "breach.db")
@@ -177,12 +182,28 @@ public sealed class HostSupervisor : IDisposable
         psi.RedirectStandardError = true;
         psi.RedirectStandardOutput = true;
         var proc = Process.Start(psi) ?? throw new InvalidOperationException($"Failed to start {label}.");
+
+        void RecordHint(string? data)
+        {
+            if (string.IsNullOrWhiteSpace(data)) return;
+            var t = data.Trim();
+            if (t.Contains("crit:", StringComparison.OrdinalIgnoreCase) ||
+                t.Contains("fail:", StringComparison.OrdinalIgnoreCase) ||
+                t.Contains("warn:", StringComparison.OrdinalIgnoreCase) ||
+                t.Contains("error", StringComparison.OrdinalIgnoreCase) ||
+                t.Contains("exception", StringComparison.OrdinalIgnoreCase) ||
+                t.Contains("fatal", StringComparison.OrdinalIgnoreCase))
+            {
+                lock (_errorHints) { if (_errorHints.Count < 12) _errorHints.Add($"{label}: {t}"); }
+            }
+        }
+
         proc.ErrorDataReceived += (_, e) =>
         {
             if (!string.IsNullOrWhiteSpace(e.Data))
-                lock (_errorHints) { if (_errorHints.Count < 8) _errorHints.Add($"{label}: {e.Data.Trim()}"); }
+                lock (_errorHints) { if (_errorHints.Count < 12) _errorHints.Add($"{label}: {e.Data.Trim()}"); }
         };
-        proc.OutputDataReceived += (_, _) => { };
+        proc.OutputDataReceived += (_, e) => RecordHint(e.Data);
         proc.BeginErrorReadLine();
         proc.BeginOutputReadLine();
         _children.Add(proc);
