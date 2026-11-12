@@ -558,10 +558,79 @@ app.MapPost("/api/kiosk/{id}/submit", (string id, HttpRequest httpReq, Database 
             }
 
             var telemetryPayload = new { prompt_count = promptCount, token_usage = tokenUsage, submissions = subAttempts };
+
+            // ---- Diff Verification Gate ----
+            // Verify participant actually modified code compared to the attack baseline
+            var attacksToEvaluate = new List<int>();
+            foreach (var aid in activeAttacks)
+            {
+                var baselines = db.GetAttackBaselines(id, aid);
+                if (baselines.Count > 0)
+                {
+                    bool modified = false;
+                    foreach (var b in baselines)
+                    {
+                        var full = wsStore.ResolveSafe(id, b.RelPath);
+                        if (full == null || !File.Exists(full))
+                        {
+                            modified = true;
+                            break;
+                        }
+                        var currentBytes = File.ReadAllBytes(full);
+                        var currentHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(currentBytes));
+                        if (!currentHash.Equals(b.BaselineHash, StringComparison.OrdinalIgnoreCase))
+                        {
+                            modified = true;
+                            break;
+                        }
+                    }
+
+                    if (!modified)
+                    {
+                        var rejReason = "REJECTED: No code modifications detected. Workspace matches the unmitigated breach state.";
+                        using (var conn = db.Open())
+                        {
+                            using var evalCmd = conn.CreateCommand();
+                            evalCmd.CommandText = "INSERT INTO eval_results (submission_id, attack_id, status, reason, evaluator_version, created_at) VALUES ($sid, $a, 'INCORRECT', $r, 'diff-gate', $t)";
+                            evalCmd.Parameters.AddWithValue("$sid", sid);
+                            evalCmd.Parameters.AddWithValue("$a", aid);
+                            evalCmd.Parameters.AddWithValue("$r", rejReason);
+                            evalCmd.Parameters.AddWithValue("$t", DateTime.UtcNow.ToString("O"));
+                            evalCmd.ExecuteNonQuery();
+
+                            using var ledgerCmd = conn.CreateCommand();
+                            ledgerCmd.CommandText = "INSERT INTO score_ledger (participant_id, attack_id, component, points, centipoints, reason, run_id, created_at, final) VALUES ($p,$a,'penalty',-1.0,-100,$r,$sid,$t,1)";
+                            ledgerCmd.Parameters.AddWithValue("$p", id);
+                            ledgerCmd.Parameters.AddWithValue("$a", aid);
+                            ledgerCmd.Parameters.AddWithValue("$r", rejReason);
+                            ledgerCmd.Parameters.AddWithValue("$sid", sid);
+                            ledgerCmd.Parameters.AddWithValue("$t", DateTime.UtcNow.ToString("O"));
+                            ledgerCmd.ExecuteNonQuery();
+                        }
+                        db.Log("VERDICT", id, aid, JsonSerializer.Serialize(new { status = "INCORRECT", score = -1.0, reason = rejReason }));
+                        await hub.Clients.Group($"p:{id}").SendAsync("VERDICT", aid, "INCORRECT", rejReason, -1.0);
+                        await hub.Clients.Group("admins").SendAsync("VERDICT", id, aid, "INCORRECT", rejReason, -1.0);
+                        await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, id);
+                        continue;
+                    }
+                }
+                attacksToEvaluate.Add(aid);
+            }
+
+            if (attacksToEvaluate.Count == 0)
+            {
+                using var conn = db.Open();
+                using var subCmd = conn.CreateCommand();
+                subCmd.CommandText = "UPDATE submissions SET status = 'done' WHERE id = $sid";
+                subCmd.Parameters.AddWithValue("$sid", sid);
+                subCmd.ExecuteNonQuery();
+                return;
+            }
+
             var evalRes = await client.PostAsJsonAsync("/evaluate", new { 
                 participant_id = id, 
                 submission_id = sid, 
-                attack_ids = activeAttacks,
+                attack_ids = attacksToEvaluate,
                 telemetry = telemetryPayload
             });
             if (evalRes.IsSuccessStatusCode)
@@ -610,6 +679,8 @@ app.MapPost("/api/kiosk/{id}/submit", (string id, HttpRequest httpReq, Database 
                             }
 
                             var effectivePct = Math.Clamp(v.Score_Percentage ?? 1.0, 0.0, 1.0);
+                            if (v.Status == "BASE" && effectivePct > 0.75) effectivePct = 0.75;
+                            if (v.Status == "OPTIMAL") effectivePct = 1.0;
                             var totalCentipoints = (long)Math.Round((baseCentipoints + speedBonus) * effectivePct);
                             score = totalCentipoints / 100.0;
 
@@ -631,7 +702,7 @@ app.MapPost("/api/kiosk/{id}/submit", (string id, HttpRequest httpReq, Database 
                             ledgerCmd.Parameters.AddWithValue("$t", DateTime.UtcNow.ToString("O"));
                             ledgerCmd.ExecuteNonQuery();
 
-                            db.Log("VERDICT", id, v.Attack_Id, JsonSerializer.Serialize(new { status = "SOLVED", score, centipoints = totalCentipoints, baseCentipoints, speedBonus, score_percentage = effectivePct, v.Reason }));
+                            db.Log("VERDICT", id, v.Attack_Id, JsonSerializer.Serialize(new { status = v.Status, score, centipoints = totalCentipoints, baseCentipoints, speedBonus, score_percentage = effectivePct, v.Reason }));
                             _ = gitMirror.SyncBranchAsync(id, wsStore.PathFor(id), $"Solve Attack #{v.Attack_Id} (+{score:0.#} pts)");
                         }
                         else

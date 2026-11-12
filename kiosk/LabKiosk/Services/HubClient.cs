@@ -14,6 +14,7 @@ public sealed class HubClient : IAsyncDisposable
     public event Func<int, Task>? Reset;
     public event Action<string>? Message;
     public event Action<string, JsonElement, string>? Verdict;
+    public event Action<int, string, string, double>? VerdictDetailed;
     public event Action? Paused, Resumed, Eliminated;
     public event Func<Task>? Reconnected;
 
@@ -37,9 +38,11 @@ public sealed class HubClient : IAsyncDisposable
         _conn.On<string, JsonElement, string>("VERDICT", (sid, verdicts, note) => Verdict?.Invoke(sid, verdicts, note));
         _conn.On<int, string, string, double>("VERDICT", (id, status, reason, score) =>
         {
-            var json = $"[{{\"attackId\":{id},\"status\":\"{status}\",\"reason\":\"{reason.Replace("\"", "\\\"")}\",\"points\":{score}}}]";
-            using var doc = JsonDocument.Parse(json);
-            Verdict?.Invoke(id.ToString(), doc.RootElement.Clone(), status);
+            VerdictDetailed?.Invoke(id, status, reason, score);
+        });
+        _conn.On<int, string, string, double, string>("VERDICT", (id, status, reason, score, _) =>
+        {
+            VerdictDetailed?.Invoke(id, status, reason, score);
         });
 
         _conn.On("PAUSED", () => Paused?.Invoke());

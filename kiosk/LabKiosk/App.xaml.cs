@@ -18,7 +18,7 @@ public partial class App : Application
         DispatcherUnhandledException += (_, ev) =>
         {
             LogCrash(ev.Exception);
-            MessageBox.Show($"Rogue AI LabKiosk encountered a fatal error:\n\n{ev.Exception.Message}\n\nCheck logs at: %LOCALAPPDATA%\\BreachKiosk\\logs\\crash.log",
+            MessageBox.Show($"Rogue AI LabKiosk encountered a fatal error:\n\n{ev.Exception.Message}\n\nStack Trace:\n{ev.Exception.StackTrace}\n\nCheck logs at: %LOCALAPPDATA%\\BreachKiosk\\logs\\crash.log",
                 "Rogue AI - Critical Error", MessageBoxButton.OK, MessageBoxImage.Error);
             ev.Handled = true;
             Shutdown(1);
@@ -83,13 +83,26 @@ public partial class App : Application
     private static void LogCrash(Exception? ex)
     {
         if (ex == null) return;
+        var entry = $"[{DateTime.UtcNow:O}] FATAL CRASH:\n{ex}\n\n";
         try
         {
             var logDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BreachKiosk", "logs");
             Directory.CreateDirectory(logDir);
-            var logFile = Path.Combine(logDir, "crash.log");
-            var entry = $"[{DateTime.UtcNow:O}] FATAL CRASH:\n{ex}\n\n";
-            File.AppendAllText(logFile, entry);
+            File.AppendAllText(Path.Combine(logDir, "crash.log"), entry);
+        }
+        catch { }
+
+        try
+        {
+            var baseDir = Path.Combine(AppContext.BaseDirectory, "logs");
+            Directory.CreateDirectory(baseDir);
+            File.AppendAllText(Path.Combine(baseDir, "crash.log"), entry);
+        }
+        catch { }
+
+        try
+        {
+            File.AppendAllText(@"C:\BreachWorkspace\crash.log", entry);
         }
         catch { }
     }

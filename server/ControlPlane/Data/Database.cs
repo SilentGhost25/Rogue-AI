@@ -105,6 +105,13 @@ public partial class Database
               dispatched_at TEXT, updated_at TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS attack_dispatch_runtime (
               attack_id INTEGER PRIMARY KEY, imminent_seconds INTEGER NOT NULL);
+            CREATE TABLE IF NOT EXISTS attack_baselines (
+              participant_id TEXT NOT NULL,
+              attack_id INTEGER NOT NULL,
+              rel_path TEXT NOT NULL,
+              baseline_hash TEXT NOT NULL,
+              created_at TEXT NOT NULL,
+              PRIMARY KEY (participant_id, attack_id, rel_path));
             CREATE UNIQUE INDEX IF NOT EXISTS ux_attack_deliveries_attack_participant
               ON attack_deliveries (attack_id, participant_id);
             CREATE TABLE IF NOT EXISTS event_log (
@@ -320,5 +327,34 @@ public partial class Database
         cmd.Parameters.AddWithValue("$a", (object?)attackId ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$j", payloadJson);
         cmd.ExecuteNonQuery();
+    }
+
+    public void RecordAttackBaseline(string participantId, int attackId, string relPath, string baselineHash)
+    {
+        using var c = Open();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = "INSERT OR REPLACE INTO attack_baselines (participant_id, attack_id, rel_path, baseline_hash, created_at) VALUES ($p, $a, $r, $h, $t)";
+        cmd.Parameters.AddWithValue("$p", participantId);
+        cmd.Parameters.AddWithValue("$a", attackId);
+        cmd.Parameters.AddWithValue("$r", relPath);
+        cmd.Parameters.AddWithValue("$h", baselineHash);
+        cmd.Parameters.AddWithValue("$t", DateTime.UtcNow.ToString("O"));
+        cmd.ExecuteNonQuery();
+    }
+
+    public IReadOnlyList<(string RelPath, string BaselineHash)> GetAttackBaselines(string participantId, int attackId)
+    {
+        var list = new List<(string RelPath, string BaselineHash)>();
+        using var c = Open();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = "SELECT rel_path, baseline_hash FROM attack_baselines WHERE participant_id = $p AND attack_id = $a";
+        cmd.Parameters.AddWithValue("$p", participantId);
+        cmd.Parameters.AddWithValue("$a", attackId);
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+        {
+            list.Add((r.GetString(0), r.GetString(1)));
+        }
+        return list;
     }
 }

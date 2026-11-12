@@ -56,7 +56,10 @@ public sealed class SiteHost : IDisposable
             RedirectStandardError = true,
         };
         foreach (var a in new[] { "--watch", "--no-warnings", "server.js" }) psi.ArgumentList.Add(a);
-        psi.Environment["PORT"] = new Uri(_siteUrl).Port.ToString();
+        if (Uri.TryCreate(_siteUrl, UriKind.Absolute, out var siteUri))
+            psi.Environment["PORT"] = siteUri.Port.ToString();
+        else
+            psi.Environment["PORT"] = "3000";
         psi.Environment["HOST"] = "127.0.0.1";
         psi.Environment["DB_FILE"] = _dbPath;
 

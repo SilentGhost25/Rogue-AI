@@ -27,7 +27,11 @@ public partial class AdminWindow : Window
             if (_supervisor is not null) await _supervisor.StartAsync(t => Dispatcher.InvokeAsync(() => StatusText.Text = t));
             await Web.EnsureCoreWebView2Async(await WebViewEnv.GetAsync());
             await Web.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync($"window.__ADMIN_KEY = {JsonSerializer.Serialize(_adminKey)};");
-            Web.Source = new Uri(_serverUrl + _path);
+            var fullUrl = _serverUrl.TrimEnd('/') + (_path.StartsWith('/') ? _path : "/" + _path);
+            if (Uri.TryCreate(fullUrl, UriKind.Absolute, out var adminUri))
+                Web.Source = adminUri;
+            else
+                Web.Source = new Uri("http://127.0.0.1:5080/");
             var lanIp = GetLocalIp();
             StatusText.Text = _fullscreen ? "" : $"Connected to {_serverUrl} | LAN IP for Kiosks: {lanIp}";
         }

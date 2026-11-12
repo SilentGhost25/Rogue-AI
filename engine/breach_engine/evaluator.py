@@ -24,8 +24,8 @@ import numpy as np
 import yaml
 from .scoring import calculate_benchmark_multiplier
 
-SOLVED, FAILED, PARTIAL = "SOLVED", "FAILED", "PARTIAL"
-OPTIMAL, BASE = "OPTIMAL", "BASE"
+OPTIMAL, BASE, INCORRECT = "OPTIMAL", "BASE", "INCORRECT"
+SOLVED, PARTIAL, FAILED = OPTIMAL, BASE, INCORRECT
 ROOT_DIR = Path(__file__).resolve().parents[2]
 
 
@@ -563,12 +563,12 @@ def evaluate_attack(attack_id: int, attack_dir: Path, workspace: Path, timeout_s
                 earned_weight = sum(t.get("weight", 0) for t in tiers_spec if tier_results.get(t.get("id"), False))
                 score_pct = round(earned_weight / total_weight, 4)
 
-                status = SOLVED if score_pct >= 1.0 else (PARTIAL if score_pct > 0.0 else FAILED)
                 passed_ids = [t.get("id") for t in tiers_spec if tier_results.get(t.get("id"), False)]
-                reason = f"Tiers passed: {earned_weight}/{total_weight}% ({', '.join(passed_ids) if passed_ids else 'none'})"
+                failed_ids = [t.get("id") for t in tiers_spec if not tier_results.get(t.get("id"), False)]
 
                 sla_spec = m_data.get("benchmark_sla") if m_data else None
                 benchmark_metrics = None
+                sla_passed = True
                 if sla_spec:
                     probe_route = sla_spec.get("probe_route", "/")
                     b_count = int(sla_spec.get("probe_count", 15))
@@ -578,15 +578,36 @@ def evaluate_attack(attack_id: int, attack_dir: Path, workspace: Path, timeout_s
                     bench_mult = calculate_benchmark_multiplier(benchmark_metrics, sla_spec)
                     score_pct = round(score_pct * bench_mult, 4)
                     if bench_mult < 1.0:
-                        reason += f" | SLA multiplier: {int(bench_mult * 100)}% (p95: {benchmark_metrics.get('latency_p95_ms')}ms, SLA: {sla_spec.get('target_p95_ms')}ms)"
+                        sla_passed = False
+
+                pct_str = f"{int(round(score_pct * 100))}/100%"
+                if score_pct >= 0.95 and sla_passed and len(failed_ids) == 0:
+                    status = OPTIMAL
+                    reason = f"OPTIMAL ({pct_str}): All validation tiers and performance SLAs passed ({', '.join(passed_ids)})."
+                elif score_pct >= 0.70:
+                    status = BASE
+                    reason = f"BASE ({pct_str}): Core defect resolved, but sub-optimal architecture or degraded SLA ({', '.join(failed_ids) if failed_ids else 'SLA degraded'})."
+                else:
+                    status = FAILED
+                    reason = f"INCORRECT ({pct_str}): Defect not resolved or regressions detected ({', '.join(failed_ids) if failed_ids else '0% passed'})."
+
+                if benchmark_metrics and not sla_passed and sla_spec:
+                    reason += f" | SLA degraded (p95: {benchmark_metrics.get('latency_p95_ms')}ms > {sla_spec.get('target_p95_ms')}ms)"
 
                 return Verdict(attack_id, status, reason, cpu_time_ms, peak_memory_mb, tier_results, score_pct, benchmark_metrics)
             else:
                 total_count = len(tier_results)
                 passed_count = sum(1 for v in tier_results.values() if v)
                 score_pct = round(passed_count / total_count, 4) if total_count > 0 else 0.0
-                status = SOLVED if score_pct >= 1.0 else (PARTIAL if score_pct > 0.0 else FAILED)
-                reason = f"Tiers passed: {passed_count}/{total_count}"
+                if score_pct >= 0.95:
+                    status = OPTIMAL
+                    reason = f"OPTIMAL (100%): All checks passed ({passed_count}/{total_count})"
+                elif score_pct >= 0.70:
+                    status = BASE
+                    reason = f"BASE (75%): Partial pass ({passed_count}/{total_count})"
+                else:
+                    status = FAILED
+                    reason = f"INCORRECT (0%): Failed checks ({passed_count}/{total_count} passed)"
                 return Verdict(attack_id, status, reason, cpu_time_ms, peak_memory_mb, tier_results, score_pct)
 
         # -------------------------------------------------------------------

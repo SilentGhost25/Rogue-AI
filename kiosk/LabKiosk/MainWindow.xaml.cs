@@ -130,7 +130,7 @@ public partial class MainWindow : Window
     {
         _s = settings ?? KioskSettings.Load();
         _s.ServerUrl = KioskSettings.NormalizeServerUrl(_s.ServerUrl);
-        _s.SiteUrl = string.IsNullOrWhiteSpace(_s.SiteUrl) ? "http://127.0.0.1:3000" : _s.SiteUrl.TrimEnd('/');
+        _s.SiteUrl = KioskSettings.NormalizeSiteUrl(_s.SiteUrl);
         InitializeComponent();
         _api = new ApiClient(_s.ServerUrl);
         _budget.OpenCodeCap = _s.OpenCodeCap;
@@ -225,8 +225,21 @@ public partial class MainWindow : Window
             if (!await _site.WaitHealthyAsync(15)) Status("The website did not start. Check Node.js (NodePath in kiosk.json).");
             Site.CoreWebView2.NavigationStarting += (_, e) =>
             {
-                var host = new Uri(e.Uri).Host;
-                if (host is not ("127.0.0.1" or "localhost")) e.Cancel = true;
+                if (string.IsNullOrWhiteSpace(e.Uri) ||
+                    e.Uri.StartsWith("data:", StringComparison.OrdinalIgnoreCase) ||
+                    e.Uri.StartsWith("about:", StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+                if (Uri.TryCreate(e.Uri, UriKind.Absolute, out var navUri))
+                {
+                    if (navUri.Host is not ("127.0.0.1" or "localhost"))
+                        e.Cancel = true;
+                }
+                else
+                {
+                    e.Cancel = true;
+                }
             };
             Site.CoreWebView2.NavigationCompleted += (_, e) =>
             {
@@ -306,6 +319,7 @@ public partial class MainWindow : Window
             _hub.Resumed += () => Status("Event resumed.");
             _hub.Eliminated += () => Dispatcher.InvokeAsync(Eliminate);
             _hub.Verdict += OnVerdict;
+            _hub.VerdictDetailed += OnVerdictDetailed;
             _hub.Reconnected += ResyncAsync;
             await _hub.StartAsync();
 
@@ -459,7 +473,10 @@ public partial class MainWindow : Window
         }
         else
         {
-            Site.Source = new Uri(target);
+            if (Uri.TryCreate(target, UriKind.Absolute, out var targetUri))
+                Site.Source = targetUri;
+            else
+                Site.Source = new Uri("http://127.0.0.1:3000");
         }
     }
 
@@ -721,6 +738,43 @@ public partial class MainWindow : Window
             border.MouseLeftButtonUp += (_, _) => ShowIncident(localId);
             AttackBadgesPanel.Children.Add(border);
         }
+    }
+
+    private void OnVerdictDetailed(int id, string st, string reason, double pts)
+    {
+        _submitTimeoutCts?.Cancel();
+        Dispatcher.InvokeAsync(() =>
+        {
+            SubmitButton.IsEnabled = !_eliminated;
+            var attackName = AttackNames.TryGetValue(id, out var nm) ? nm : $"Attack #{id}";
+            var isSolved = st is "SOLVED" or "OPTIMAL" or "BASE";
+            if (isSolved)
+            {
+                _activeAttacks.Remove(id);
+                _solvedAttacks.Add(id);
+                WorkspaceBackup.WipeLocalGitRepo(_s.WorkspacePath);
+                _pull?.ClearBaseline();
+                Status($"🎉 #{id} {st} (+{pts:0.#} pts) | {reason}");
+                CelebrateSolve();
+            }
+            else
+            {
+                Status($"❌ #{id} {st}: {reason}");
+            }
+            UpdateAttackBadges();
+            RefreshMeters();
+            _site?.RequestReload();
+
+            try
+            {
+                var modal = new VerdictWindow(this, id, attackName, st, pts, reason);
+                modal.ShowDialog();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error showing verdict dialog: {ex}");
+            }
+        });
     }
 
     private void OnVerdict(string submissionId, JsonElement verdicts, string note)

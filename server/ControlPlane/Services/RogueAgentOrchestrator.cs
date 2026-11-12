@@ -21,6 +21,8 @@ public sealed class RogueAgentOrchestrator : BackgroundService
     private readonly Database _db;
     private readonly IClock _clock;
     private readonly ILogger<RogueAgentOrchestrator> _log;
+    private readonly IConfiguration _cfg;
+    private readonly WorkspaceStore? _wsStore;
     private readonly string _attacksRoot;
     private readonly System.Collections.Concurrent.ConcurrentDictionary<int, byte> _armedLandings = new();
 
@@ -29,12 +31,15 @@ public sealed class RogueAgentOrchestrator : BackgroundService
         Database db,
         IClock clock,
         ILogger<RogueAgentOrchestrator> log,
-        IConfiguration cfg)
+        IConfiguration cfg,
+        WorkspaceStore? wsStore = null)
     {
         _hub = hub;
         _db = db;
         _clock = clock;
         _log = log;
+        _cfg = cfg;
+        _wsStore = wsStore;
 
         var configured = cfg["RogueAgent:AttacksRoot"];
         _attacksRoot = ResolveAttacksRoot(configured, _log);
@@ -210,6 +215,33 @@ public sealed class RogueAgentOrchestrator : BackgroundService
                 $"Cannot fire attack #{attackId} to canary: current state is '{current}', expected 'Pending'.");
 
         _db.TransitionDispatch(attackId, DispatchState.CanaryFired);
+
+        if (_wsStore != null)
+        {
+            try
+            {
+                var canaryDeskId = _cfg["RogueAgent:CanaryDeskId"] ?? "CANARY";
+                var canaryPid = _db.QueryScalar<string>("SELECT participant_id FROM desk_tokens WHERE desk_id = @d", ("@d", canaryDeskId));
+                if (!string.IsNullOrEmpty(canaryPid))
+                {
+                    var payloadFiles = _wsStore.LoadLocalAttackPayload(attackId);
+                    if (payloadFiles.Count > 0)
+                    {
+                        var written = _wsStore.ApplyAttackPayload(canaryPid, attackId, payloadFiles);
+                        foreach (var w in written)
+                        {
+                            _db.RecordAttackBaseline(canaryPid, attackId, w.Path, w.Sha256);
+                        }
+                        _log.LogInformation("Applied attack #{Id} payload ({Count} files) to canary {Pid}", attackId, written.Count, canaryPid);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex, "Failed applying attack #{Id} to canary workspace", attackId);
+            }
+        }
+
         await _hub.Clients.Group("canary").SendAsync("ATTACK_LANDED", new
         {
             attackId,
@@ -287,6 +319,33 @@ public sealed class RogueAgentOrchestrator : BackgroundService
 
             _db.MarkAttackLanded(attackId);
             _db.TransitionDispatch(attackId, DispatchState.ArenaLanded);
+
+            if (_wsStore != null)
+            {
+                try
+                {
+                    var payloadFiles = _wsStore.LoadLocalAttackPayload(attackId);
+                    if (payloadFiles.Count > 0)
+                    {
+                        var participants = _db.AllParticipantIds().ToList();
+                        foreach (var pid in participants)
+                        {
+                            var written = _wsStore.ApplyAttackPayload(pid, attackId, payloadFiles);
+                            foreach (var w in written)
+                            {
+                                _db.RecordAttackBaseline(pid, attackId, w.Path, w.Sha256);
+                            }
+                        }
+                        _log.LogInformation("Applied attack #{Id} payload ({FileCount} files) to {ParticipantCount} arena participants",
+                            attackId, payloadFiles.Count, participants.Count);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _log.LogWarning(ex, "Failed applying attack #{Id} payload to arena participant workspaces", attackId);
+                }
+            }
+
             await _hub.Clients.Group("arena").SendAsync("ATTACK_LANDED", new
             {
                 attackId,

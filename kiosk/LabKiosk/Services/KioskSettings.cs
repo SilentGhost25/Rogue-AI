@@ -105,9 +105,21 @@ public sealed class KioskSettings
         }
 
         s.ServerUrl = NormalizeServerUrl(s.ServerUrl);
-        s.SiteUrl = string.IsNullOrWhiteSpace(s.SiteUrl) ? "http://127.0.0.1:3000" : s.SiteUrl.TrimEnd('/');
+        s.SiteUrl = NormalizeSiteUrl(s.SiteUrl);
 
         return s;
+    }
+
+    public static string NormalizeSiteUrl(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return "http://127.0.0.1:3000";
+        var clean = raw.Trim().TrimEnd('/');
+        if (!clean.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+            !clean.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            clean = "http://" + clean;
+        }
+        return clean;
     }
 
     public static string NormalizeServerUrl(string? raw)

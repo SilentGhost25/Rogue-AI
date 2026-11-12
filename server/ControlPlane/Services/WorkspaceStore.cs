@@ -147,6 +147,66 @@ public sealed class WorkspaceStore
         }
         return true;
     }
+
+    /// <summary>Writes attack payload files directly into a participant's server workspace.</summary>
+    public List<(string Path, string Sha256)> ApplyAttackPayload(string participantId, int attackId, IEnumerable<SnapshotFile> files)
+    {
+        var written = new List<(string, string)>();
+        var dir = PathFor(participantId);
+        Directory.CreateDirectory(dir);
+        foreach (var f in files)
+        {
+            var target = ResolveSafe(participantId, f.Path);
+            if (target is null) continue;
+            byte[] bytes;
+            try { bytes = Convert.FromBase64String(f.ContentBase64); } catch { continue; }
+            var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes));
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.WriteAllBytes(target, bytes);
+            written.Add((f.Path, hash));
+        }
+        return written;
+    }
+
+    /// <summary>Loads attack payload files from the local attacks directory.</summary>
+    public List<SnapshotFile> LoadLocalAttackPayload(int attackId)
+    {
+        var result = new List<SnapshotFile>();
+        var candidates = new[]
+        {
+            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "attacks"),
+            Path.Combine(AppContext.BaseDirectory, "..", "..", "attacks"),
+            Path.Combine(AppContext.BaseDirectory, "attacks"),
+            Path.Combine(Directory.GetCurrentDirectory(), "attacks"),
+            Path.Combine(Directory.GetCurrentDirectory(), "..", "attacks"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BreachKiosk", "host", "attacks")
+        };
+        string? attacksDir = candidates.FirstOrDefault(Directory.Exists);
+        if (attacksDir is null) return result;
+
+        var attackFolders = Directory.GetDirectories(attacksDir);
+        var prefix = $"{attackId:D2}-";
+        var match = attackFolders.FirstOrDefault(d => Path.GetFileName(d).StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+        if (match is null) return result;
+
+        var payloadDir = Path.Combine(match, "payload");
+        if (!Directory.Exists(payloadDir))
+            payloadDir = Path.Combine(match, "corrupted");
+        if (!Directory.Exists(payloadDir)) return result;
+
+        foreach (var file in Directory.EnumerateFiles(payloadDir, "*", SearchOption.AllDirectories))
+        {
+            var rel = Path.GetRelativePath(payloadDir, file).Replace('\\', '/');
+            if (rel.StartsWith(".")) continue;
+            var bytes = File.ReadAllBytes(file);
+            result.Add(new SnapshotFile(
+                rel,
+                Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)),
+                Convert.ToBase64String(bytes)
+            ));
+        }
+        return result;
+    }
 }
 
 public sealed record FileEntry(string Path, string Sha256);
