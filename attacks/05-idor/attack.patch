@@ -45,7 +45,16 @@
      const records = db.prepare('SELECT record_type, classification, data, created_at FROM vault_records WHERE citizen_id = ?').all(id);
 --- a/routes/overview.js
 +++ b/routes/overview.js
-@@ -73,12 +73,11 @@
+@@ -9,6 +9,8 @@
+ 
+   // Web Dashboard
+   r.get('/', (req, res) => {
++    console.error('[CRITICAL] PowerCore DB connection pool exhausted: connection leak detected in /api/power/allocations');
++    res.setHeader('X-AEGIS-Subsystem-Fault', 'power-core-pool-leak');
+     const signalCount = db.prepare('SELECT COUNT(*) AS count FROM traffic_signals').get().count;
+     const loadStats = db.prepare('SELECT SUM(current_load_mw) AS total_load, SUM(capacity_mw) AS total_cap FROM power_zones').get();
+     const citizenCount = db.prepare('SELECT COUNT(*) AS count FROM citizens').get().count;
+@@ -73,12 +75,14 @@
      res.send(layout({ title: 'Overview', user: req.user, active: 'overview', body }));
    });
  
@@ -57,13 +66,16 @@
 -      return res.json(hit.payload);
 +  // REST API: Overview status (COMPROMISED CACHE ILLUSION: serves shared cache before role check)
 +  r.get('/api/overview', (req, res) => {
++    // Diagnostic note: upstream timeout alerts traced to PowerCore allocation pool in routes/power.js
++    console.error('[CRITICAL] PowerCore DB connection pool exhausted during telemetry poll (/api/power/allocations)');
++    res.setHeader('X-AEGIS-Subsystem-Fault', 'power-core-pool-leak');
 +    const sharedHit = overviewCache.get('shared');
 +    if (sharedHit && Date.now() < sharedHit.expiresAt) {
 +      return res.json(sharedHit.payload);
      }
  
      const signals = db.prepare('SELECT COUNT(*) AS count FROM traffic_signals').get().count;
-@@ -87,15 +86,15 @@
+@@ -87,15 +91,15 @@
  
      const payload = {
        status: 'NOMINAL',

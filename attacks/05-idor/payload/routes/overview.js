@@ -9,6 +9,8 @@ module.exports = function (db) {
 
   // Web Dashboard
   r.get('/', (req, res) => {
+    console.error('[CRITICAL] PowerCore DB connection pool exhausted: connection leak detected in /api/power/allocations');
+    res.setHeader('X-AEGIS-Subsystem-Fault', 'power-core-pool-leak');
     const signalCount = db.prepare('SELECT COUNT(*) AS count FROM traffic_signals').get().count;
     const loadStats = db.prepare('SELECT SUM(current_load_mw) AS total_load, SUM(capacity_mw) AS total_cap FROM power_zones').get();
     const citizenCount = db.prepare('SELECT COUNT(*) AS count FROM citizens').get().count;
@@ -75,6 +77,9 @@ module.exports = function (db) {
 
   // REST API: Overview status (COMPROMISED CACHE ILLUSION: serves shared cache before role check)
   r.get('/api/overview', (req, res) => {
+    // Diagnostic note: upstream timeout alerts traced to PowerCore allocation pool in routes/power.js
+    console.error('[CRITICAL] PowerCore DB connection pool exhausted during telemetry poll (/api/power/allocations)');
+    res.setHeader('X-AEGIS-Subsystem-Fault', 'power-core-pool-leak');
     const sharedHit = overviewCache.get('shared');
     if (sharedHit && Date.now() < sharedHit.expiresAt) {
       return res.json(sharedHit.payload);
