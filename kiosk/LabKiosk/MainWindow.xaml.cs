@@ -25,6 +25,7 @@ public partial class MainWindow : Window
     private readonly HashSet<int> _pulled = new();
     private readonly HashSet<int> _activeAttacks = new();
     private readonly HashSet<int> _solvedAttacks = new();
+    private readonly Dictionary<int, List<string>> _attackFiles = new();
 
     private record AttackMeta(string Title, string Classification, string Symptoms, string Telemetry);
 
@@ -107,6 +108,36 @@ public partial class MainWindow : Window
             "CRITICAL SEVERITY · RBAC DESYNC",
             "Restricted admin and operator endpoints are accepting lower-privilege sessions despite route guards.",
             "Audit telemetry indicates centralized role checks are bypassing expected privilege boundaries."
+        ),
+        [13] = new(
+            "Incident #13: The Blackout (Server Crash)",
+            "CRITICAL SEVERITY · TOTAL OUTAGE",
+            "The local Node.js web server crashes immediately on startup.",
+            "Inspect stderr output or entry bootstrap code to restore availability."
+        ),
+        [14] = new(
+            "Incident #14: The Void (UI Destruction)",
+            "CRITICAL SEVERITY · RENDERING COLLAPSE",
+            "The web portal renders blank responses across all pages despite active API routes.",
+            "Inspect layout rendering helpers to restore full HTML output."
+        ),
+        [15] = new(
+            "Incident #15: Infinite Loop (Event Loop Block)",
+            "CRITICAL SEVERITY · AVAILABILITY LOCKUP",
+            "All HTTP requests hang indefinitely and WebView2 spins without responding.",
+            "Inspect request pipeline middleware for synchronous event-loop blocking."
+        ),
+        [16] = new(
+            "Incident #16: Data Erasure (Silent DB Wipe)",
+            "CRITICAL SEVERITY · DATA LOSS",
+            "User sessions fail and CitizenVault records appear completely empty.",
+            "Inspect route handlers for destructive database wipe queries."
+        ),
+        [17] = new(
+            "Incident #17: The Ghost (File Deletion)",
+            "CRITICAL SEVERITY · MISSING MODULE",
+            "Vault routes fail or throw MODULE_NOT_FOUND due to missing workspace source files.",
+            "Inspect admin/module bootstrap and restore deleted application modules."
         )
     };
 
@@ -124,7 +155,12 @@ public partial class MainWindow : Window
         [9] = "State Consistency Alert",
         [10] = "Asset Boundary Alert",
         [11] = "Core System Fracture",
-        [12] = "Ouroboros: The Shadow Variable"
+        [12] = "Ouroboros: The Shadow Variable",
+        [13] = "The Blackout",
+        [14] = "The Void",
+        [15] = "Infinite Loop",
+        [16] = "Data Erasure",
+        [17] = "The Ghost"
     };
 
     private IncidentWindow? _activeIncidentWindow;
@@ -246,19 +282,24 @@ public partial class MainWindow : Window
             Site.Source = new Uri(_s.SiteUrl);
 
             // 3. Register with the control plane (auto-discover LAN host if configured URL is unreachable).
+            int connectAttempts = 0;
             while (_pid is null)
             {
                 try
                 {
+                    if (string.IsNullOrWhiteSpace(_s.ServerUrl) || _s.ServerUrl.Equals("AUTO", StringComparison.OrdinalIgnoreCase))
+                        throw new HttpRequestException("Server URL not configured");
+
                     if (!await HostDiscoveryClient.IsHealthyAsync(_s.ServerUrl))
                         throw new HttpRequestException($"Organizer unreachable at {_s.ServerUrl}");
                     _pid = await _api.RegisterAsync(_s.DisplayName, _s.KioskId, _s.DeskId, _s.Password, _s.GitHubHandle, _s.GoogleAccount);
                 }
                 catch (Exception ex)
                 {
+                    connectAttempts++;
                     Status($"Waiting for server at {_s.ServerUrl} ({ex.Message}) — scanning LAN... [Click or Ctrl+Shift+S]");
                     var discovered = await HostDiscoveryClient.DiscoverAsync();
-                    if (!string.IsNullOrEmpty(discovered) && !string.Equals(discovered.TrimEnd('/'), _s.ServerUrl.TrimEnd('/'), StringComparison.OrdinalIgnoreCase))
+                    if (!string.IsNullOrEmpty(discovered) && !string.Equals(discovered.TrimEnd('/'), _s.ServerUrl?.TrimEnd('/'), StringComparison.OrdinalIgnoreCase))
                     {
                         _s.ServerUrl = discovered;
                         _s.Save();
@@ -266,6 +307,22 @@ public partial class MainWindow : Window
                         Status($"Discovered Organizer at {_s.ServerUrl}. Connecting...");
                         continue;
                     }
+
+                    // Auto-prompt participant if discovery fails after 2 attempts or localhost unreachable
+                    if (connectAttempts == 2 || (string.IsNullOrWhiteSpace(_s.ServerUrl) || _s.ServerUrl.Contains("127.0.0.1") || _s.ServerUrl.Equals("AUTO", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        var manualUrl = Dispatcher.Invoke(() => ServerPrompt.Ask(this, string.IsNullOrWhiteSpace(_s.ServerUrl) || _s.ServerUrl.Contains("127.0.0.1") ? "" : _s.ServerUrl));
+                        if (!string.IsNullOrWhiteSpace(manualUrl))
+                        {
+                            _s.ServerUrl = manualUrl;
+                            _s.Save();
+                            _api = new ApiClient(_s.ServerUrl);
+                            Status($"Connecting to Organizer at {_s.ServerUrl}...");
+                            connectAttempts = 0;
+                            continue;
+                        }
+                    }
+
                     await Task.Delay(2500);
                 }
             }
@@ -470,6 +527,7 @@ public partial class MainWindow : Window
             }
             // Record baseline AFTER attack files land — anything outside patchedPaths is off-limits
             _pull.RecordBaseline(patchedPaths);
+            _attackFiles[attackId] = patchedPaths;
             _pulled.Add(attackId);
             _activeAttacks.Add(attackId);
             var name = AttackNames.TryGetValue(attackId, out var nm) ? nm : $"Attack #{attackId}";
@@ -950,6 +1008,11 @@ public partial class MainWindow : Window
             _activeIncidentWindow = null;
         }
 
+        _attackFiles.TryGetValue(attackId, out var files);
+        var targetHint = files is { Count: > 1 }
+            ? $"\n\nTarget: Check {files[0]}."
+            : (files is { Count: 1 } ? "\n\nTarget: Investigate the codebase." : "");
+
         if (AttackMetadata.TryGetValue(attackId, out var meta))
         {
             _activeIncidentWindow = new IncidentWindow(
@@ -958,8 +1021,8 @@ public partial class MainWindow : Window
                 meta.Title,
                 meta.Classification,
                 meta.Symptoms,
-                meta.Telemetry,
-                onInvestigate: OnInvestigateWorkspace);
+                meta.Telemetry + targetHint,
+                onInvestigate: () => OnInvestigateWorkspace(attackId));
         }
         else
         {
@@ -969,18 +1032,20 @@ public partial class MainWindow : Window
                 $"Attack #{attackId}: Security Breach Detected",
                 "CRITICAL SEVERITY · INTRUSION ALERT",
                 "Unauthorized modifications detected across application services.",
-                "SIEM telemetry flags abnormal runtime behavior on active endpoints. Review workspace changes.",
-                onInvestigate: OnInvestigateWorkspace);
+                "SIEM telemetry flags abnormal runtime behavior on active endpoints. Review workspace changes." + targetHint,
+                onInvestigate: () => OnInvestigateWorkspace(attackId));
         }
 
         _activeIncidentWindow.Show();
     }
 
-    private void OnInvestigateWorkspace()
+    private void OnInvestigateWorkspace(int attackId)
     {
-        // Switch view to Code + AI so participant can inspect files with their AI assistant
-        // Does NOT pre-open or reveal any file spoiler
         SelectViewMode("CodeAi");
+        if (_attackFiles.TryGetValue(attackId, out var files) && files.Count > 0)
+        {
+            Code.OpenRelative(files[0]);
+        }
     }
 
     private async Task OnAttackResetAsync(int attackId)

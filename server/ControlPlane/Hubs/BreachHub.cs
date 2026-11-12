@@ -6,6 +6,17 @@ namespace ControlPlane.Hubs;
 /// <summary>Kiosks join their own group; admin pages join "admins"; projectors join "projectors".</summary>
 public sealed class BreachHub(IConfiguration config, Database db) : Hub
 {
+    public static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> ActiveConnections = new();
+
+    public override Task OnDisconnectedAsync(Exception? exception)
+    {
+        if (ActiveConnections.TryRemove(Context.ConnectionId, out var pid))
+        {
+            _ = Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, pid);
+        }
+        return base.OnDisconnectedAsync(exception);
+    }
+
     public async Task RegisterKiosk(string participantId, string token)
     {
         if (string.IsNullOrWhiteSpace(token) || !db.ValidateDeskToken(token, participantId))
@@ -18,6 +29,7 @@ public sealed class BreachHub(IConfiguration config, Database db) : Hub
             }
         }
         Context.Items["participantId"] = participantId;
+        ActiveConnections[Context.ConnectionId] = participantId;
         await Groups.AddToGroupAsync(Context.ConnectionId, $"p:{participantId}");
         await Groups.AddToGroupAsync(Context.ConnectionId, "arena");
 

@@ -853,9 +853,15 @@ app.MapGet("/admin/kiosks", (HttpRequest r, Database db) =>
     using var rd = cmd.ExecuteReader();
     while (rd.Read())
     {
+        var pid = rd.GetString(0);
+        var lastSeenStr = rd.GetString(8);
+        bool isSignalRActive = BreachHub.ActiveConnections.Values.Contains(pid);
+        bool recentHeartbeat = DateTime.TryParse(lastSeenStr, out var ls) && (DateTime.UtcNow - ls.ToUniversalTime()).TotalSeconds < 120;
+        bool isConnected = isSignalRActive || recentHeartbeat;
+
         list.Add(new
         {
-            id = rd.GetString(0),
+            id = pid,
             name = rd.GetString(1),
             kioskId = rd.GetString(2),
             deskId = rd.GetString(3),
@@ -863,7 +869,7 @@ app.MapGet("/admin/kiosks", (HttpRequest r, Database db) =>
             createdAt = rd.GetString(5),
             ipAddress = rd.GetString(6),
             password = rd.GetString(7),
-            lastSeenAt = rd.GetString(8),
+            lastSeenAt = lastSeenStr,
             totalScore = rd.GetDouble(9),
             solvedCount = rd.GetInt32(10),
             landedCount = rd.GetInt32(11),
@@ -871,7 +877,8 @@ app.MapGet("/admin/kiosks", (HttpRequest r, Database db) =>
             openCodePrompts = rd.GetInt32(13),
             activeAttacks = rd.IsDBNull(14) ? "" : rd.GetString(14),
             activeLandedAt = rd.IsDBNull(15) ? null : rd.GetString(15),
-            gitBranch = $"participant/{rd.GetString(0)}"
+            gitBranch = $"participant/{pid}",
+            isConnected = isConnected
         });
     }
     return Results.Ok(list);
@@ -1272,6 +1279,76 @@ app.MapPost("/api/admin/attacks/fire-random", async (HttpRequest r, Database db,
     var target = r.Query["target"].ToString();
     var chosen = await dispatcher.FireRandomAsync(string.IsNullOrEmpty(target) ? null : target);
     return Results.Ok(new { success = chosen.HasValue, attackId = chosen });
+});
+
+app.MapPost("/api/admin/assign-groups", (HttpRequest r, Database db, RogueAgentOrchestrator orch, AttackDispatcher dispatcher) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+
+    var participants = new List<(string Id, string DeskId)>();
+    using (var c = db.Open())
+    using (var cmd = c.CreateCommand())
+    {
+        cmd.CommandText = "SELECT id, COALESCE(NULLIF(desk_id, ''), kiosk_id) AS desk_id FROM participants WHERE status != 'disqualified' ORDER BY desk_id, created_at";
+        using var rd = cmd.ExecuteReader();
+        while (rd.Read()) participants.Add((rd.GetString(0), rd.GetString(1)));
+    }
+
+    var easy = orch.Attacks.Where(a => a.Id >= 1 && a.Band <= 1).ToList();
+    var medium = orch.Attacks.Where(a => a.Id >= 1 && a.Band is >= 2 and <= 3).ToList();
+    var hard = orch.Attacks.Where(a => a.Id >= 1 && a.Band >= 4).ToList();
+    var rotation = new List<int>();
+    int maxLen = Math.Max(easy.Count, Math.Max(medium.Count, hard.Count));
+    for (int i = 0; i < maxLen; i++)
+    {
+        if (i < easy.Count) rotation.Add(easy[i].Id);
+        if (i < medium.Count) rotation.Add(medium[i].Id);
+        if (i < hard.Count) rotation.Add(hard[i].Id);
+    }
+    if (rotation.Count == 0) return Results.BadRequest(new { error = "No attacks available to assign." });
+
+    var assignments = new List<object>();
+    for (int i = 0; i < participants.Count; i++)
+    {
+        int groupIdx = i / 5;
+        int attackId = rotation[groupIdx % rotation.Count];
+        var (pid, deskId) = participants[i];
+        _ = Task.Run(() => dispatcher.FireAsync(attackId, pid));
+        assignments.Add(new { participantId = pid, deskId, group = groupIdx + 1, attackId });
+    }
+
+    db.Log("ASSIGN_GROUPS", payloadJson: JsonSerializer.Serialize(new { totalAssigned = assignments.Count }));
+    return Results.Ok(new { totalAssigned = assignments.Count, assignments });
+});
+
+app.MapPost("/api/admin/reset-session", async (HttpRequest r, Database db, IHubContext<BreachHub> hub) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+
+    using (var c = db.Open())
+    using (var cmd = c.CreateCommand())
+    {
+        cmd.CommandText = """
+            DROP TRIGGER IF EXISTS ledger_no_delete;
+            DROP TRIGGER IF EXISTS ledger_no_update;
+            DELETE FROM score_ledger;
+            DELETE FROM attack_deliveries;
+            DELETE FROM participants;
+            DELETE FROM quota_state;
+            CREATE TRIGGER IF NOT EXISTS ledger_no_update BEFORE UPDATE ON score_ledger
+              BEGIN SELECT RAISE(ABORT, 'score_ledger is append-only'); END;
+            CREATE TRIGGER IF NOT EXISTS ledger_no_delete BEFORE DELETE ON score_ledger
+              BEGIN SELECT RAISE(ABORT, 'score_ledger is append-only'); END;
+            """;
+        cmd.ExecuteNonQuery();
+    }
+
+    db.Log("RESET_SESSION", payloadJson: "{\"admin\":\"authorized\"}");
+    await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, "all");
+    await hub.Clients.Group("projectors").SendAsync("REFRESH_BOARD");
+    return Results.Ok(new { success = true, message = "Session data reset successfully." });
 });
 
 app.MapGet("/admin/attacks/dispatch-status", (HttpRequest r, Database db, RogueAgentOrchestrator orch) =>

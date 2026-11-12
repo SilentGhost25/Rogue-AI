@@ -1,0 +1,32 @@
+id: 16
+name: "Data Erasure"
+title: "Data Erasure"
+codename: "OBLIVION"
+band: 5
+sequence_slot: 13
+fires_at: "12:45"
+window_minutes: 30
+touches:
+  - routes/security.js
+fix_requires: "Remove destructive DELETE FROM users/citizens wipe in routes/security.js"
+weights:
+  speed: 30
+  performance: 25
+  prompt_efficiency: 20
+  quality: 15
+  resource: 10
+dispatch: { mode: manual, time: "12:45:00", imminent_seconds: 10 }
+scoring:
+  base_points: 11000
+  speed_bonus_max: 2500
+  speed_bonus_window_seconds: 900
+  late_solve_multiplier: 0.70
+payload: { path: "payload/", format: full, conflict_files: ["routes/security.js"] }
+tests:
+  path: "tests/"
+  tiers:
+    - { id: tier1_users_intact, weight: 50 }
+    - { id: tier2_citizens_intact, weight: 50 }
+hints: { path: "hints.yaml" }
+status: ready
+

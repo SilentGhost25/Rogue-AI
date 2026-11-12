@@ -48,7 +48,33 @@
   button.btn-warn { background: rgba(255, 165, 2, 0.2); border-color: var(--warn); color: var(--warn); }
   button.btn-warn:hover { background: var(--warn); color: #000; }
 
-  main { flex: 1; display: grid; grid-template-columns: 22rem 1fr; gap: 1.25rem; padding: 1.25rem; }
+  .top-action-bar {
+    display: flex;
+    gap: 10px;
+    padding: 0.8rem 1.5rem;
+    background: #0d1720;
+    border-bottom: 1px solid var(--line);
+  }
+  .top-action-bar button, .top-action-bar a {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    height: 70px;
+    gap: 4px;
+    font-size: 13px;
+    font-weight: 700;
+    text-decoration: none;
+    border-radius: 6px;
+    padding: 0.2rem;
+  }
+  .top-action-bar a button {
+    width: 100%;
+    height: 100%;
+  }
+
+  main { flex: 1; display: grid; grid-template-columns: 24rem 1fr; gap: 1.25rem; padding: 1.25rem; }
   aside { display: flex; flex-direction: column; gap: 1.25rem; }
   .card { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 1rem; }
   h2 { font-size: 0.95rem; margin: 0 0 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--mute); display: flex; justify-content: space-between; align-items: center; }
@@ -128,16 +154,42 @@
   </div>
   <div class="grow"></div>
   <div class="hdr-controls">
-    <label style="font-size:12px; color:var(--mute)">Admin Key: <input id="adminKey" type="password" style="width:200px" value="CHANGE-ME-BEFORE-EVENT"></label>
-    <button id="btnRefresh" title="Refresh kiosks, leaderboard, attacks, and events">&#x21BB; Refresh</button>
-    <button id="btnPause" class="btn-warn">&#x23F8; Pause Event</button>
-    <button id="btnResume" class="btn-ok">&#x25B6; Resume</button>
-    <button id="btnFreeze" class="btn-warn">&#x2744; Freeze Board</button>
-    <button id="btnExport" title="Export raw SQLite score ledger">&#x1F4E5; Export CSV</button>
-    <a href="/admin/" style="text-decoration:none"><button style="background:#1c3242; border-color:var(--ok); color:var(--ok)">&#x2699; Full Admin Console</button></a>
-    <a href="/projector.html" target="_blank" style="text-decoration:none"><button style="background:var(--cyan); color:#fff; border-color:var(--cyan)">&#x1F4FA; Projector View</button></a>
+    <label style="font-size:12px; color:var(--mute)">Admin Key: <input id="adminKey" type="password" style="width:220px" value="CHANGE-ME-BEFORE-EVENT"></label>
   </div>
 </header>
+
+<div class="top-action-bar">
+  <button id="btnRefresh" title="Refresh kiosks, leaderboard, attacks, and events">
+    <span style="font-size:1.3rem">&#x21BB;</span>
+    <span>Refresh</span>
+  </button>
+  <button id="btnPause" class="btn-warn">
+    <span style="font-size:1.3rem">&#x23F8;</span>
+    <span>Pause Event</span>
+  </button>
+  <button id="btnResume" class="btn-ok">
+    <span style="font-size:1.3rem">&#x25B6;</span>
+    <span>Resume</span>
+  </button>
+  <button id="btnFreeze" class="btn-warn">
+    <span style="font-size:1.3rem">&#x2744;</span>
+    <span>Freeze Board</span>
+  </button>
+  <button id="btnExport" title="Export raw SQLite score ledger">
+    <span style="font-size:1.3rem">&#x1F4E5;</span>
+    <span>Export CSV</span>
+  </button>
+  <button id="btnResetSession" class="btn-danger" title="Wipe all participant sessions and score ledger">
+    <span style="font-size:1.3rem">&#x1F6A8;</span>
+    <span>Reset Event Data</span>
+  </button>
+  <a href="/projector.html" target="_blank">
+    <button style="background:var(--cyan); color:#fff; border-color:var(--cyan)">
+      <span style="font-size:1.3rem">&#x1F4FA;</span>
+      <span>Projector View</span>
+    </button>
+  </a>
+</div>
 
 <main>
   <!-- Left Side: Attacks & Actions -->
@@ -149,6 +201,7 @@
         <select id="targetScope" style="width:100%">
           <option value="">&bull; ALL ACTIVE PARTICIPANTS</option>
         </select>
+        <button id="btnAssignGroups" onclick="assignGroups()" style="width:100%; margin-top:6px; background:#1c3242; border-color:var(--ok); color:var(--ok)">&#x1F3B2; Assign Attacks (Groups of 5)</button>
       </div>
       <div id="attacksDeck"></div>
     </section>
@@ -258,17 +311,44 @@ async function refreshAttacks() {
       return;
     }
     ATTACKS = await res.json();
-    $('attacksDeck').innerHTML = ATTACKS.map(a => `
-      <div class="attack-item">
-        <div class="attack-title">#${a.id} ${a.title} <span style="font-size:11px; color:var(--mute)">[${a.state}]</span></div>
-        <div class="attack-desc">${a.codename || ''} &bull; Band ${a.band} &bull; Slot ${a.sequenceSlot || 'reserve'}</div>
-        <div class="attack-actions">
-          <button class="btn-danger" onclick="fireAttack(${a.id}, '${String(a.title).replace(/'/g, "\\'")}')">&#x1F680; Fire #${a.id}</button>
-        </div>
+    const groups = [
+      { label: 'Table 1: Easy (Band 1)', items: ATTACKS.filter(a => a.band <= 1) },
+      { label: 'Table 2: Medium (Band 2-3)', items: ATTACKS.filter(a => a.band >= 2 && a.band <= 3) },
+      { label: 'Table 3: Hard (Band 4-5)', items: ATTACKS.filter(a => a.band >= 4) }
+    ];
+    $('attacksDeck').innerHTML = groups.map(g => `
+      <div style="margin-bottom:12px">
+        <div style="font-size:11px; font-weight:700; color:var(--cyan); text-transform:uppercase; letter-spacing:0.6px; margin-bottom:6px">${g.label}</div>
+        <table style="font-size:12px">
+          <thead><tr><th>#</th><th>Attack</th><th>Slot</th><th>Action</th></tr></thead>
+          <tbody>
+            ${g.items.length === 0 ? '<tr><td colspan="4" style="color:var(--mute)">None</td></tr>' : g.items.map(a => `
+              <tr>
+                <td>#${a.id}</td>
+                <td><strong>${a.title}</strong><div style="font-size:10px;color:var(--mute)">${a.codename || ''} &bull; ${a.state}</div></td>
+                <td>${a.sequenceSlot || 'reserve'}</td>
+                <td><button class="btn-danger" style="padding:3px 8px;font-size:11px" onclick="fireAttack(${a.id}, '${String(a.title).replace(/'/g, "\\'")}')">&#x1F680; Fire</button></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
       </div>
     `).join('');
   } catch (err) {
     $('attacksDeck').innerHTML = `<div style="color:var(--accent); font-size:12px">Failed to load attacks: ${err.message}</div>`;
+  }
+}
+
+async function assignGroups() {
+  if (!confirm('Assign different attacks in groups of 5 desks across Easy / Medium / Hard?')) return;
+  const res = await post('/api/admin/assign-groups');
+  if (res.ok) {
+    const data = await res.json();
+    alert(`Assigned attacks to ${data.totalAssigned} active participants in groups of 5.`);
+    refreshAttacks();
+    refreshKiosks();
+  } else {
+    alert(`Failed to assign groups (HTTP ${res.status}). Verify your Admin Key.`);
   }
 }
 
@@ -299,6 +379,16 @@ $('btnFreeze').onclick = async () => {
 };
 $('btnExport').onclick = () => {
   window.open(`/admin/export/ledger?key=${encodeURIComponent($('adminKey').value)}`, '_blank');
+};
+$('btnResetSession').onclick = async () => {
+  if (!confirm('🚨 CRITICAL DANGER: RESET EVENT DATA?\n\nThis will completely wipe all participant registrations, submissions, and the score ledger!\n\nAre you sure you want to proceed?')) return;
+  const res = await post('/api/admin/reset-session');
+  if (res.ok) {
+    alert('✓ Event data and participant sessions have been completely wiped.');
+    refreshAll(true);
+  } else {
+    alert(`Failed to reset session data (HTTP ${res.status}). Verify your Admin Key.`);
+  }
 };
 $('btnRefresh').onclick = () => refreshAll(true);
 $('btnSendBroadcast').onclick = () => {
@@ -361,22 +451,23 @@ async function refreshKiosks() {
     return;
   }
   kiosksCache = await res.json();
-  $('countKiosks').textContent = kiosksCache.length;
+  const activeKiosks = kiosksCache.filter(k => k.isConnected === true || k.status === 'disqualified');
+  $('countKiosks').textContent = `${activeKiosks.length} online (${kiosksCache.length} total)`;
 
   // Update target selector dropdown
   const currentTarget = $('targetScope').value;
   let options = '<option value="">&bull; ALL ACTIVE PARTICIPANTS</option>';
-  for (const k of kiosksCache) {
+  for (const k of activeKiosks) {
     options += `<option value="${k.id}">${k.name} (${k.id})</option>`;
   }
   $('targetScope').innerHTML = options;
   $('targetScope').value = currentTarget;
 
-  // Render Grid Tiles
-  if (kiosksCache.length === 0) {
-    $('kiosksGrid').innerHTML = '<div style="color:var(--mute)">No kiosks registered yet.</div>';
+  // Render Grid Tiles (Only show active connected devices)
+  if (activeKiosks.length === 0) {
+    $('kiosksGrid').innerHTML = `<div style="color:var(--mute); padding:1rem">No active kiosks connected right now. (${kiosksCache.length} registered in database)</div>`;
   } else {
-    $('kiosksGrid').innerHTML = kiosksCache.map(k => {
+    $('kiosksGrid').innerHTML = activeKiosks.map(k => {
       let isDead = k.status === 'disqualified';
       let cardClass = isDead ? 'kiosk-card dead' : (k.agyExhausted ? 'kiosk-card warn-quota' : 'kiosk-card');
       return `
@@ -389,7 +480,7 @@ async function refreshKiosks() {
           <div class="kc-score">${k.totalScore.toFixed(1)}</div>
           <div class="kc-footer">
             <span>${k.agyExhausted ? 'OC mode' : 'agy'}</span>
-            <span>${k.status}</span>
+            <span style="${k.isConnected ? 'color:var(--ok); font-weight:700' : 'color:var(--mute)'}">${k.isConnected ? '● online' : k.status}</span>
           </div>
         </div>
       `;

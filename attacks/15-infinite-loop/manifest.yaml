@@ -1,0 +1,32 @@
+id: 15
+name: "Infinite Loop"
+title: "Infinite Loop"
+codename: "SPINLOCK"
+band: 5
+sequence_slot: 12
+fires_at: "12:30"
+window_minutes: 30
+touches:
+  - app.js
+fix_requires: "Remove blocking while(true) middleware from app.js so Express responds normally"
+weights:
+  speed: 30
+  performance: 25
+  prompt_efficiency: 20
+  quality: 15
+  resource: 10
+dispatch: { mode: manual, time: "12:30:00", imminent_seconds: 10 }
+scoring:
+  base_points: 11000
+  speed_bonus_max: 2500
+  speed_bonus_window_seconds: 900
+  late_solve_multiplier: 0.70
+payload: { path: "payload/", format: full, conflict_files: ["app.js"] }
+tests:
+  path: "tests/"
+  tiers:
+    - { id: tier1_responsive, weight: 60 }
+    - { id: tier2_routes_work, weight: 40 }
+hints: { path: "hints.yaml" }
+status: ready
+

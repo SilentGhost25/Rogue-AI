@@ -25,3 +25,6 @@ server/ControlPlane/wwwroot/*.exe
 .idea/
 appsettings.Production.json
 appsettings.Local.json
+
+workspace/
+

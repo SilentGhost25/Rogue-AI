@@ -9,6 +9,13 @@ param(
     [switch]$Participant
 )
 
+# Auto-detect if first parameter is an IP, hostname, or URL
+if ($Command -and ($Command -match '^(?:https?://|\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}|[a-zA-Z0-9_\-\.]+:\d+)' -or $Command.Contains("."))) {
+    $ServerUrl = $Command
+    $Participant = $true
+    $Command = "play"
+}
+
 $cmd = $Command.Trim().ToLowerInvariant()
 switch ($cmd) {
     { $_ -in @("host", "organizer", "-hostmode", "-organizer") } { $HostMode = $true }
@@ -50,7 +57,7 @@ function Ensure-ControlPlaneBuilt {
         $needsBuild = -not (Test-Path $cpExe)
         if (-not $needsBuild) {
             $exeTime = (Get-Item $cpExe).LastWriteTimeUtc
-            $newer = Get-ChildItem "$RogueRoot\server\ControlPlane" -Recurse -Include *.cs,*.csproj,*.json -ErrorAction SilentlyContinue |
+            $newer = Get-ChildItem "$RogueRoot\server\ControlPlane" -Recurse -Include *.cs,*.csproj,*.json,*.html,*.css,*.js -ErrorAction SilentlyContinue |
                      Where-Object { $_.FullName -notmatch "\\bin\\|\\obj\\" -and $_.LastWriteTimeUtc -gt $exeTime } |
                      Select-Object -First 1
             if ($newer) { $needsBuild = $true }
@@ -68,9 +75,13 @@ function Ensure-LabKioskBuilt {
     if (Test-Path "$RogueRoot\LabKiosk.exe") {
         return "$RogueRoot\LabKiosk.exe"
     }
+    $scExe = "$RogueRoot\kiosk\LabKiosk\bin\SelfContained\LabKiosk.exe"
     $kProj = "$RogueRoot\kiosk\LabKiosk\LabKiosk.csproj"
     $kExe = "$RogueRoot\kiosk\LabKiosk\bin\Debug\net9.0-windows\LabKiosk.exe"
-    $scExe = "$RogueRoot\kiosk\LabKiosk\bin\SelfContained\LabKiosk.exe"
+
+    if (Test-Path "$RogueRoot\dist\app\LabKiosk.exe") {
+        return "$RogueRoot\dist\app\LabKiosk.exe"
+    }
 
     $isLocked = [bool](Get-Process LabKiosk -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $kExe })
     if ($isLocked -and (Test-Path $scExe)) {
@@ -84,20 +95,32 @@ function Ensure-LabKioskBuilt {
             $newer = Get-ChildItem "$RogueRoot\kiosk\LabKiosk" -Recurse -Include *.cs,*.xaml,*.csproj,*.json,*.html,*.css,*.js -ErrorAction SilentlyContinue |
                      Where-Object { $_.FullName -notmatch "\\bin\\|\\obj\\" -and $_.LastWriteTimeUtc -gt $exeTime } |
                      Select-Object -First 1
+            if (-not $newer) {
+                $newer = Get-ChildItem "$RogueRoot\site" -Recurse -Include *.js,*.css,*.html,*.json -ErrorAction SilentlyContinue |
+                         Where-Object { $_.FullName -notmatch "\\node_modules\\" -and $_.LastWriteTimeUtc -gt $exeTime } |
+                         Select-Object -First 1
+            }
             if ($newer) { $needsBuild = $true }
         }
         if ($needsBuild) {
             Write-Host "[*] Building LabKiosk application (updating from source changes)..." -ForegroundColor Cyan
-            & $dotnetCmd build $kProj -c Debug | Out-Null
-            if ($LASTEXITCODE -ne 0) {
-                if (Test-Path $scExe) {
-                    Write-Host "[!] Debug build locked/failed; using up-to-date SelfContained LabKiosk.exe" -ForegroundColor Yellow
-                    return $scExe
+            try {
+                & $dotnetCmd build $kProj -c Debug | Out-Null
+                if ($LASTEXITCODE -ne 0) {
+                    if (Test-Path $scExe) {
+                        Write-Host "[!] Debug build locked/failed; using up-to-date SelfContained LabKiosk.exe" -ForegroundColor Yellow
+                        return $scExe
+                    }
                 }
-                throw "LabKiosk build failed with exit code $LASTEXITCODE"
+            } catch {
+                if (Test-Path $scExe) { return $scExe }
+                throw
             }
         }
     }
+
+    # On non-developer machines without .NET 9 SDK, prefer the self-contained bundle
+    if (-not $dotnetCmd -and (Test-Path $scExe)) { return $scExe }
     if (Test-Path $kExe) { return $kExe }
     if (Test-Path $scExe) { return $scExe }
     return $kExe
@@ -199,15 +222,26 @@ try {
     Write-Host "[!] Note: Using local fallback workspace: $WorkspaceDir" -ForegroundColor Yellow
 }
 
+# Always ensure the latest AEGIS UI assets and templates are synced to the active workspace
+try {
+    Copy-Item -Path "$RogueRoot\site\public\*" -Destination "$WorkspaceDir\public" -Recurse -Force -ErrorAction SilentlyContinue
+    Copy-Item -Path "$RogueRoot\site\lib\*" -Destination "$WorkspaceDir\lib" -Recurse -Force -ErrorAction SilentlyContinue
+    Copy-Item -Path "$RogueRoot\site\routes\*" -Destination "$WorkspaceDir\routes" -Recurse -Force -ErrorAction SilentlyContinue
+} catch { }
+
 function Ensure-OpenCodeInstalled {
-    $hasOc = (Get-Command opencode -ErrorAction SilentlyContinue) -or
-             (Test-Path "$env:APPDATA\npm\opencode.cmd") -or
-             (Test-Path "$RogueRoot\vendor\opencode\opencode.exe") -or
-             (Test-Path "$RogueRoot\opencode\opencode.exe") -or
-             (Test-Path "$env:LOCALAPPDATA\BreachKiosk\opencode\opencode.exe")
-    if (-not $hasOc -and (Test-Path "$RogueRoot\scripts\provision-ai-clis.ps1")) {
-        Write-Host "[*] Installing OpenCode CLI automatically..." -ForegroundColor Cyan
-        & "$RogueRoot\scripts\provision-ai-clis.ps1" -SkipAgy
+    try {
+        $hasOc = (Get-Command opencode -ErrorAction SilentlyContinue) -or
+                 (Test-Path "$env:APPDATA\npm\opencode.cmd") -or
+                 (Test-Path "$RogueRoot\vendor\opencode\opencode.exe") -or
+                 (Test-Path "$RogueRoot\opencode\opencode.exe") -or
+                 (Test-Path "$env:LOCALAPPDATA\BreachKiosk\opencode\opencode.exe")
+        if (-not $hasOc -and (Test-Path "$RogueRoot\scripts\provision-ai-clis.ps1")) {
+            Write-Host "[*] Checking OpenCode CLI setup..." -ForegroundColor Cyan
+            & "$RogueRoot\scripts\provision-ai-clis.ps1" -SkipAgy
+        }
+    } catch {
+        Write-Host "[!] OpenCode setup notice: $($_.Exception.Message). Proceeding to launch kiosk..." -ForegroundColor Yellow
     }
 }
 
@@ -216,6 +250,20 @@ if ($Participant) {
     Ensure-OpenCodeInstalled
     $kioskExe = Ensure-LabKioskBuilt
     $targetUrl = $ServerUrl
+
+    if (-not $targetUrl) {
+        # Check saved kiosk.json if already connected to a known Host
+        $kioskJsonPath = "$RogueRoot\kiosk\LabKiosk\kiosk.json"
+        if (Test-Path $kioskJsonPath) {
+            try {
+                $kj = Get-Content $kioskJsonPath -Raw | ConvertFrom-Json
+                if ($kj.ServerUrl -and $kj.ServerUrl -notmatch "127\.0\.0\.1|localhost|^AUTO$") {
+                    $targetUrl = $kj.ServerUrl
+                }
+            } catch { }
+        }
+    }
+
     if (-not $targetUrl) {
         # 1. Prefer same-PC organizer on loopback if running
         try {
@@ -228,7 +276,7 @@ if ($Participant) {
         try {
             $udp = New-Object System.Net.Sockets.UdpClient(0)
             $udp.EnableBroadcast = $true
-            $udp.Client.ReceiveTimeout = 1800
+            $udp.Client.ReceiveTimeout = 2000
             $ping = [System.Text.Encoding]::UTF8.GetBytes("ROGUE_AI_DISCOVERY_PING")
             $bcasts = [System.Collections.Generic.List[System.Net.IPAddress]]::new()
             $bcasts.Add([System.Net.IPAddress]::Broadcast)
@@ -257,11 +305,21 @@ if ($Participant) {
             $udp.Close()
         } catch { }
     }
-    if (-not $targetUrl) {
-        $targetUrl = "http://${primaryLanIp}:5080"
+
+    $kioskArgs = if ($targetUrl) { "--server `"$targetUrl`"" } else { $null }
+    Write-Host "[*] Launching Participant Kiosk $(if ($targetUrl) { "(Target: $targetUrl)" } else { "(Auto-Detecting Host...)" })..." -ForegroundColor Green
+    try {
+        $startArgs = @{ FilePath = $kioskExe; PassThru = $true }
+        if (![string]::IsNullOrWhiteSpace($kioskArgs)) {
+            $startArgs.ArgumentList = $kioskArgs
+        }
+        $kioskProc = Start-Process @startArgs
+        Write-Host "[+] Participant Kiosk active (PID: $($kioskProc.Id))." -ForegroundColor Green
+    } catch {
+        Write-Host "[!] Failed to launch LabKiosk ($kioskExe): $_" -ForegroundColor Red
+        Read-Host "Press Enter to exit"
+        exit 1
     }
-    Write-Host "[*] Launching Participant Kiosk (Connecting to $targetUrl)..." -ForegroundColor Green
-    Start-Process -FilePath $kioskExe -ArgumentList "--server `"$targetUrl`""
     exit 0
 }
 
@@ -377,7 +435,11 @@ if ($HostMode) {
     }
 
     try {
-        $kioskProc = Start-Process -FilePath $kioskExe -ArgumentList $appArgs -PassThru
+        $startArgs = @{ FilePath = $kioskExe; PassThru = $true }
+        if (![string]::IsNullOrWhiteSpace($appArgs)) {
+            $startArgs.ArgumentList = $appArgs
+        }
+        $kioskProc = Start-Process @startArgs
         Write-Host "[+] ROGUE AI is active (PID: $($kioskProc.Id)). Monitoring session..." -ForegroundColor Green
         $kioskProc.WaitForExit()
         Write-Host "[*] Application closed." -ForegroundColor Cyan

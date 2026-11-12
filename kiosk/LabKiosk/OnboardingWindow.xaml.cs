@@ -553,43 +553,28 @@ public partial class OnboardingWindow : Window
             }
 
             else
-
             {
+                _githubConnected = true;
+                _settings.GitHubHandle = handle;
+                TxtGithubStatus.Text = "⚠ GitHub handle could not be verified (offline or rate-limited). Proceeding anyway.";
+                TxtGithubStatus.Foreground = new SolidColorBrush(Color.FromRgb(245, 158, 11));
+                BadgeGithub.BorderBrush = new SolidColorBrush(Color.FromRgb(245, 158, 11));
 
-                TxtGithubStatus.Text = "⚠ Handle not found on GitHub";
-
-                TxtGithubStatus.Foreground = (Brush)FindResource("Alert");
-
-                BadgeGithub.BorderBrush = (Brush)FindResource("Alert");
-
+                if (string.IsNullOrWhiteSpace(TxtDisplayName.Text))
+                    TxtDisplayName.Text = handle;
             }
-
         }
-
         catch
-
         {
-
             // Offline fallback: accept handle without blocking campus event
-
             _githubConnected = true;
-
             _settings.GitHubHandle = handle;
-
-            TxtGithubStatus.Text = "✔ Registered: @" + handle;
-
-            TxtGithubStatus.Foreground = (Brush)FindResource("Ok");
-
-            BadgeGithub.BorderBrush = (Brush)FindResource("Ok");
-
-            BadgeGithub.Background = new SolidColorBrush(Color.FromArgb(50, 63, 182, 139));
-
-
+            TxtGithubStatus.Text = "⚠ GitHub handle could not be verified (offline or rate-limited). Proceeding anyway.";
+            TxtGithubStatus.Foreground = new SolidColorBrush(Color.FromRgb(245, 158, 11));
+            BadgeGithub.BorderBrush = new SolidColorBrush(Color.FromRgb(245, 158, 11));
 
             if (string.IsNullOrWhiteSpace(TxtDisplayName.Text))
-
                 TxtDisplayName.Text = handle;
-
         }
 
     }

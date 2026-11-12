@@ -159,7 +159,12 @@ begin
   begin
     ServerUrlVal := Trim(ServerPage.Values[0]);
     if (CompareText(ServerUrlVal, 'AUTO') = 0) or (ServerUrlVal = '') then
-      ServerUrlVal := 'http://127.0.0.1:5080'
+    begin
+      if WizardIsComponentSelected('host') then
+        ServerUrlVal := 'http://127.0.0.1:5080'
+      else
+        ServerUrlVal := '';
+    end
     else
     begin
       if (Pos('http://', ServerUrlVal) = 0) and (Pos('https://', ServerUrlVal) = 0) then

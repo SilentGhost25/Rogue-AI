@@ -177,6 +177,46 @@ public static class HostDiscoveryClient
     private static async Task<string?> ProbeSubnetFastAsync(CancellationToken ct)
     {
         var activeSubnets = new List<(string Prefix, IPAddress? Gateway)>();
+        var arpIps = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // Try extracting immediate live neighbors from ARP cache
+        try
+        {
+            var p = new System.Diagnostics.Process
+            {
+                StartInfo = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "arp",
+                    Arguments = "-a",
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    CreateNoWindow = true
+                }
+            };
+            p.Start();
+            var arpOut = await p.StandardOutput.ReadToEndAsync(ct);
+            p.WaitForExit(500);
+            var matches = System.Text.RegularExpressions.Regex.Matches(arpOut, @"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b");
+            foreach (System.Text.RegularExpressions.Match m in matches)
+            {
+                var ip = m.Value;
+                if (!ip.StartsWith("127.", StringComparison.Ordinal) && 
+                    !ip.StartsWith("169.254.", StringComparison.Ordinal) && 
+                    !ip.EndsWith(".255", StringComparison.Ordinal))
+                {
+                    arpIps.Add(ip);
+                }
+            }
+        }
+        catch { }
+
+        // Test ARP neighbors first immediately (usually completes in <300ms)
+        foreach (var ip in arpIps)
+        {
+            var url = $"http://{ip}:5080";
+            if (await IsHealthyAsync(url)) return url;
+        }
+
         try
         {
             foreach (var ni in NetworkInterface.GetAllNetworkInterfaces())
@@ -185,7 +225,7 @@ public static class HostDiscoveryClient
                 if (ni.NetworkInterfaceType is NetworkInterfaceType.Loopback or NetworkInterfaceType.Tunnel) continue;
                 var name = ni.Name.ToLowerInvariant();
                 var desc = ni.Description.ToLowerInvariant();
-                if (name.Contains("vethernet") || name.Contains("wsl") || desc.Contains("virtual") || desc.Contains("hyper-v"))
+                if (name.Contains("vethernet") || name.Contains("wsl") || desc.Contains("virtual") || desc.Contains("hyper-v") || desc.Contains("vmware"))
                     continue;
 
                 var ipProps = ni.GetIPProperties();
@@ -194,13 +234,14 @@ public static class HostDiscoveryClient
 
                 foreach (var ua in ipProps.UnicastAddresses)
                 {
-                    if (ua.Address.AddressFamily == AddressFamily.InterNetwork && ua.IPv4Mask != null)
+                    if (ua.Address.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(ua.Address))
                     {
                         var ipBytes = ua.Address.GetAddressBytes();
-                        var maskBytes = ua.IPv4Mask.GetAddressBytes();
-                        if (maskBytes[0] == 255 && maskBytes[1] == 255 && maskBytes[2] == 255)
+                        if (ipBytes[0] == 127 || (ipBytes[0] == 169 && ipBytes[1] == 254)) continue;
+
+                        var prefix = $"{ipBytes[0]}.{ipBytes[1]}.{ipBytes[2]}";
+                        if (!activeSubnets.Any(s => s.Prefix == prefix))
                         {
-                            var prefix = $"{ipBytes[0]}.{ipBytes[1]}.{ipBytes[2]}";
                             activeSubnets.Add((prefix, gw));
                         }
                     }
@@ -212,7 +253,7 @@ public static class HostDiscoveryClient
         if (activeSubnets.Count == 0) return null;
 
         using var fastCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        fastCts.CancelAfter(1500);
+        fastCts.CancelAfter(4500);
 
         foreach (var (prefix, gw) in activeSubnets)
         {
@@ -223,7 +264,7 @@ public static class HostDiscoveryClient
                 .Select(i => $"http://{prefix}.{i}:5080")
                 .ToList();
 
-            var throttler = new SemaphoreSlim(48);
+            var throttler = new SemaphoreSlim(64);
             var foundTcs = new TaskCompletionSource<string?>();
 
             var tasks = candidates.Select(async url =>

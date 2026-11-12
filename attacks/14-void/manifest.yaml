@@ -1,0 +1,32 @@
+id: 14
+name: "The Void"
+title: "The Void"
+codename: "VOID"
+band: 5
+sequence_slot: 11
+fires_at: "12:15"
+window_minutes: 30
+touches:
+  - lib/html.js
+fix_requires: "Restore layout() HTML template rendering in lib/html.js"
+weights:
+  speed: 30
+  performance: 25
+  prompt_efficiency: 20
+  quality: 15
+  resource: 10
+dispatch: { mode: manual, time: "12:15:00", imminent_seconds: 10 }
+scoring:
+  base_points: 11000
+  speed_bonus_max: 2500
+  speed_bonus_window_seconds: 900
+  late_solve_multiplier: 0.70
+payload: { path: "payload/", format: full, conflict_files: ["lib/html.js"] }
+tests:
+  path: "tests/"
+  tiers:
+    - { id: tier1_layout_renders, weight: 60 }
+    - { id: tier2_nav_intact, weight: 40 }
+hints: { path: "hints.yaml" }
+status: ready
+
