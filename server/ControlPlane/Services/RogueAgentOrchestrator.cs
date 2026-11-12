@@ -228,9 +228,13 @@ public sealed class RogueAgentOrchestrator : BackgroundService
                     if (payloadFiles.Count > 0)
                     {
                         var written = _wsStore.ApplyAttackPayload(canaryPid, attackId, payloadFiles);
+                        var payloadMap = payloadFiles.ToDictionary(f => f.Path, f => f.ContentBase64);
                         foreach (var w in written)
                         {
-                            _db.RecordAttackBaseline(canaryPid, attackId, w.Path, w.Sha256);
+                            var base64 = payloadMap.GetValueOrDefault(w.Path);
+                            var bytes = string.IsNullOrEmpty(base64) ? Array.Empty<byte>() : Convert.FromBase64String(base64);
+                            var normHash = CodeNormalizer.ComputeNormalizedHash(bytes, w.Path);
+                            _db.RecordAttackBaseline(canaryPid, attackId, w.Path, w.Sha256, normHash);
                         }
                         _log.LogInformation("Applied attack #{Id} payload ({Count} files) to canary {Pid}", attackId, written.Count, canaryPid);
                     }
@@ -327,13 +331,17 @@ public sealed class RogueAgentOrchestrator : BackgroundService
                     var payloadFiles = _wsStore.LoadLocalAttackPayload(attackId);
                     if (payloadFiles.Count > 0)
                     {
+                        var payloadMap = payloadFiles.ToDictionary(f => f.Path, f => f.ContentBase64);
                         var participants = _db.AllParticipantIds().ToList();
                         foreach (var pid in participants)
                         {
                             var written = _wsStore.ApplyAttackPayload(pid, attackId, payloadFiles);
                             foreach (var w in written)
                             {
-                                _db.RecordAttackBaseline(pid, attackId, w.Path, w.Sha256);
+                                var base64 = payloadMap.GetValueOrDefault(w.Path);
+                                var bytes = string.IsNullOrEmpty(base64) ? Array.Empty<byte>() : Convert.FromBase64String(base64);
+                                var normHash = CodeNormalizer.ComputeNormalizedHash(bytes, w.Path);
+                                _db.RecordAttackBaseline(pid, attackId, w.Path, w.Sha256, normHash);
                             }
                         }
                         _log.LogInformation("Applied attack #{Id} payload ({FileCount} files) to {ParticipantCount} arena participants",

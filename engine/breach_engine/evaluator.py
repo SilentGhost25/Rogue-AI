@@ -296,10 +296,8 @@ class SlotManager:
 
     def prepare_slot(self, slot_id: int, source_workspace: Path) -> Path:
         slot_dir = self.get_slot_path(slot_id)
-        # Clear previous run contents
+        # Clear previous run contents (including any rogue node_modules to prevent poisoning)
         for item in slot_dir.glob("*"):
-            if item.name == "node_modules":
-                continue
             if item.is_file() or item.is_symlink():
                 try:
                     item.unlink()
@@ -425,7 +423,53 @@ def call_check_fn(fn, base_url: str, context: dict | None = None):
     return fn(base_url)
 
 
+def check_anti_revert(workspace: Path, manifest_data: dict, site_template: Path | None = None) -> tuple[bool, str]:
+    """Verify that participant code has not merely been reverted to pristine site template files."""
+    if not manifest_data:
+        return True, "No manifest data"
+
+    enforce = manifest_data.get("anti_revert", False) or manifest_data.get("payload", {}).get("anti_revert", False)
+    if not enforce:
+        return True, "Anti-revert enforcement disabled"
+
+    if site_template is None:
+        cand = Path("C:/Program Files/RogueAI/site-template")
+        site_template = cand if cand.exists() else (ROOT_DIR / "site")
+
+    if not site_template.exists():
+        return True, "Pristine site template not found for comparison"
+
+    conflict_files = manifest_data.get("payload", {}).get("conflict_files", [])
+    if not conflict_files:
+        conflict_files = manifest_data.get("touches", [])
+
+    for rel_path in conflict_files:
+        ws_file = workspace / rel_path
+        tmpl_file = site_template / rel_path
+        if ws_file.is_file() and tmpl_file.is_file():
+            ws_hash = hashlib.sha256(ws_file.read_bytes()).hexdigest()
+            tmpl_hash = hashlib.sha256(tmpl_file.read_bytes()).hexdigest()
+            if ws_hash.lower() == tmpl_hash.lower():
+                return False, f"Anti-revert violation: '{rel_path}' is identical to the pristine site template. The required fix must improve upon the baseline."
+
+    return True, "Anti-revert check passed"
+
+
 def evaluate_attack(attack_id: int, attack_dir: Path, workspace: Path, timeout_seconds: float = 15.0) -> Verdict:
+    # Load manifest data early for pre-flight gates
+    manifest_file = attack_dir / "manifest.yaml"
+    m_data = {}
+    if manifest_file.exists():
+        try:
+            m_data = yaml.safe_load(manifest_file.read_text(encoding="utf-8")) or {}
+        except Exception:
+            m_data = {}
+
+    # Pre-flight gate 1: Anti-revert check (rejects copying pristine site template)
+    anti_revert_ok, anti_revert_msg = check_anti_revert(workspace, m_data)
+    if not anti_revert_ok:
+        return Verdict(attack_id, FAILED, anti_revert_msg, score_percentage=0.0)
+
     check_file = attack_dir / "tests" / "check.py"
     if not check_file.exists():
         check_file = attack_dir / "checks" / "check.py"

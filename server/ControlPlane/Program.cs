@@ -517,7 +517,10 @@ app.MapPost("/api/kiosk/{id}/submit", (string id, HttpRequest httpReq, Database 
         while (r.Read()) activeAttacks.Add(r.GetInt32(0));
     }
 
-    if (activeAttacks.Count == 0) activeAttacks.Add(1);
+    if (activeAttacks.Count == 0)
+    {
+        return Results.BadRequest(new { error = "No active breaches found for this terminal." });
+    }
 
     // Asynchronously dispatch evaluation to Python engine
     _ = Task.Run(async () =>
@@ -568,6 +571,7 @@ app.MapPost("/api/kiosk/{id}/submit", (string id, HttpRequest httpReq, Database 
                 if (baselines.Count > 0)
                 {
                     bool modified = false;
+                    string? rejectionMessage = null;
                     foreach (var b in baselines)
                     {
                         var full = wsStore.ResolveSafe(id, b.RelPath);
@@ -580,6 +584,16 @@ app.MapPost("/api/kiosk/{id}/submit", (string id, HttpRequest httpReq, Database 
                         var currentHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(currentBytes));
                         if (!currentHash.Equals(b.BaselineHash, StringComparison.OrdinalIgnoreCase))
                         {
+                            // Verify modification is functional and not merely whitespace/comments
+                            if (!string.IsNullOrEmpty(b.NormalizedHash))
+                            {
+                                var currentNormHash = CodeNormalizer.ComputeNormalizedHash(currentBytes, b.RelPath);
+                                if (currentNormHash.Equals(b.NormalizedHash, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    rejectionMessage = "REJECTED: No functional modifications detected. Changes consist only of whitespace or comments.";
+                                    continue;
+                                }
+                            }
                             modified = true;
                             break;
                         }
@@ -587,7 +601,7 @@ app.MapPost("/api/kiosk/{id}/submit", (string id, HttpRequest httpReq, Database 
 
                     if (!modified)
                     {
-                        var rejReason = "REJECTED: No code modifications detected. Workspace matches the unmitigated breach state.";
+                        var rejReason = rejectionMessage ?? "REJECTED: No code modifications detected. Workspace matches the unmitigated breach state.";
                         using (var conn = db.Open())
                         {
                             using var evalCmd = conn.CreateCommand();

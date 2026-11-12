@@ -112,5 +112,21 @@ public class EvaluationDiffGateTests : IDisposable
         var currentHash = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(fullPath)));
         Assert.NotEqual(baselines[0].BaselineHash, currentHash);
     }
+
+    [Fact]
+    public void CodeNormalizer_IgnoresWhitespaceAndComments()
+    {
+        var rawCode = "function test() {\n    return 42;\n}\n";
+        var modifiedCode = "/* header comment */\nfunction test() {\n    // return number\n    return 42;\n}\n   ";
+
+        var hash1 = CodeNormalizer.ComputeNormalizedHash(System.Text.Encoding.UTF8.GetBytes(rawCode), "routes/test.js");
+        var hash2 = CodeNormalizer.ComputeNormalizedHash(System.Text.Encoding.UTF8.GetBytes(modifiedCode), "routes/test.js");
+
+        Assert.Equal(hash1, hash2);
+
+        var functionalEdit = "function test() {\n    return 43;\n}\n";
+        var hash3 = CodeNormalizer.ComputeNormalizedHash(System.Text.Encoding.UTF8.GetBytes(functionalEdit), "routes/test.js");
+        Assert.NotEqual(hash1, hash3);
+    }
 }
 

@@ -110,6 +110,7 @@ public partial class Database
               attack_id INTEGER NOT NULL,
               rel_path TEXT NOT NULL,
               baseline_hash TEXT NOT NULL,
+              normalized_hash TEXT NOT NULL DEFAULT '',
               created_at TEXT NOT NULL,
               PRIMARY KEY (participant_id, attack_id, rel_path));
             CREATE UNIQUE INDEX IF NOT EXISTS ux_attack_deliveries_attack_participant
@@ -147,6 +148,7 @@ public partial class Database
         EnsureColumn(c, "score_ledger", "prev_hash", "TEXT NOT NULL DEFAULT ''");
         EnsureColumn(c, "score_ledger", "entry_hash", "TEXT NOT NULL DEFAULT ''");
         EnsureColumn(c, "score_ledger", "sig", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumn(c, "attack_baselines", "normalized_hash", "TEXT NOT NULL DEFAULT ''");
 
         SeedDefaultDeskTokens(c);
     }
@@ -329,31 +331,35 @@ public partial class Database
         cmd.ExecuteNonQuery();
     }
 
-    public void RecordAttackBaseline(string participantId, int attackId, string relPath, string baselineHash)
+    public void RecordAttackBaseline(string participantId, int attackId, string relPath, string baselineHash, string normalizedHash = "")
     {
         using var c = Open();
         using var cmd = c.CreateCommand();
-        cmd.CommandText = "INSERT OR REPLACE INTO attack_baselines (participant_id, attack_id, rel_path, baseline_hash, created_at) VALUES ($p, $a, $r, $h, $t)";
+        cmd.CommandText = "INSERT OR REPLACE INTO attack_baselines (participant_id, attack_id, rel_path, baseline_hash, normalized_hash, created_at) VALUES ($p, $a, $r, $h, $n, $t)";
         cmd.Parameters.AddWithValue("$p", participantId);
         cmd.Parameters.AddWithValue("$a", attackId);
         cmd.Parameters.AddWithValue("$r", relPath);
         cmd.Parameters.AddWithValue("$h", baselineHash);
+        cmd.Parameters.AddWithValue("$n", normalizedHash);
         cmd.Parameters.AddWithValue("$t", DateTime.UtcNow.ToString("O"));
         cmd.ExecuteNonQuery();
     }
 
-    public IReadOnlyList<(string RelPath, string BaselineHash)> GetAttackBaselines(string participantId, int attackId)
+    public IReadOnlyList<(string RelPath, string BaselineHash, string NormalizedHash)> GetAttackBaselines(string participantId, int attackId)
     {
-        var list = new List<(string RelPath, string BaselineHash)>();
+        var list = new List<(string RelPath, string BaselineHash, string NormalizedHash)>();
         using var c = Open();
         using var cmd = c.CreateCommand();
-        cmd.CommandText = "SELECT rel_path, baseline_hash FROM attack_baselines WHERE participant_id = $p AND attack_id = $a";
+        cmd.CommandText = "SELECT rel_path, baseline_hash, normalized_hash FROM attack_baselines WHERE participant_id = $p AND attack_id = $a";
         cmd.Parameters.AddWithValue("$p", participantId);
         cmd.Parameters.AddWithValue("$a", attackId);
         using var r = cmd.ExecuteReader();
         while (r.Read())
         {
-            list.Add((r.GetString(0), r.GetString(1)));
+            var rel = r.GetString(0);
+            var hash = r.GetString(1);
+            var norm = r.IsDBNull(2) ? "" : r.GetString(2);
+            list.Add((rel, hash, norm));
         }
         return list;
     }
