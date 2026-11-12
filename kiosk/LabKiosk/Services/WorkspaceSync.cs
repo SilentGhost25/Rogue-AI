@@ -9,7 +9,23 @@ namespace LabKiosk.Services;
 /// </summary>
 public sealed class WorkspaceSync(ApiClient api, string participantId, string root, SnapshotSync snapshots)
 {
-    private static readonly string[] Blocked = { "node_modules", ".git", ".breach-backup" };
+    private static readonly string[] Blocked = { "node_modules", ".git", ".breach-backup", "dist", "build", "coverage" };
+
+    private static bool IsIgnoredRuntimeFile(string rel)
+    {
+        var name = Path.GetFileName(rel);
+        if (rel.Split('/').Any(p => Blocked.Contains(p))) return true;
+        if (name.EndsWith(".db", StringComparison.OrdinalIgnoreCase) ||
+            name.EndsWith(".db-wal", StringComparison.OrdinalIgnoreCase) ||
+            name.EndsWith(".db-shm", StringComparison.OrdinalIgnoreCase) ||
+            name.EndsWith(".sqlite", StringComparison.OrdinalIgnoreCase) ||
+            name.EndsWith(".sqlite3", StringComparison.OrdinalIgnoreCase) ||
+            name.EndsWith(".log", StringComparison.OrdinalIgnoreCase) ||
+            name.StartsWith("eval_", StringComparison.OrdinalIgnoreCase) ||
+            name.StartsWith(".write-test", StringComparison.OrdinalIgnoreCase))
+            return true;
+        return false;
+    }
 
     // ---- Touch-Penalty baseline -----------------------------------------------------------------------
     // Populated after each attack patch lands. Maps relative path → SHA-256 hex of the file at that moment.
@@ -27,7 +43,7 @@ public sealed class WorkspaceSync(ApiClient api, string participantId, string ro
         foreach (var file in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories))
         {
             var rel = Path.GetRelativePath(root, file).Replace('\\', '/');
-            if (rel.Split('/').Any(p => Blocked.Contains(p))) continue;
+            if (IsIgnoredRuntimeFile(rel)) continue;
             try
             {
                 var bytes = File.ReadAllBytes(file);
@@ -52,7 +68,7 @@ public sealed class WorkspaceSync(ApiClient api, string participantId, string ro
         foreach (var file in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories))
         {
             var rel = Path.GetRelativePath(root, file).Replace('\\', '/');
-            if (rel.Split('/').Any(p => Blocked.Contains(p))) continue;
+            if (IsIgnoredRuntimeFile(rel)) continue;
             if (_attackPatchedFiles.Contains(rel)) continue; // allowed to change
 
             if (_baselineHashes.TryGetValue(rel, out var originalHash))
@@ -74,6 +90,7 @@ public sealed class WorkspaceSync(ApiClient api, string participantId, string ro
         // Check for deleted files outside attack scope
         foreach (var rel in _baselineHashes.Keys)
         {
+            if (IsIgnoredRuntimeFile(rel)) continue;
             if (_attackPatchedFiles.Contains(rel)) continue;
             var full = Path.Combine(root, rel.Replace('/', Path.DirectorySeparatorChar));
             if (!File.Exists(full))
