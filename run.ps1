@@ -84,6 +84,11 @@ function Ensure-LabKioskBuilt {
             $newer = Get-ChildItem "$RogueRoot\kiosk\LabKiosk" -Recurse -Include *.cs,*.xaml,*.csproj,*.json,*.html,*.css,*.js -ErrorAction SilentlyContinue |
                      Where-Object { $_.FullName -notmatch "\\bin\\|\\obj\\" -and $_.LastWriteTimeUtc -gt $exeTime } |
                      Select-Object -First 1
+            if (-not $newer) {
+                $newer = Get-ChildItem "$RogueRoot\site" -Recurse -Include *.js,*.css,*.html,*.json -ErrorAction SilentlyContinue |
+                         Where-Object { $_.FullName -notmatch "\\node_modules\\" -and $_.LastWriteTimeUtc -gt $exeTime } |
+                         Select-Object -First 1
+            }
             if ($newer) { $needsBuild = $true }
         }
         if ($needsBuild) {
@@ -178,6 +183,16 @@ try {
         }
         Copy-Item -Path "$RogueRoot\site\*" -Destination $WorkspaceDir -Recurse -Force -ErrorAction Stop
         Remove-Item "$WorkspaceDir\*.db*" -Force -ErrorAction SilentlyContinue
+    }
+    if (!(Test-Path "$WorkspaceDir\node_modules\express")) {
+        if (Test-Path "$RogueRoot\site\node_modules\express") {
+            Write-Host "[*] Copying site dependencies to $WorkspaceDir..." -ForegroundColor Cyan
+            Copy-Item -Path "$RogueRoot\site\node_modules" -Destination "$WorkspaceDir\node_modules" -Recurse -Force -ErrorAction SilentlyContinue
+        } elseif (Get-Command npm -ErrorAction SilentlyContinue) {
+            Write-Host "[*] Installing dependencies in $WorkspaceDir..." -ForegroundColor Cyan
+            Push-Location "$WorkspaceDir"
+            try { & npm install --silent } finally { Pop-Location }
+        }
     }
 } catch {
     # If C:\ root is restricted, seamlessly fall back to local project workspace
