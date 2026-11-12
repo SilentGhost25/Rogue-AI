@@ -9,7 +9,15 @@ public sealed class ApiClient
 {
     private readonly HttpClient _http;
 
-    public ApiClient(string serverUrl) => _http = new HttpClient { BaseAddress = new Uri(serverUrl), Timeout = TimeSpan.FromSeconds(30) };
+    public ApiClient(string serverUrl)
+    {
+        var clean = KioskSettings.NormalizeServerUrl(serverUrl);
+        if (!Uri.TryCreate(clean, UriKind.Absolute, out var uri))
+        {
+            uri = new Uri("http://127.0.0.1:5080/");
+        }
+        _http = new HttpClient { BaseAddress = uri, Timeout = TimeSpan.FromSeconds(30) };
+    }
 
     public string? Token { get; private set; }
 

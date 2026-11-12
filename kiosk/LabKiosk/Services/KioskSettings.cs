@@ -57,7 +57,7 @@ public sealed class KioskSettings
                     if (userS.Onboarded) s.Onboarded = true;
                     if (!string.IsNullOrWhiteSpace(userS.GitHubHandle)) s.GitHubHandle = userS.GitHubHandle;
                     if (!string.IsNullOrWhiteSpace(userS.GoogleAccount)) s.GoogleAccount = userS.GoogleAccount;
-                    if (!string.IsNullOrWhiteSpace(userS.ServerUrl) && userS.ServerUrl != "http://127.0.0.1:5080" && !userS.ServerUrl.Equals("AUTO", StringComparison.OrdinalIgnoreCase)) s.ServerUrl = userS.ServerUrl;
+                    if (!string.IsNullOrWhiteSpace(userS.ServerUrl) && !userS.ServerUrl.Equals("AUTO", StringComparison.OrdinalIgnoreCase)) s.ServerUrl = userS.ServerUrl;
                     if (!string.IsNullOrWhiteSpace(userS.WorkspacePath)) s.WorkspacePath = userS.WorkspacePath;
                     if (userS.OpenCodeCap > 0) s.OpenCodeCap = userS.OpenCodeCap;
                 }
@@ -104,7 +104,23 @@ public sealed class KioskSettings
             }
         }
 
+        s.ServerUrl = NormalizeServerUrl(s.ServerUrl);
+        s.SiteUrl = string.IsNullOrWhiteSpace(s.SiteUrl) ? "http://127.0.0.1:3000" : s.SiteUrl.TrimEnd('/');
+
         return s;
+    }
+
+    public static string NormalizeServerUrl(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return "http://127.0.0.1:5080";
+        var clean = raw.Trim().TrimEnd('/');
+        if (clean.Equals("AUTO", StringComparison.OrdinalIgnoreCase)) return "http://127.0.0.1:5080";
+        if (!clean.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+            !clean.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            clean = clean.Contains(':') ? "http://" + clean : "http://" + clean + ":5080";
+        }
+        return clean;
     }
 
     public void Save()

@@ -56,11 +56,9 @@ public partial class OnboardingWindow : Window
 
 
 
-        TxtServerUrl.Text = string.IsNullOrWhiteSpace(_settings.ServerUrl)
-
+        TxtServerUrl.Text = string.IsNullOrWhiteSpace(_settings.ServerUrl) || _settings.ServerUrl.Equals("AUTO", StringComparison.OrdinalIgnoreCase)
             ? "http://127.0.0.1:5080"
-
-            : _settings.ServerUrl;
+            : KioskSettings.NormalizeServerUrl(_settings.ServerUrl);
 
 
 
@@ -104,7 +102,7 @@ public partial class OnboardingWindow : Window
         if (!string.IsNullOrWhiteSpace(name))
         {
             _settings.DisplayName = name;
-            _settings.ServerUrl = string.IsNullOrWhiteSpace(TxtServerUrl.Text) ? "http://127.0.0.1:5080" : TxtServerUrl.Text.Trim();
+            _settings.ServerUrl = KioskSettings.NormalizeServerUrl(TxtServerUrl.Text);
             _settings.GitHubHandle = TxtGithubHandle.Text.Trim().TrimStart('@');
             _settings.GoogleAccount = TxtGoogleEmail.Text.Trim();
             _settings.Onboarded = true;
@@ -745,63 +743,26 @@ public partial class OnboardingWindow : Window
         }
 
         var name = TxtDisplayName.Text.Trim();
-
         if (string.IsNullOrWhiteSpace(name))
-
         {
-
             TxtWarning.Text = "Please enter a Leaderboard Display Name.";
-
             return;
-
         }
 
+        var url = KioskSettings.NormalizeServerUrl(TxtServerUrl.Text);
 
-
-        var url = TxtServerUrl.Text.Trim();
-
-        if (string.IsNullOrWhiteSpace(url))
-
-        {
-
-            TxtWarning.Text = "Please enter the Organizer Server URL.";
-
-            return;
-
-        }
-
-
-
-        if (!url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
-
-            !url.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-
-        {
-
-            url = url.Contains(':') ? "http://" + url : "http://" + url + ":5080";
-
-        }
-
-
+        BtnLaunch.Content = "⏳ Launching...";
+        BtnLaunch.IsEnabled = false;
 
         _settings.DisplayName = name;
-
         _settings.ServerUrl = url;
-
         _settings.GitHubHandle = TxtGithubHandle.Text.Trim().TrimStart('@');
-
         _settings.GoogleAccount = TxtGoogleEmail.Text.Trim();
-
         _settings.Onboarded = true;
-
-
 
         SaveSettings();
 
-
-
         DialogResult = true;
-
         Close();
 
     }

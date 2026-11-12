@@ -72,8 +72,8 @@ public partial class App : Application
             }
         }
 
+        s.ServerUrl = KioskSettings.NormalizeServerUrl(s.ServerUrl);
         s.WorkspacePath = WorkspaceBackup.ResolveWorkspace(s.WorkspacePath);
-        WorkspaceBackup.EnsurePristineWorkspace(s.WorkspacePath, s.SiteTemplatePath);
 
         var main = new MainWindow(s);
         MainWindow = main;

@@ -21,7 +21,8 @@ public sealed class HubClient : IAsyncDisposable
     {
         _participantId = participantId;
         _token = token;
-        _conn = new HubConnectionBuilder().WithUrl($"{serverUrl.TrimEnd('/')}/hub").WithAutomaticReconnect().Build();
+        var cleanUrl = KioskSettings.NormalizeServerUrl(serverUrl);
+        _conn = new HubConnectionBuilder().WithUrl($"{cleanUrl.TrimEnd('/')}/hub").WithAutomaticReconnect().Build();
 
         _conn.On<int, int>("BREACH_IMMINENT", async (id, secs) => { if (Imminent is not null) await Imminent(id, secs); });
         _conn.On<int, int, string>("BREACH_IMMINENT", async (id, secs, _) => { if (Imminent is not null) await Imminent(id, secs); });

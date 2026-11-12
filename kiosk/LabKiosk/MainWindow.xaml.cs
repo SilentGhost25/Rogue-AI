@@ -129,6 +129,8 @@ public partial class MainWindow : Window
     public MainWindow(KioskSettings? settings = null)
     {
         _s = settings ?? KioskSettings.Load();
+        _s.ServerUrl = KioskSettings.NormalizeServerUrl(_s.ServerUrl);
+        _s.SiteUrl = string.IsNullOrWhiteSpace(_s.SiteUrl) ? "http://127.0.0.1:3000" : _s.SiteUrl.TrimEnd('/');
         InitializeComponent();
         _api = new ApiClient(_s.ServerUrl);
         _budget.OpenCodeCap = _s.OpenCodeCap;
@@ -233,7 +235,10 @@ public partial class MainWindow : Window
                     Dispatcher.InvokeAsync(() => ShowSiteDownInWebView(_site?.LastError));
                 }
             };
-            Site.Source = new Uri(_s.SiteUrl);
+            if (Uri.TryCreate(_s.SiteUrl, UriKind.Absolute, out var siteUri))
+                Site.Source = siteUri;
+            else
+                Site.Source = new Uri("http://127.0.0.1:3000");
 
             // Start terminals immediately so AI CLI tools and workspace are ready without waiting for network registration
             _ = StartTerminalsAsync();
@@ -1071,7 +1076,7 @@ public partial class MainWindow : Window
         if (key is null) return;
         try
         {
-            using var http = new HttpClient { BaseAddress = new Uri(_s.ServerUrl), Timeout = TimeSpan.FromSeconds(5) };
+            using var http = new HttpClient { BaseAddress = new Uri(KioskSettings.NormalizeServerUrl(_s.ServerUrl)), Timeout = TimeSpan.FromSeconds(5) };
             http.DefaultRequestHeaders.Add("X-Admin-Key", key);
             using var res = await http.GetAsync("/admin/attacks");
             if (!res.IsSuccessStatusCode) { Status("That organizer key was not accepted."); return; }
