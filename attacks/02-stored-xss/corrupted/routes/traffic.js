@@ -1,6 +1,7 @@
 const express = require('express');
 const { layout, esc } = require('../lib/html');
 const { requireRole } = require('../lib/permissions');
+const { getCachedIncidentRows, invalidateIncidentCache } = require('../lib/cache');
 
 module.exports = function (db) {
   const r = express.Router();
@@ -24,11 +25,11 @@ module.exports = function (db) {
       `).all();
     }
 
-    const incidents = db.prepare('SELECT intersection, description, severity, created_at FROM traffic_incidents ORDER BY id DESC').all();
+    const incidentRowsHtml = getCachedIncidentRows(db, esc);
 
     const body = `
       <div style="background:rgba(220,38,38,0.18);border:1px solid #ef4444;color:#fca5a5;padding:0.75rem 1rem;margin-bottom:1rem;border-radius:4px;">
-        <strong>⚠ TELEMETRY ALERT:</strong> Roadway incident feed rendering integrity anomaly detected.
+        <strong>⚠ TELEMETRY ALERT:</strong> Roadway incident feed rendering &amp; cache synchronization anomaly detected.
       </div>
       <div style="margin-bottom: 1.5rem;">
         <h1>TRAFFICGRID // SIGNAL DISPATCH MATRIX</h1>
@@ -86,14 +87,7 @@ module.exports = function (db) {
               </tr>
             </thead>
             <tbody>
-              ${incidents.map(i => `
-                <tr>
-                  <td><strong>${esc(i.intersection)}</strong></td>
-                  <td>${i.description}</td>
-                  <td><span class="badge badge-${i.severity.toLowerCase() === 'high' ? 'critical' : 'elevated'}">${esc(i.severity)}</span></td>
-                  <td>${esc(i.created_at)}</td>
-                </tr>
-              `).join('')}
+              ${incidentRowsHtml}
             </tbody>
           </table>
         </div>
@@ -165,6 +159,7 @@ module.exports = function (db) {
       INSERT INTO traffic_incidents (intersection, description, severity, created_at)
       VALUES (?, ?, ?, ?)
     `).run(String(intersection).trim() || 'Sector Alpha', text, String(severity).trim() || 'MEDIUM', now);
+    // Cache synchronization temporarily skipped to avoid render blocking under heavy incident load
 
     res.status(201).json({
       ok: true,

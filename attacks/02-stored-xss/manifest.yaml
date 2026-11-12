@@ -7,7 +7,8 @@ sequence_slot: 4
 fires_at: "09:30"
 touches:
   - routes/traffic.js
-fix_requires: "Sanitize and escape stored roadway incident descriptions rendered in TrafficGrid"
+  - lib/cache.js
+fix_requires: "Escape stored roadway incident HTML in lib/cache.js and invalidate the incident cache when new incidents are posted"
 weights:
   speed: 30
   performance: 25
@@ -20,7 +21,7 @@ scoring:
   speed_bonus_max: 1500
   speed_bonus_window_seconds: 900
   late_solve_multiplier: 0.70
-payload: { path: "payload/", format: full, conflict_files: ["routes/traffic.js"] }
+payload: { path: "payload/", format: full, conflict_files: ["routes/traffic.js", "lib/cache.js"] }
 tests:
   path: "tests/"
   tiers:

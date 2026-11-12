@@ -1,6 +1,7 @@
 const express = require('express');
 const { layout, esc } = require('../lib/html');
 const { requireRole } = require('../lib/permissions');
+const { getCachedIncidentRows, invalidateIncidentCache } = require('../lib/cache');
 
 module.exports = function (db) {
   const r = express.Router();
@@ -24,7 +25,7 @@ module.exports = function (db) {
       `).all();
     }
 
-    const incidents = db.prepare('SELECT intersection, description, severity, created_at FROM traffic_incidents ORDER BY id DESC').all();
+    const incidentRowsHtml = getCachedIncidentRows(db, esc);
 
     const body = `
       <div style="margin-bottom: 1.5rem;">
@@ -83,14 +84,7 @@ module.exports = function (db) {
               </tr>
             </thead>
             <tbody>
-              ${incidents.map(i => `
-                <tr>
-                  <td><strong>${esc(i.intersection)}</strong></td>
-                  <td>${esc(i.description)}</td>
-                  <td><span class="badge badge-${i.severity.toLowerCase() === 'high' ? 'critical' : 'elevated'}">${esc(i.severity)}</span></td>
-                  <td>${esc(i.created_at)}</td>
-                </tr>
-              `).join('')}
+              ${incidentRowsHtml}
             </tbody>
           </table>
         </div>
@@ -162,6 +156,7 @@ module.exports = function (db) {
       INSERT INTO traffic_incidents (intersection, description, severity, created_at)
       VALUES (?, ?, ?, ?)
     `).run(String(intersection).trim() || 'Sector Alpha', text, String(severity).trim() || 'MEDIUM', now);
+    invalidateIncidentCache();
 
     res.status(201).json({
       ok: true,
