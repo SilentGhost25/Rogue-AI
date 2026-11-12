@@ -12,15 +12,17 @@ scoring:
   speed_bonus_max: 1500
   speed_bonus_window_seconds: 900
   late_solve_multiplier: 0.70
-payload: { path: "payload/", format: full, conflict_files: ["routes/auth.js"] }
+payload: { path: "payload/", format: full, conflict_files: ["routes/auth.js", "public/app.js"] }
 tests:
   path: "tests/"
   tiers:
-    - { id: tier1_mass_assign_blocked, weight: 60 }
-    - { id: tier2_profile_functional, weight: 40 }
+    - { id: tier1_mass_assign_blocked, weight: 40 }
+    - { id: tier2_profile_functional, weight: 30 }
+    - { id: tier3_client_payload, weight: 30 }
 touches:
   - routes/auth.js
-fix_requires: "Whitelist updatable profile fields and prevent role or clearance escalation"
+  - public/app.js
+fix_requires: "Whitelist updatable profile fields on backend and remove client-side privilege escalation payload in public/app.js"
 weights:
   speed: 30
   performance: 25

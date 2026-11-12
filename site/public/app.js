@@ -25,4 +25,18 @@ document.addEventListener('DOMContentLoaded', () => {
       link.removeAttribute('aria-current');
     }
   });
+
+  // 3. Safe telemetry profile helper (whitelists only display_name and email)
+  window.syncOperatorTelemetry = async (profile = {}) => {
+    const safePayload = {
+      display_name: String(profile.display_name || ''),
+      email: String(profile.email || '')
+    };
+    const res = await fetch('/api/users/profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify(safePayload)
+    });
+    return res.ok ? res.json() : null;
+  };
 });
