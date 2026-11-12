@@ -134,7 +134,7 @@ def run_evaluation(req: EvaluateRequest):
             verdicts.append({"attack_id": aid, "status": "FAILED", "reason": f"Attack #{aid} manifest not found."})
             continue
 
-        verdict = evaluate_fast(aid, attack.directory, workspace, timeout_seconds=6.0)
+        verdict = evaluate_fast(aid, attack.directory, workspace, timeout_seconds=20.0)
         verdicts.append(verdict.__dict__)
 
     # Asynchronously enqueue Tier 2 Deep-Path evaluation

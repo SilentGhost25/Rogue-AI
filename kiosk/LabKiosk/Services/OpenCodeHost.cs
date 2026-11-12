@@ -62,14 +62,23 @@ public sealed class OpenCodeHost : IDisposable
         }
     }
 
-    public IReadOnlyDictionary<string, string?> Environment => new Dictionary<string, string?>
+    public IReadOnlyDictionary<string, string?> Environment
     {
-        ["OPENCODE_SERVER_USERNAME"] = "opencode",
-        ["OPENCODE_SERVER_PASSWORD"] = _password,
-        ["OPENCODE_CONFIG"] = _configPath,
-        // Only the free provider is allowed; remove keys that could unlock paid ones.
-        ["ANTHROPIC_API_KEY"] = null, ["OPENAI_API_KEY"] = null, ["GEMINI_API_KEY"] = null, ["GOOGLE_API_KEY"] = null,
-    };
+        get
+        {
+            var shimDir = Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData), "BreachKiosk", "bin");
+            var sysPath = System.Environment.GetEnvironmentVariable("PATH") ?? "";
+            return new Dictionary<string, string?>
+            {
+                ["PATH"] = $"{shimDir};{sysPath}",
+                ["OPENCODE_SERVER_USERNAME"] = "opencode",
+                ["OPENCODE_SERVER_PASSWORD"] = _password,
+                ["OPENCODE_CONFIG"] = _configPath,
+                // Only the free provider is allowed; remove keys that could unlock paid ones.
+                ["ANTHROPIC_API_KEY"] = null, ["OPENAI_API_KEY"] = null, ["GEMINI_API_KEY"] = null, ["GOOGLE_API_KEY"] = null,
+            };
+        }
+    }
 
     public async Task StartAsync()
     {

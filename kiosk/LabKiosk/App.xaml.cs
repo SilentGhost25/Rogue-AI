@@ -1,3 +1,4 @@
+using System.IO;
 using System.Windows;
 using LabKiosk.Services;
 
@@ -8,6 +9,20 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        AppDomain.CurrentDomain.UnhandledException += (_, ev) =>
+        {
+            LogCrash(ev.ExceptionObject as Exception);
+        };
+
+        DispatcherUnhandledException += (_, ev) =>
+        {
+            LogCrash(ev.Exception);
+            MessageBox.Show($"Rogue AI LabKiosk encountered a fatal error:\n\n{ev.Exception.Message}\n\nCheck logs at: %LOCALAPPDATA%\\BreachKiosk\\logs\\crash.log",
+                "Rogue AI - Critical Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            ev.Handled = true;
+            Shutdown(1);
+        };
 
         var args = e.Args;
         var isHost = args.Any(a => a.Equals("--host", StringComparison.OrdinalIgnoreCase) ||
@@ -63,5 +78,19 @@ public partial class App : Application
         var main = new MainWindow(s);
         MainWindow = main;
         main.Show();
+    }
+
+    private static void LogCrash(Exception? ex)
+    {
+        if (ex == null) return;
+        try
+        {
+            var logDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BreachKiosk", "logs");
+            Directory.CreateDirectory(logDir);
+            var logFile = Path.Combine(logDir, "crash.log");
+            var entry = $"[{DateTime.UtcNow:O}] FATAL CRASH:\n{ex}\n\n";
+            File.AppendAllText(logFile, entry);
+        }
+        catch { }
     }
 }

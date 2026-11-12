@@ -25,6 +25,8 @@ string FindWebRoot()
     return Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
 }
 
+try
+{
 var resolvedWebRoot = FindWebRoot();
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 {
@@ -571,7 +573,8 @@ app.MapPost("/api/kiosk/{id}/submit", (string id, HttpRequest httpReq, Database 
                     foreach (var v in body.Verdicts)
                     {
                         var score = 0.0;
-                        if (v.Status == "SOLVED")
+                        var isSuccess = v.Status == "SOLVED" || v.Status == "OPTIMAL" || v.Status == "BASE";
+                        if (isSuccess)
                         {
                             var attackManifest = orch.Attacks.FirstOrDefault(a => a.Id == v.Attack_Id);
                             var baseCentipoints = attackManifest?.Scoring.BasePoints ?? 8500;
@@ -606,7 +609,8 @@ app.MapPost("/api/kiosk/{id}/submit", (string id, HttpRequest httpReq, Database 
                                 }
                             }
 
-                            var totalCentipoints = baseCentipoints + speedBonus;
+                            var effectivePct = Math.Clamp(v.Score_Percentage ?? 1.0, 0.0, 1.0);
+                            var totalCentipoints = (long)Math.Round((baseCentipoints + speedBonus) * effectivePct);
                             score = totalCentipoints / 100.0;
 
                             using var updateCmd = conn.CreateCommand();
@@ -627,7 +631,7 @@ app.MapPost("/api/kiosk/{id}/submit", (string id, HttpRequest httpReq, Database 
                             ledgerCmd.Parameters.AddWithValue("$t", DateTime.UtcNow.ToString("O"));
                             ledgerCmd.ExecuteNonQuery();
 
-                            db.Log("VERDICT", id, v.Attack_Id, JsonSerializer.Serialize(new { status = "SOLVED", score, centipoints = totalCentipoints, baseCentipoints, speedBonus, v.Reason }));
+                            db.Log("VERDICT", id, v.Attack_Id, JsonSerializer.Serialize(new { status = "SOLVED", score, centipoints = totalCentipoints, baseCentipoints, speedBonus, score_percentage = effectivePct, v.Reason }));
                             _ = gitMirror.SyncBranchAsync(id, wsStore.PathFor(id), $"Solve Attack #{v.Attack_Id} (+{score:0.#} pts)");
                         }
                         else
@@ -790,20 +794,35 @@ var handleTelemetry = async (string id, TelemetryRequest req, HttpRequest httpRe
         try
         {
             var pRoot = req.Payload.HasValue ? req.Payload.Value : default;
-            var details = pRoot.ValueKind != JsonValueKind.Undefined && pRoot.TryGetProperty("violations", out var viols)
-                ? viols.ToString()
-                : "UNAUTHORIZED_FILE_MODIFICATION";
+            var details = "UNAUTHORIZED_FILE_MODIFICATION";
+            if (pRoot.ValueKind != JsonValueKind.Undefined)
+            {
+                if (pRoot.TryGetProperty("violations", out var viols)) details = viols.ToString();
+                else if (pRoot.TryGetProperty("files", out var fls)) details = fls.ToString();
+            }
 
             using var c = db.Open();
+            int? activeAid = null;
+            using (var aCmd = c.CreateCommand())
+            {
+                aCmd.CommandText = "SELECT attack_id FROM attack_deliveries WHERE participant_id = $p AND solved_at IS NULL ORDER BY attack_id DESC LIMIT 1";
+                aCmd.Parameters.AddWithValue("$p", id);
+                var obj = aCmd.ExecuteScalar();
+                if (obj != null && obj is not DBNull) activeAid = Convert.ToInt32(obj);
+            }
+
             using var cmd = c.CreateCommand();
-            cmd.CommandText = "INSERT INTO score_ledger (participant_id, attack_id, component, points, centipoints, reason, run_id, created_at, final) VALUES ($p, 0, 'penalty', -3.0, -300, $r, 'touch-penalty', $t, 1)";
+            cmd.CommandText = "INSERT INTO score_ledger (participant_id, attack_id, component, points, centipoints, reason, run_id, created_at, final) VALUES ($p, $a, 'penalty', -3.0, -300, $r, 'touch-penalty', $t, 1)";
             cmd.Parameters.AddWithValue("$p", id);
+            cmd.Parameters.AddWithValue("$a", (object?)activeAid ?? DBNull.Value);
             cmd.Parameters.AddWithValue("$r", "Out-of-scope modification: " + (details.Length > 80 ? details[..80] : details));
             cmd.Parameters.AddWithValue("$t", DateTime.UtcNow.ToString("O"));
             cmd.ExecuteNonQuery();
 
+            db.Log("TOUCH_PENALTY", id, activeAid, JsonSerializer.Serialize(new { details, penalty = -3.0 }));
             await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, id);
             await hub.Clients.Group("projectors").SendAsync("SCORE_UPDATE", id, -3.0);
+            await hub.Clients.Group($"p:{id}").SendAsync("VERDICT", activeAid ?? 0, "PENALTY", "Out-of-scope file modification (-3.0 pts)", -3.0);
         }
         catch { }
     }
@@ -1157,6 +1176,20 @@ app.MapPost("/admin/kiosks/{id}/disqualify", async (string id, HttpRequest r, Da
     return Results.Ok();
 });
 
+app.MapPost("/admin/kiosks/{id}/reinstate", async (string id, HttpRequest r, Database db, IHubContext<BreachHub> hub) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+    using var c = db.Open();
+    using var cmd = c.CreateCommand();
+    cmd.CommandText = "UPDATE participants SET status = 'alive' WHERE id = $p";
+    cmd.Parameters.AddWithValue("$p", id);
+    cmd.ExecuteNonQuery();
+    db.Log("REINSTATED", id);
+    await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, id);
+    return Results.Ok();
+});
+
 app.MapGet("/admin/events", (HttpRequest r, Database db) =>
 {
     var authErr = AuthorizeAdmin(r, db);
@@ -1414,11 +1447,31 @@ app.MapPost("/api/kiosk/{id}/hint/{attackId:int}/{level:int}", (string id, int a
     return Results.Ok(new { text, cost, level, attackId });
 });
 
-app.Run();
+    app.Run();
+}
+catch (Exception ex)
+{
+    var msg = $"[FATAL CONTROL PLANE CRASH] {DateTime.UtcNow:O}\n{ex}";
+    Console.Error.WriteLine(msg);
+    Console.WriteLine(msg);
+    try
+    {
+        var logDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BreachKiosk", "host");
+        Directory.CreateDirectory(logDir);
+        File.WriteAllText(Path.Combine(logDir, "controlplane_crash.log"), msg);
+    }
+    catch { }
+    try
+    {
+        File.WriteAllText(Path.Combine(Path.GetTempPath(), "controlplane_crash.log"), msg);
+    }
+    catch { }
+    throw;
+}
 
 public sealed record RegisterRequest(string Name, string KioskId, string? DeskId = null, string? Password = null, string? GitHubHandle = null, string? GoogleAccount = null);
 public sealed record EnrollRequest(string Token, string KioskId, string Name);
 public sealed record TelemetryRequest(string Type, JsonElement? Payload);
 public sealed record BroadcastRequest(string Message);
 public sealed record EvaluationResponse(string Submission_Id, string Evaluator, List<VerdictDto> Verdicts);
-public sealed record VerdictDto(int Attack_Id, string Status, string Reason);
+public sealed record VerdictDto(int Attack_Id, string Status, string Reason, double? Score_Percentage = 1.0, double? Cpu_Time_Ms = 0.0, double? Peak_Memory_Mb = 0.0);

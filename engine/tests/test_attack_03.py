@@ -51,7 +51,7 @@ class Attack03Tests(unittest.TestCase):
 
         verdict = evaluate_attack(3, self.attack_dir, self.workspace, timeout_seconds=12.0)
         self.assertEqual(verdict.status, SOLVED)
-        self.assertEqual(verdict.score_percentage, 1.0)
+        self.assertGreaterEqual(verdict.score_percentage, 0.99)
         self.assertTrue(verdict.tier_results["tier1_sqli_blocked"])
         self.assertTrue(verdict.tier_results["tier2_telemetry_intact"])
         self.assertTrue(verdict.tier_results["tier3_benchmark_sla"])

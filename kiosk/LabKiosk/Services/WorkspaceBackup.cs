@@ -3,14 +3,19 @@ using System.IO.Compression;
 
 namespace LabKiosk.Services;
 
-/// <summary>Copies the participant's source files to .breach-backup/&lt;tag&gt; and manages strict clean-slate resets.</summary>
+/// <summary>Backs up files to isolated local app data and manages strict clean-slate resets without local Git.</summary>
 public static class WorkspaceBackup
 {
     private static readonly string[] Skip = { "node_modules", ".git", ".breach-backup" };
 
     public static void Snapshot(string root, string tag)
     {
-        try { Copy(root, Path.Combine(root, ".breach-backup", tag)); } catch { /* a failed backup must never block the event */ }
+        try
+        {
+            var backupDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BreachKiosk", "backups", tag);
+            Copy(root, backupDir);
+        }
+        catch { /* a failed backup must never block the event */ }
     }
 
     public static void CopyCleanTemplate(string src, string dst) => Copy(src, dst);
@@ -18,12 +23,20 @@ public static class WorkspaceBackup
     /// <summary>
     /// Ensures the participant workspace is populated with a pristine baseline if missing or empty.
     /// Extracts site.zip if bundled next to the executable, otherwise copies the clean site template directory.
+    /// Also purges any legacy Git or backup folders inside the workspace.
     /// </summary>
     public static void EnsurePristineWorkspace(string workspacePath, string? siteTemplatePath)
     {
         try
         {
             Directory.CreateDirectory(workspacePath);
+            WipeLocalGitRepo(workspacePath);
+            var legacyBackup = Path.Combine(workspacePath, ".breach-backup");
+            if (Directory.Exists(legacyBackup))
+            {
+                try { Directory.Delete(legacyBackup, recursive: true); } catch { }
+            }
+
             var isEmptyOrIncomplete = !Directory.EnumerateFileSystemEntries(workspacePath).Any()
                                    || !File.Exists(Path.Combine(workspacePath, "server.js"));
             if (!isEmptyOrIncomplete) return;
@@ -37,93 +50,44 @@ public static class WorkspaceBackup
             if (zipPath is not null)
             {
                 ZipFile.ExtractToDirectory(zipPath, workspacePath, overwriteFiles: true);
+                WipeLocalGitRepo(workspacePath);
                 return;
             }
 
             if (!string.IsNullOrWhiteSpace(siteTemplatePath) && Directory.Exists(siteTemplatePath))
             {
                 CopyCleanTemplate(siteTemplatePath, workspacePath);
+                WipeLocalGitRepo(workspacePath);
             }
         }
         catch { /* MainWindow.StartAsync still verifies & pulls baseline from Control Plane if needed */ }
     }
 
     /// <summary>
-    /// Initializes a local git repository in the participant workspace so that AI tools (agy, opencode)
-    /// and participants can natively use `git status`, `git diff`, and `git checkout`.
+    /// Enforces AGENTS.md: "The server owns Git. Kiosks never run Git and never hold credentials."
+    /// Strictly purges any .git repository from the workspace so git diff and git revert cannot be abused.
     /// </summary>
-    public static void InitializeLocalGitRepo(string workspacePath, string deskId)
+    public static void WipeLocalGitRepo(string workspacePath)
     {
+        if (string.IsNullOrWhiteSpace(workspacePath) || !Directory.Exists(workspacePath)) return;
         try
         {
-            if (string.IsNullOrWhiteSpace(workspacePath) || !Directory.Exists(workspacePath)) return;
             var gitDir = Path.Combine(workspacePath, ".git");
-            if (Directory.Exists(gitDir)) return;
-
-            var gitignorePath = Path.Combine(workspacePath, ".gitignore");
-            if (!File.Exists(gitignorePath))
+            if (Directory.Exists(gitDir))
             {
-                File.WriteAllText(gitignorePath, "node_modules/\n.breach-backup/\n*.db\n*.db-wal\n*.db-shm\n*.sqlite*\n*.log\neval_*.db\n");
-            }
-
-            RunGit(workspacePath, "init");
-            var safeDesk = (deskId ?? "Player").Replace("\"", "");
-            RunGit(workspacePath, $"config user.name \"Participant ({safeDesk})\"");
-            RunGit(workspacePath, "config user.email \"participant@rogue.internal\"");
-            RunGit(workspacePath, "add -A");
-            RunGit(workspacePath, "commit -m \"Baseline: AEGIS Municipal Core\"");
-        }
-        catch { /* git is optional on kiosk, never crashes startup */ }
-    }
-
-    /// <summary>
-    /// Commits workspace changes into the local git repository (e.g. after an attack lands or resets).
-    /// </summary>
-    public static void CommitWorkspaceChanges(string workspacePath, string message)
-    {
-        try
-        {
-            if (string.IsNullOrWhiteSpace(workspacePath) || !Directory.Exists(workspacePath)) return;
-            var gitDir = Path.Combine(workspacePath, ".git");
-            if (!Directory.Exists(gitDir)) return;
-
-            var gitignorePath = Path.Combine(workspacePath, ".gitignore");
-            if (!File.Exists(gitignorePath))
-            {
-                File.WriteAllText(gitignorePath, "node_modules/\n.breach-backup/\n*.db\n*.db-wal\n*.db-shm\n*.sqlite*\n*.log\neval_*.db\n");
-            }
-
-            RunGit(workspacePath, "add -A");
-            var safeMsg = message.Replace("\"", "'");
-            RunGit(workspacePath, $"commit -m \"{safeMsg}\" --allow-empty");
-        }
-        catch { /* best-effort commit */ }
-    }
-
-    private static void RunGit(string workingDir, string arguments)
-    {
-        try
-        {
-            using var proc = new System.Diagnostics.Process
-            {
-                StartInfo = new System.Diagnostics.ProcessStartInfo
+                foreach (var file in Directory.EnumerateFiles(gitDir, "*", SearchOption.AllDirectories))
                 {
-                    FileName = "git",
-                    Arguments = arguments,
-                    WorkingDirectory = workingDir,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
+                    try
+                    {
+                        File.SetAttributes(file, FileAttributes.Normal);
+                        File.Delete(file);
+                    }
+                    catch { }
                 }
-            };
-            proc.Start();
-            if (!proc.WaitForExit(5000))
-            {
-                try { proc.Kill(); } catch { }
+                Directory.Delete(gitDir, recursive: true);
             }
         }
-        catch { /* git binary might not be on system PATH */ }
+        catch { /* non-fatal cleanup */ }
     }
 
     /// <summary>

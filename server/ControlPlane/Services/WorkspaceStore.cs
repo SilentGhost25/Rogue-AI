@@ -13,7 +13,8 @@ public sealed class WorkspaceStore
 
     public WorkspaceStore(IConfiguration config)
     {
-        _root = Path.GetFullPath(config["Breach:WorkspacesPath"] ?? "data/workspaces");
+        var configuredRoot = config["Breach:WorkspacesPath"] ?? "data/workspaces";
+        _root = ResolveWorkspacesPath(configuredRoot);
         var configuredTemplate = config["Breach:SiteTemplatePath"];
         if (!string.IsNullOrEmpty(configuredTemplate) && Directory.Exists(configuredTemplate))
         {
@@ -27,7 +28,33 @@ public sealed class WorkspaceStore
         {
             _template = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "site"));
         }
-        Directory.CreateDirectory(_root);
+    }
+
+    private static string ResolveWorkspacesPath(string? configuredPath)
+    {
+        var candidates = new List<string>();
+        if (!string.IsNullOrWhiteSpace(configuredPath))
+            candidates.Add(configuredPath);
+
+        candidates.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BreachKiosk", "host", "workspaces"));
+        candidates.Add(Path.Combine(Path.GetTempPath(), "BreachKiosk", "host", "workspaces"));
+        candidates.Add(Path.Combine(AppContext.BaseDirectory, "data", "workspaces"));
+        candidates.Add(Path.Combine(Directory.GetCurrentDirectory(), "data", "workspaces"));
+
+        foreach (var cand in candidates)
+        {
+            try
+            {
+                var full = Path.GetFullPath(cand);
+                Directory.CreateDirectory(full);
+                var testFile = Path.Combine(full, $".write_test_{Guid.NewGuid():N}.tmp");
+                File.WriteAllText(testFile, "ok");
+                File.Delete(testFile);
+                return full;
+            }
+            catch { }
+        }
+        return Path.GetFullPath("data/workspaces");
     }
 
     public string PathFor(string participantId) => Path.Combine(_root, SafeId(participantId));

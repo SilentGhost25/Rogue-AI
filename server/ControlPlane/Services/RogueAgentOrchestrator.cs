@@ -37,23 +37,44 @@ public sealed class RogueAgentOrchestrator : BackgroundService
         _log = log;
 
         var configured = cfg["RogueAgent:AttacksRoot"];
-        if (!string.IsNullOrWhiteSpace(configured) && Directory.Exists(configured))
+        _attacksRoot = ResolveAttacksRoot(configured, _log);
+        _attacks = LoadAndValidateAll(_attacksRoot);
+    }
+
+    private static string ResolveAttacksRoot(string? configured, ILogger log)
+    {
+        var candidates = new List<string>();
+        if (!string.IsNullOrWhiteSpace(configured))
+            candidates.Add(configured);
+
+        candidates.Add(Path.Combine(AppContext.BaseDirectory, "attacks"));
+        candidates.Add(Path.Combine(AppContext.BaseDirectory, "..", "attacks"));
+        candidates.Add(Path.Combine(Directory.GetCurrentDirectory(), "attacks"));
+        candidates.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BreachKiosk", "host", "attacks"));
+        candidates.Add(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../attacks")));
+        candidates.Add(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../attacks")));
+
+        foreach (var cand in candidates)
         {
-            _attacksRoot = configured;
-        }
-        else
-        {
-            var cand = new[]
+            try
             {
-                Path.Combine(AppContext.BaseDirectory, "attacks"),
-                Path.Combine(Directory.GetCurrentDirectory(), "attacks"),
-                Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../attacks")),
-                Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../attacks"))
-            };
-            _attacksRoot = cand.FirstOrDefault(Directory.Exists) ?? Path.Combine(Directory.GetCurrentDirectory(), "attacks");
+                if (Directory.Exists(cand))
+                {
+                    var files = Directory.GetFiles(cand, "manifest.yaml", SearchOption.AllDirectories);
+                    if (files.Length > 0)
+                    {
+                        log.LogInformation("Resolved attacks root to: {Path} ({Count} manifests found)", cand, files.Length);
+                        return cand;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                log.LogWarning("Cannot read attacks from candidate {Path}: {Message}", cand, ex.Message);
+            }
         }
 
-        _attacks = LoadAndValidateAll(_attacksRoot);
+        return configured ?? Path.Combine(Directory.GetCurrentDirectory(), "attacks");
     }
 
     public IReadOnlyList<AttackManifest> Attacks => _attacks;

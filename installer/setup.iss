@@ -25,22 +25,35 @@ SolidCompression=yes
 WizardStyle=modern
 PrivilegesRequired=admin
 PrivilegesRequiredOverridesAllowed=commandline
+ArchitecturesInstallIn64BitMode=x64compatible
+ArchitecturesAllowed=x64compatible
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Types]
+Name: "full"; Description: "Full Suite (Recommended - Organizer Host + Participant Kiosk)"
 Name: "participant"; Description: "Participant Kiosk (Defend site & connect to Organizer Host)"
 Name: "host"; Description: "Host Mode (Organizer Control Plane + Evaluation Engine)"
-Name: "full"; Description: "Full Suite (Host Mode + Participant Kiosk)"
 Name: "custom"; Description: "Custom installation"; Flags: iscustom
 
 [Components]
-Name: "participant"; Description: "Participant Defense Studio (LabKiosk + AEGIS Site)"; Types: participant full custom
-Name: "host"; Description: "Organizer Host Mode (Control Plane + Attack Engine + Command Center)"; Types: host full custom
+Name: "participant"; Description: "Participant Defense Studio (LabKiosk + AEGIS Site)"; Types: full participant custom
+Name: "host"; Description: "Organizer Host Mode (Control Plane + Attack Engine + Command Center)"; Types: full host custom
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
+
+[Dirs]
+Name: "{app}\attacks"; Permissions: users-readexec; Components: host
+Name: "{app}\server"; Permissions: users-readexec; Components: host
+Name: "{app}\engine"; Permissions: users-readexec; Components: host
+Name: "{app}\site"; Permissions: users-readexec
+Name: "{localappdata}\BreachKiosk"; Permissions: users-full
+Name: "{localappdata}\BreachKiosk\host"; Permissions: users-full
+Name: "{localappdata}\BreachKiosk\host\workspaces"; Permissions: users-full
+Name: "{localappdata}\BreachKiosk\host\backups"; Permissions: users-full
+Name: "C:\BreachWorkspace"; Permissions: users-full
 
 [Files]
 ; Kiosk WPF Application & Self-Contained .NET 9 Runtime (used by both Participant View and --host Command Center)
@@ -201,8 +214,6 @@ begin
       Exec('netsh.exe', 'advfirewall firewall add rule name="RogueAI-ControlPlane-5080" dir=in action=allow protocol=TCP localport=5080 enable=yes', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
       Exec('netsh.exe', 'advfirewall firewall add rule name="RogueAI-Engine-8000" dir=in action=allow protocol=TCP localport=8000 enable=yes', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
       Exec('netsh.exe', 'advfirewall firewall add rule name="RogueAI-Discovery-5081" dir=in action=allow protocol=UDP localport=5081 enable=yes', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-      // Restrict attacks directory strictly to Administrator & SYSTEM to prevent AI crawling
-      Exec('icacls.exe', '"' + ExpandConstant('{app}\attacks') + '" /inheritance:r /grant:r "Administrators:(OI)(CI)F" "SYSTEM:(OI)(CI)F"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
     end;
   end;
 end;
@@ -219,11 +230,12 @@ begin
   RegDeleteKeyIncludingSubkeys(HKEY_LOCAL_MACHINE, 'SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\{6F2D1C9A-3B7E-4C58-9A41-0D5E7B8C1F23}_is1');
   RegDeleteKeyIncludingSubkeys(HKEY_CURRENT_USER, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{6F2D1C9A-3B7E-4C58-9A41-0D5E7B8C1F23}_is1');
 
-  // Purge legacy desktop shortcuts
+  // Purge all legacy desktop shortcuts across standard desktop, OneDrive desktop, and Public desktop
   DeleteFile(ExpandConstant('{commondesktop}\Breach Protocol Kiosk.lnk'));
   DeleteFile(ExpandConstant('{commondesktop}\Breach Protocol Organizer (Admin).lnk'));
   DeleteFile(ExpandConstant('{userdesktop}\Breach Protocol Kiosk.lnk'));
   DeleteFile(ExpandConstant('{userdesktop}\Breach Protocol Organizer (Admin).lnk'));
+  Exec('powershell.exe', '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "Get-ChildItem -Path @($env:USERPROFILE + ''\Desktop'', $env:USERPROFILE + ''\OneDrive\Desktop'', ''C:\Users\Public\Desktop'', ''C:\Users\dell\OneDrive\Desktop'', ''C:\Users\dell\Desktop'') -Filter ''*Breach*.lnk'' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue; Get-ChildItem -Path @($env:APPDATA + ''\Microsoft\Windows\Start Menu\Programs'', $env:PROGRAMDATA + ''\Microsoft\Windows\Start Menu\Programs'') -Filter ''*Breach*.lnk'' -Recurse -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 
   // Purge legacy Start Menu folders
   DelTree(ExpandConstant('{commonprograms}\ROGUE AI - The Breach Protocol'), True, True, True);

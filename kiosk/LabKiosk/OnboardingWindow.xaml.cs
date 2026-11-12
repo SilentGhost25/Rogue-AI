@@ -78,6 +78,8 @@ public partial class OnboardingWindow : Window
 
 
 
+        ChkModelCompliance.IsChecked = true;
+
         Loaded += async (_, _) =>
         {
             CheckGoogleAuth();
@@ -97,13 +99,23 @@ public partial class OnboardingWindow : Window
 
 
     private void OnCloseClick(object sender, RoutedEventArgs e)
-
     {
+        var name = TxtDisplayName.Text.Trim();
+        if (!string.IsNullOrWhiteSpace(name))
+        {
+            _settings.DisplayName = name;
+            _settings.ServerUrl = string.IsNullOrWhiteSpace(TxtServerUrl.Text) ? "http://127.0.0.1:5080" : TxtServerUrl.Text.Trim();
+            _settings.GitHubHandle = TxtGithubHandle.Text.Trim().TrimStart('@');
+            _settings.GoogleAccount = TxtGoogleEmail.Text.Trim();
+            _settings.Onboarded = true;
+            SaveSettings();
+            DialogResult = true;
+            Close();
+            return;
+        }
 
         DialogResult = false;
-
         Close();
-
     }
 
 
@@ -353,21 +365,14 @@ public partial class OnboardingWindow : Window
 
 
     private void OnHandleChanged(object sender, TextChangedEventArgs e)
-
     {
-
+        if (TxtGithubHandle == null || TxtDisplayName == null) return;
         var h = TxtGithubHandle.Text.Trim().TrimStart('@');
-
         if (string.IsNullOrWhiteSpace(TxtDisplayName.Text) || TxtDisplayName.Text.StartsWith('@'))
-
         {
-
             if (!string.IsNullOrWhiteSpace(h))
-
                 TxtDisplayName.Text = "@" + h;
-
         }
-
     }
 
 
@@ -723,7 +728,8 @@ public partial class OnboardingWindow : Window
 
     private void OnModelComplianceChanged(object sender, RoutedEventArgs e)
     {
-        if (ChkModelCompliance.IsChecked == true && TxtWarning.Text.Contains("Integrity Pledge"))
+        if (ChkModelCompliance == null || TxtWarning == null) return;
+        if (ChkModelCompliance.IsChecked == true && (TxtWarning.Text?.Contains("Integrity Pledge") == true))
         {
             TxtWarning.Text = "";
         }

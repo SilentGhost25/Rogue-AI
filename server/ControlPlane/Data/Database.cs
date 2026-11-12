@@ -6,13 +6,48 @@ namespace ControlPlane.Data;
 public partial class Database
 {
     private readonly string _connectionString;
+    public string ResolvedPath { get; }
 
     public Database(IConfiguration config)
     {
-        var path = config["Breach:DatabasePath"] ?? "data/breach.db";
-        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
-        _connectionString = $"Data Source={path}";
+        var rawPath = config["Breach:DatabasePath"] ?? "data/breach.db";
+        ResolvedPath = ResolveDatabasePath(rawPath);
+        _connectionString = $"Data Source={ResolvedPath}";
         Migrate();
+    }
+
+    private static string ResolveDatabasePath(string? configuredPath)
+    {
+        var candidates = new List<string>();
+        if (!string.IsNullOrWhiteSpace(configuredPath))
+            candidates.Add(configuredPath);
+
+        candidates.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BreachKiosk", "host", "breach.db"));
+        candidates.Add(Path.Combine(Path.GetTempPath(), "BreachKiosk", "host", "breach.db"));
+        candidates.Add(Path.Combine(AppContext.BaseDirectory, "data", "breach.db"));
+        candidates.Add(Path.Combine(Directory.GetCurrentDirectory(), "data", "breach.db"));
+
+        foreach (var cand in candidates)
+        {
+            try
+            {
+                var full = Path.GetFullPath(cand);
+                var dir = Path.GetDirectoryName(full);
+                if (!string.IsNullOrEmpty(dir))
+                {
+                    Directory.CreateDirectory(dir);
+                    var testFile = Path.Combine(dir, $".write_test_{Guid.NewGuid():N}.tmp");
+                    File.WriteAllText(testFile, "ok");
+                    File.Delete(testFile);
+                    return full;
+                }
+            }
+            catch
+            {
+                // Try next fallback path
+            }
+        }
+        return "breach.db";
     }
 
     public SqliteConnection Open()

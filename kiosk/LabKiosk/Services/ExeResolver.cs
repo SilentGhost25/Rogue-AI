@@ -65,6 +65,20 @@ public static class ExeResolver
             foreach (var c in candidates)
                 if (File.Exists(c)) return c;
         }
+        else if (baseName.Equals("git", StringComparison.OrdinalIgnoreCase))
+        {
+            var candidates = new[]
+            {
+                @"C:\Program Files\Git\cmd\git.exe",
+                @"C:\Program Files\Git\bin\git.exe",
+                @"C:\Program Files (x86)\Git\cmd\git.exe",
+                @"C:\Program Files (x86)\Git\bin\git.exe",
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Git", "cmd", "git.exe"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Git", "bin", "git.exe")
+            };
+            foreach (var c in candidates)
+                if (File.Exists(c)) return c;
+        }
 
         var dirs = (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries);
         foreach (var ext in new[] { ".exe", ".cmd", ".bat" })

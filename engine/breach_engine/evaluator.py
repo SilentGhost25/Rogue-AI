@@ -20,10 +20,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import psutil
+import numpy as np
 import yaml
 from .scoring import calculate_benchmark_multiplier
 
 SOLVED, FAILED, PARTIAL = "SOLVED", "FAILED", "PARTIAL"
+OPTIMAL, BASE = "OPTIMAL", "BASE"
 ROOT_DIR = Path(__file__).resolve().parents[2]
 
 
@@ -59,6 +61,10 @@ class Verdict:
     tier_results: dict[str, bool] | None = None
     score_percentage: float = 1.0
     benchmark_metrics: dict[str, float] | None = None
+
+    def __post_init__(self):
+        if self.benchmark_metrics is None:
+            self.benchmark_metrics = {}
 
 
 def collect_benchmark_metrics(base_url: str, endpoint: str = "/", count: int = 15, timeout_sec: float = 2.0) -> dict[str, float]:
@@ -542,16 +548,16 @@ def evaluate_attack(attack_id: int, attack_dir: Path, workspace: Path, timeout_s
 
             # Load tiers weighting from manifest if present
             manifest_file = attack_dir / "manifest.yaml"
-            tiers_spec = []
+            m_data = {}
             if manifest_file.exists():
                 try:
-                    m_data = yaml.safe_load(manifest_file.read_text(encoding="utf-8"))
-                    tiers_spec = m_data.get("tests", {}).get("tiers", [])
+                    m_data = yaml.safe_load(manifest_file.read_text(encoding="utf-8")) or {}
                 except Exception:
-                    tiers_spec = []
+                    m_data = {}
 
             cpu_time_ms, peak_memory_mb = collect_telemetry()
 
+            tiers_spec = m_data.get("tests", {}).get("tiers", []) if m_data else []
             if tiers_spec:
                 total_weight = sum(t.get("weight", 0) for t in tiers_spec) or 100
                 earned_weight = sum(t.get("weight", 0) for t in tiers_spec if tier_results.get(t.get("id"), False))
@@ -561,7 +567,7 @@ def evaluate_attack(attack_id: int, attack_dir: Path, workspace: Path, timeout_s
                 passed_ids = [t.get("id") for t in tiers_spec if tier_results.get(t.get("id"), False)]
                 reason = f"Tiers passed: {earned_weight}/{total_weight}% ({', '.join(passed_ids) if passed_ids else 'none'})"
 
-                sla_spec = m_data.get("benchmark_sla") if manifest_file.exists() and "m_data" in locals() and m_data else None
+                sla_spec = m_data.get("benchmark_sla") if m_data else None
                 benchmark_metrics = None
                 if sla_spec:
                     probe_route = sla_spec.get("probe_route", "/")
@@ -576,7 +582,6 @@ def evaluate_attack(attack_id: int, attack_dir: Path, workspace: Path, timeout_s
 
                 return Verdict(attack_id, status, reason, cpu_time_ms, peak_memory_mb, tier_results, score_pct, benchmark_metrics)
             else:
-                # Default equal weighting across keys
                 total_count = len(tier_results)
                 passed_count = sum(1 for v in tier_results.values() if v)
                 score_pct = round(passed_count / total_count, 4) if total_count > 0 else 0.0
@@ -638,14 +643,15 @@ def evaluate_attack(attack_id: int, attack_dir: Path, workspace: Path, timeout_s
         if job_sandbox:
             job_sandbox.close()
 
-        # Clean up temporary eval db
+        # Clean up temporary eval db and SQLite WAL/SHM artifacts
         if slot_dir:
-            eval_db = slot_dir / f"eval_{attack_id}.db"
-            if eval_db.exists():
-                try:
-                    eval_db.unlink()
-                except Exception:
-                    pass
+            for suffix in ["", "-wal", "-shm"]:
+                eval_p = slot_dir / f"eval_{attack_id}.db{suffix}"
+                if eval_p.exists():
+                    try:
+                        eval_p.unlink()
+                    except Exception:
+                        pass
 
         time.sleep(0.05)
         GLOBAL_SLOT_MANAGER.release(slot_id)
@@ -768,9 +774,9 @@ def _deep_worker_loop():
                 break
 
             q_depth = DEEP_EVAL_QUEUE.qsize()
-            degrade = q_depth > 20
-            trials_count = 3 if degrade else 5
-            boot_iters = 100 if degrade else 1000
+            degrade = q_depth > 10
+            trials_count = 1 if degrade else 2
+            boot_iters = 100 if degrade else 250
 
             workspace = Path(task.workspace_dir)
             if not workspace.exists():
@@ -901,6 +907,7 @@ def _deep_worker_loop():
                 pass
 
         except Exception as ex:
+            sys.stderr.write(f"DeepEvalWorker error: {ex}\n")
             time.sleep(0.5)
         finally:
             DEEP_EVAL_QUEUE.task_done()

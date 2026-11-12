@@ -379,17 +379,18 @@ async function refreshKiosks() {
     $('kiosksGrid').innerHTML = kiosksCache.map(k => {
       let isDead = k.status === 'disqualified';
       let cardClass = isDead ? 'kiosk-card dead' : (k.agyExhausted ? 'kiosk-card warn-quota' : 'kiosk-card');
+      let activeBadge = k.activeAttacks ? `<span style="background:var(--accent); color:#fff; font-size:10px; font-weight:800; padding:2px 6px; border-radius:3px; margin-left:6px">&#x26A1; #${k.activeAttacks} ACTIVE</span>` : '';
       return `
         <div class="${cardClass}" onclick="openModal('${k.id}')">
           <div class="kc-head">
-            <span>${k.id}</span>
+            <span>${k.id} ${activeBadge}</span>
             <span>&#x2705; ${k.solvedCount}/7</span>
           </div>
           <div class="kc-name">${k.name}</div>
-          <div class="kc-score">${k.totalScore.toFixed(1)}</div>
+          <div class="kc-score">${k.totalScore.toFixed(1)} pts</div>
           <div class="kc-footer">
-            <span>${k.agyExhausted ? 'OC mode' : 'agy'}</span>
-            <span>${k.status}</span>
+            <span>${k.agyExhausted ? 'OC mode' : 'agy'} &bull; ${k.ipAddress}</span>
+            <span style="font-weight:700; color:${isDead ? 'var(--accent)' : 'var(--ok)'}">${k.status.toUpperCase()}</span>
           </div>
         </div>
       `;
@@ -446,7 +447,7 @@ async function openModal(id) {
   let ledgerHtml = data.ledger.length ? data.ledger.map(l => `
     <tr>
       <td>#${l.id}</td>
-      <td>Attack ${l.attackId || '-'}</td>
+      <td>${l.attackId ? 'Attack #' + l.attackId : 'Incident / Scope Penalty'}</td>
       <td>${l.component}</td>
       <td style="color:${l.points >= 0 ? 'var(--ok)' : 'var(--accent)'}"><strong>${l.points > 0 ? '+' : ''}${l.points.toFixed(1)}</strong></td>
       <td>${l.reason}</td>
@@ -462,7 +463,10 @@ async function openModal(id) {
       </div>
       <div>
         ${p.status === 'disqualified' || p.status === 'eliminated'
-          ? `<span style="color:var(--accent); font-weight:800; border:1px solid var(--accent); padding:4px 8px; border-radius:4px">DISQUALIFIED</span>`
+          ? `<div style="display:flex; gap:8px; align-items:center">
+               <span style="color:var(--accent); font-weight:800; border:1px solid var(--accent); padding:4px 8px; border-radius:4px">DISQUALIFIED</span>
+               <button class="btn-ok" onclick="reinstateParticipant('${p.id}')">Reinstate</button>
+             </div>`
           : `<button class="btn-danger" onclick="disqualifyParticipant('${p.id}')">Disqualify</button>`}
       </div>
     </div>
@@ -487,6 +491,13 @@ async function openModal(id) {
 async function disqualifyParticipant(id) {
   if (!confirm(`Are you sure you want to DISQUALIFY participant ${id}?`)) return;
   await post(`/admin/kiosks/${id}/disqualify`);
+  closeModal();
+  refreshKiosks();
+}
+
+async function reinstateParticipant(id) {
+  if (!confirm(`Are you sure you want to REINSTATE participant ${id}?`)) return;
+  await post(`/admin/kiosks/${id}/reinstate`);
   closeModal();
   refreshKiosks();
 }

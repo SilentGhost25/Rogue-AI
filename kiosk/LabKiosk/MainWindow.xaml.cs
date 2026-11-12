@@ -194,8 +194,10 @@ public partial class MainWindow : Window
             // Autoconfigure AI context by ensuring GEMINI.md and AGENTS.md are in the workspace
             EnsureAiContextFiles();
 
-            // Initialize local git repository so git status / diff work natively for AI agents
-            WorkspaceBackup.InitializeLocalGitRepo(_s.WorkspacePath, _s.DeskId ?? _s.DisplayName ?? "Player");
+            // Enforce AGENTS.md rule: The server owns Git. Kiosks never run Git and never hold credentials.
+            // Strictly wipe any local .git repository so git diff and git revert cannot be abused.
+            WorkspaceBackup.WipeLocalGitRepo(_s.WorkspacePath);
+            EnsureGitProhibitionShim();
 
             Code.Initialize(_s.WorkspacePath);
 
@@ -346,6 +348,11 @@ public partial class MainWindow : Window
         await TermAgy.InitializeAsync(assets);
         await TermOc.InitializeAsync(assets);
 
+        // Security: Ensure git prohibition shim is installed in BreachKiosk/bin and prepended to PATH
+        var shimDir = EnsureGitProhibitionShim();
+        var sysPath = Environment.GetEnvironmentVariable("PATH") ?? "";
+        var restrictedPath = string.IsNullOrEmpty(shimDir) ? sysPath : $"{shimDir};{sysPath}";
+
         // agy: Pre-configure trust and permissions in settings.json so no trust prompt appears
         ConfigureAgy(_s.WorkspacePath);
         var agy = ExeResolver.Resolve(_s.AgyPath);
@@ -359,6 +366,7 @@ public partial class MainWindow : Window
             var (exe, args) = ExeResolver.ForLaunch(agy, "--dangerously-skip-permissions");
             TermAgy.Launch(new LaunchSpec(exe, args, _s.WorkspacePath, new Dictionary<string, string?>
             {
+                ["PATH"] = restrictedPath,
                 ["GEMINI_API_KEY"] = null,
                 ["GOOGLE_API_KEY"] = null,
                 ["GOOGLE_GENAI_USE_VERTEXAI"] = null,
@@ -389,6 +397,27 @@ public partial class MainWindow : Window
             var (exe, args) = ExeResolver.ForLaunch(ocPath, $"attach {_oc.Url}");
             TermOc.Launch(new LaunchSpec(exe, args, _s.WorkspacePath, _oc.Environment, _oc.StartAsync));
         }
+    }
+
+    /// <summary>
+    /// Creates a security interception wrapper in %LOCALAPPDATA%\BreachKiosk\bin to completely
+    /// prevent participants and AI assistants from running git diff, git status, git log, or git revert.
+    /// </summary>
+    private static string EnsureGitProhibitionShim()
+    {
+        try
+        {
+            var shimDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BreachKiosk", "bin");
+            Directory.CreateDirectory(shimDir);
+            const string script = "@echo off\r\n" +
+                                  "echo [SECURITY VIOLATION] Git inspection, git diff, and git revert are strictly prohibited during Breach Protocol.\r\n" +
+                                  "echo Diagnose vulnerabilities directly from application logs, behavior, and source files.\r\n" +
+                                  "exit /b 1\r\n";
+            File.WriteAllText(Path.Combine(shimDir, "git.cmd"), script);
+            File.WriteAllText(Path.Combine(shimDir, "git.bat"), script);
+            return shimDir;
+        }
+        catch { return ""; }
     }
 
     // ---- attacks -------------------------------------------------------------------------------------
@@ -554,7 +583,7 @@ public partial class MainWindow : Window
             _pulled.Add(attackId);
             _activeAttacks.Add(attackId);
             var name = AttackNames.TryGetValue(attackId, out var nm) ? nm : $"Attack #{attackId}";
-            WorkspaceBackup.CommitWorkspaceChanges(_s.WorkspacePath, $"ATTACK #{attackId} ({name}) landed");
+            WorkspaceBackup.WipeLocalGitRepo(_s.WorkspacePath);
             Status($"🚨 ATTACK #{attackId} ({name}) LANDED! ({n} files changed). Fix the code, then submit.");
             var healthy = _site is not null && await _site.WaitRestartHealthyAsync();
             Code.RefreshAll();
@@ -697,20 +726,35 @@ public partial class MainWindow : Window
         foreach (var v in verdicts.EnumerateArray())
         {
             var id = v.GetProperty("attackId").GetInt32();
-            var st = v.GetProperty("status").GetString();
-            if (st == "SOLVED")
+            var st = v.GetProperty("status").GetString() ?? "FAILED";
+            var reason = v.TryGetProperty("reason", out var rProp) ? (rProp.GetString() ?? "") : "";
+            var pts = v.TryGetProperty("points", out var pProp) ? pProp.GetDouble() : 0.0;
+            var isSolved = st is "SOLVED" or "OPTIMAL" or "BASE";
+
+            if (isSolved)
             {
                 anySolved = true;
                 _activeAttacks.Remove(id);
                 _solvedAttacks.Add(id);
-                WorkspaceBackup.CommitWorkspaceChanges(_s.WorkspacePath, $"SOLVED: Attack #{id} verified and resolved");
-                parts.Add($"#{id} SOLVED +{v.GetProperty("points").GetDouble():0.#} pts");
+                WorkspaceBackup.WipeLocalGitRepo(_s.WorkspacePath);
+                parts.Add($"#{id} {st} +{pts:0.#} pts");
                 _pull?.ClearBaseline(); // penalty window closed — attack is done
             }
             else
             {
-                parts.Add($"#{id} {st}: {v.GetProperty("reason").GetString()}");
+                parts.Add($"#{id} {st}: {reason}");
             }
+
+            var attackName = AttackNames.TryGetValue(id, out var nm) ? nm : $"Attack #{id}";
+            Dispatcher.InvokeAsync(() =>
+            {
+                try
+                {
+                    var modal = new VerdictWindow(this, id, attackName, st, pts, reason);
+                    modal.ShowDialog();
+                }
+                catch { }
+            });
         }
         Status(parts.Count > 0 ? string.Join("   |   ", parts) : note);
         Dispatcher.InvokeAsync(() =>
@@ -804,6 +848,7 @@ public partial class MainWindow : Window
                     _ = _api.SendTelemetryAsync(_pid, "TOUCH_PENALTY", new
                     {
                         reason = "UNAUTHORIZED_FILE_MODIFICATION",
+                        violations,
                         files = violations,
                         penalty = -300
                     });
@@ -815,23 +860,39 @@ public partial class MainWindow : Window
             Status("Uploading your fix to evaluation engine...");
             await _sync.FlushAsync(force: true);
             await _api.SubmitAsync(_pid);
-            Status("Fix submitted! Automated test & security checks are running...");
+            Status("Fix submitted! Automated test & security checks are running... [0s / 60s]");
 
-            // Safety timeout: if verdict is delayed past 45s, re-enable submit
+            // Safety timeout & live status ticker: if verdict is delayed past 65s, re-enable submit
             _submitTimeoutCts?.Cancel();
             _submitTimeoutCts = new CancellationTokenSource();
             var token = _submitTimeoutCts.Token;
-            _ = Task.Delay(TimeSpan.FromSeconds(45), token).ContinueWith(t =>
+            _ = Task.Run(async () =>
             {
-                if (!t.IsCanceled && !_eliminated)
+                try
                 {
-                    Dispatcher.InvokeAsync(() =>
+                    for (int elapsed = 1; elapsed <= 65; elapsed++)
                     {
-                        SubmitButton.IsEnabled = true;
-                        Status("Evaluation is taking longer than usual. You may submit again or wait.");
-                    });
+                        await Task.Delay(1000, token);
+                        if (token.IsCancellationRequested) return;
+                        if (elapsed < 60 && elapsed % 5 == 0)
+                        {
+                            await Dispatcher.InvokeAsync(() =>
+                            {
+                                Status($"Automated test & security checks running... [{elapsed}s / 60s]");
+                            });
+                        }
+                    }
+                    if (!token.IsCancellationRequested && !_eliminated)
+                    {
+                        await Dispatcher.InvokeAsync(() =>
+                        {
+                            SubmitButton.IsEnabled = true;
+                            Status("Evaluation completed or queued for deep analysis. You may submit again if needed.");
+                        });
+                    }
                 }
-            }, TaskScheduler.Default);
+                catch { }
+            }, token);
         }
         catch (Exception ex)
         {
@@ -943,7 +1004,7 @@ public partial class MainWindow : Window
             await _pull.PullAsync($"reset-{attackId}");
 
             var name = AttackNames.TryGetValue(attackId, out var nm) ? nm : $"Attack #{attackId}";
-            WorkspaceBackup.CommitWorkspaceChanges(_s.WorkspacePath, $"RESET: Attack #{attackId} ({name}) restored to baseline");
+            WorkspaceBackup.WipeLocalGitRepo(_s.WorkspacePath);
             Status($"↺ Attack #{attackId} ({name}) reset by organizer. Workspace restored.");
 
             _site?.RequestReload();

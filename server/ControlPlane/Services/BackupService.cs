@@ -32,10 +32,45 @@ public sealed class BackupService : BackgroundService
     {
         var dbPath = config["Breach:DatabasePath"] ?? "data/breach.db";
         _connectionString = $"Data Source={dbPath}";
-        _backupDir = config["Breach:BackupPath"] ?? Path.Combine(Path.GetDirectoryName(Path.GetFullPath(dbPath))!, "backups");
+        var configuredBackup = config["Breach:BackupPath"];
+        _backupDir = ResolveBackupPath(configuredBackup, dbPath);
         _mirrorDir = config["Breach:BackupMirrorPath"];
         _logger = logger;
         _interval = TimeSpan.FromMinutes(3);
+    }
+
+    private static string ResolveBackupPath(string? configuredBackup, string dbPath)
+    {
+        var candidates = new List<string>();
+        if (!string.IsNullOrWhiteSpace(configuredBackup))
+            candidates.Add(configuredBackup);
+
+        try
+        {
+            var dbDir = Path.GetDirectoryName(Path.GetFullPath(dbPath));
+            if (!string.IsNullOrEmpty(dbDir))
+                candidates.Add(Path.Combine(dbDir, "backups"));
+        }
+        catch { }
+
+        candidates.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BreachKiosk", "host", "backups"));
+        candidates.Add(Path.Combine(Path.GetTempPath(), "BreachKiosk", "host", "backups"));
+        candidates.Add(Path.Combine(AppContext.BaseDirectory, "data", "backups"));
+
+        foreach (var cand in candidates)
+        {
+            try
+            {
+                var full = Path.GetFullPath(cand);
+                Directory.CreateDirectory(full);
+                var testFile = Path.Combine(full, $".write_test_{Guid.NewGuid():N}.tmp");
+                File.WriteAllText(testFile, "ok");
+                File.Delete(testFile);
+                return full;
+            }
+            catch { }
+        }
+        return Path.GetFullPath("data/backups");
     }
 
     public static string GenerateFileName(DateTime timestamp, bool isHourly)

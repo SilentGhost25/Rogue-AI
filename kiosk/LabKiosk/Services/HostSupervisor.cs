@@ -115,6 +115,21 @@ public sealed class HostSupervisor : IDisposable
         else
         {
             status("Starting the control plane...");
+
+            // Safely kill any lingering/orphaned ControlPlane processes to prevent port 5080 address collisions
+            try
+            {
+                foreach (var p in Process.GetProcessesByName("ControlPlane"))
+                {
+                    if (p.Id != Environment.ProcessId)
+                    {
+                        p.Kill(entireProcessTree: true);
+                        p.WaitForExit(500);
+                    }
+                }
+            }
+            catch { }
+
             var serverDir = Path.Combine(_appDir, "server");
             var exe = Path.Combine(serverDir, "ControlPlane.exe");
             var dll = Path.Combine(serverDir, "ControlPlane.dll");
@@ -167,14 +182,52 @@ public sealed class HostSupervisor : IDisposable
         for (var i = 0; i < 80; i++)   // up to 40 s
         {
             if (engineProc is { HasExited: true })
+            {
+                try { engineProc.WaitForExit(1000); } catch { }
                 throw new InvalidOperationException($"Attack engine exited early (code {engineProc.ExitCode}). {string.Join(" | ", _errorHints)}");
+            }
             if (serverProc is { HasExited: true })
+            {
+                try { serverProc.WaitForExit(1000); } catch { }
+                var crashHint = ReadCrashLog();
+                if (!string.IsNullOrWhiteSpace(crashHint))
+                {
+                    lock (_errorHints) { _errorHints.Insert(0, crashHint); }
+                }
                 throw new InvalidOperationException($"Control plane exited early (code {serverProc.ExitCode}). {string.Join(" | ", _errorHints)}");
+            }
 
             if (await Healthy(EngineUrl + "/health") && await Healthy(ServerUrl + "/api/state")) { status("Ready."); return; }
             await Task.Delay(500);
         }
         throw new TimeoutException("The event services did not become healthy within 40 seconds.");
+    }
+
+    private static string? ReadCrashLog()
+    {
+        var candidates = new[]
+        {
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BreachKiosk", "host", "controlplane_crash.log"),
+            Path.Combine(Path.GetTempPath(), "controlplane_crash.log"),
+        };
+        foreach (var path in candidates)
+        {
+            try
+            {
+                if (File.Exists(path))
+                {
+                    var lines = File.ReadAllLines(path).Where(l => !string.IsNullOrWhiteSpace(l)).ToList();
+                    if (lines.Count > 0)
+                    {
+                        var header = string.Join(" | ", lines.Take(2).Select(l => l.Trim()));
+                        if (header.Length > 200) header = header[..197] + "...";
+                        return $"Crash: {header}";
+                    }
+                }
+            }
+            catch { }
+        }
+        return null;
     }
 
     private Process StartTracked(ProcessStartInfo psi, string label)
@@ -192,16 +245,17 @@ public sealed class HostSupervisor : IDisposable
                 t.Contains("warn:", StringComparison.OrdinalIgnoreCase) ||
                 t.Contains("error", StringComparison.OrdinalIgnoreCase) ||
                 t.Contains("exception", StringComparison.OrdinalIgnoreCase) ||
-                t.Contains("fatal", StringComparison.OrdinalIgnoreCase))
+                t.Contains("fatal", StringComparison.OrdinalIgnoreCase) ||
+                t.Contains("unhandled", StringComparison.OrdinalIgnoreCase))
             {
-                lock (_errorHints) { if (_errorHints.Count < 12) _errorHints.Add($"{label}: {t}"); }
+                lock (_errorHints) { if (_errorHints.Count < 16) _errorHints.Add($"{label}: {t}"); }
             }
         }
 
         proc.ErrorDataReceived += (_, e) =>
         {
             if (!string.IsNullOrWhiteSpace(e.Data))
-                lock (_errorHints) { if (_errorHints.Count < 12) _errorHints.Add($"{label}: {e.Data.Trim()}"); }
+                lock (_errorHints) { if (_errorHints.Count < 16) _errorHints.Add($"{label} [STDERR]: {e.Data.Trim()}"); }
         };
         proc.OutputDataReceived += (_, e) => RecordHint(e.Data);
         proc.BeginErrorReadLine();
