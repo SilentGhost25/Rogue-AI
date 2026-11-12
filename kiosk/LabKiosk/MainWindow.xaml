@@ -547,6 +547,15 @@
             </StackPanel>
         </Border>
 
+        <!-- Full-screen Security Lockout Overlay (Shown on unauthorized app switch / disqualification) -->
+        <Grid x:Name="LockoutOverlay" Grid.RowSpan="3" Background="#EE000000" Visibility="Collapsed" Focusable="True" Panel.ZIndex="9999">
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Margin="32">
+                <TextBlock Text="⚠ SYSTEM LOCKOUT: UNAUTHORIZED ESCAPE DETECTED" Foreground="#FF4B4B" FontSize="30" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,0,0,16" TextAlignment="Center" TextWrapping="Wrap"/>
+                <TextBlock Text="You attempted to switch applications or leave the kiosk. This violates event rules." Foreground="#FFFFFF" FontSize="17" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"/>
+                <TextBlock x:Name="LockoutReasonText" Text="Your session has been disqualified. Please contact an organizer." Foreground="#FF6B57" FontSize="17" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,24,0,0" TextAlignment="Center" TextWrapping="Wrap"/>
+            </StackPanel>
+        </Grid>
+
     </Grid>
 
 </Window>

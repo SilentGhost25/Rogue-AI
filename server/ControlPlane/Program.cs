@@ -1067,12 +1067,7 @@ app.MapPost("/admin/kiosks/{id}/disqualify", async (string id, HttpRequest r, Da
 {
     var authErr = AuthorizeAdmin(r, db);
     if (authErr != null) return authErr;
-    using var c = db.Open();
-    using var cmd = c.CreateCommand();
-    cmd.CommandText = "UPDATE participants SET status = 'disqualified' WHERE id = $p";
-    cmd.Parameters.AddWithValue("$p", id);
-    cmd.ExecuteNonQuery();
-    db.Log("DISQUALIFIED", id);
+    db.DisqualifyParticipant(id);
     await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, id);
     return Results.Ok();
 });
@@ -1318,6 +1313,27 @@ app.MapPost("/admin/attacks/{id:int}/confirm-and-fire", async (int id, HttpReque
     }
 });
 
+app.MapPost("/api/kiosk/{id}/disqualify", async (string id, HttpRequest httpReq, Database db, IHubContext<BreachHub> hub) =>
+{
+    var token = httpReq.Headers["X-Kiosk-Token"].ToString();
+    if (string.IsNullOrWhiteSpace(token) || !db.ValidateDeskToken(token, id))
+    {
+        return Results.StatusCode(403);
+    }
+
+    string reason = "APP_SWITCH_DETECTED";
+    try
+    {
+        var body = await httpReq.ReadFromJsonAsync<DisqualifyRequest>();
+        if (!string.IsNullOrWhiteSpace(body?.Reason)) reason = body.Reason;
+    }
+    catch { /* body is optional */ }
+
+    db.DisqualifyParticipant(id, reason);
+    await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, id);
+    return Results.Ok();
+});
+
 app.MapPost("/api/kiosk/{id}/hint/{attackId:int}/{level:int}", (string id, int attackId, int level, HttpRequest httpReq, Database db, RogueAgentOrchestrator orch) =>
 {
     var token = httpReq.Headers["X-Kiosk-Token"].ToString();
@@ -1342,3 +1358,4 @@ public sealed record TelemetryRequest(string Type, JsonElement? Payload);
 public sealed record BroadcastRequest(string Message);
 public sealed record EvaluationResponse(string Submission_Id, string Evaluator, List<VerdictDto> Verdicts);
 public sealed record VerdictDto(int Attack_Id, string Status, string Reason);
+public sealed record DisqualifyRequest(string? Reason = null);

@@ -1,9 +1,11 @@
 using System.IO;
 using System.Net.Http;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
@@ -132,6 +134,20 @@ public partial class MainWindow : Window
     private DispatcherTimer? _statusTimer;
     private CancellationTokenSource? _submitTimeoutCts;
     private bool _cleanedOnClose;
+    private readonly KeyboardHook _keyboardHook;
+    private bool _isHostUnlocked;
+    private bool _isDisqualifiedBySwitch;
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetAncestor(IntPtr hwnd, uint gaFlags);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+
+    private const uint GA_ROOTOWNER = 3;
 
     public MainWindow(KioskSettings? settings = null)
     {
@@ -139,6 +155,9 @@ public partial class MainWindow : Window
         InitializeComponent();
         _api = new ApiClient(_s.ServerUrl);
         _budget.OpenCodeCap = _s.OpenCodeCap;
+        _keyboardHook = new KeyboardHook();
+        _keyboardHook.OnHostComboPressed += () => Dispatcher.BeginInvoke(ToggleHostMode);
+        Deactivated += MainWindow_Deactivated;
         Loaded += async (_, _) => await StartAsync();
         Closed += (_, _) => CleanupAndResetWorkspace();
     }
@@ -153,6 +172,7 @@ public partial class MainWindow : Window
     {
         if (_cleanedOnClose) return;
         _cleanedOnClose = true;
+        try { _keyboardHook.Dispose(); } catch { }
         try { _activeIncidentWindow?.Close(); } catch { }
         try { _statusTimer?.Stop(); } catch { }
         try { _submitTimeoutCts?.Cancel(); } catch { }
@@ -725,6 +745,78 @@ public partial class MainWindow : Window
         _sync?.Hold();
         SubmitButton.IsEnabled = false;
         Status("Your session has ended. Thanks for playing.");
+    }
+
+    private async void MainWindow_Deactivated(object? sender, EventArgs e)
+    {
+        if (_isHostUnlocked || _isDisqualifiedBySwitch) return;
+
+        // Debounce to allow internal WPF modals (IncidentWindow, OnboardingWindow, MessageBox) to become active
+        await Task.Delay(150);
+
+        if (_isHostUnlocked || _isDisqualifiedBySwitch || IsActive) return;
+
+        // Ignore deactivation when focus moved to an owned/in-process LabKiosk window
+        foreach (Window win in Application.Current.Windows)
+        {
+            if (win.IsActive) return;
+        }
+
+        var foreground = GetForegroundWindow();
+        if (foreground == IntPtr.Zero) return;
+
+        var mainHwnd = new WindowInteropHelper(this).Handle;
+        if (foreground == mainHwnd || GetAncestor(foreground, GA_ROOTOWNER) == mainHwnd) return;
+
+        GetWindowThreadProcessId(foreground, out uint pid);
+        if (pid != 0 && pid != (uint)Environment.ProcessId)
+        {
+            TriggerLockoutViolation();
+        }
+    }
+
+    private void TriggerLockoutViolation()
+    {
+        if (_isHostUnlocked || _isDisqualifiedBySwitch) return;
+        _isDisqualifiedBySwitch = true;
+
+        try { _activeIncidentWindow?.Close(); } catch { }
+        _keyboardHook.IsLocked = true;
+        Topmost = true;
+        LockoutOverlay.Visibility = Visibility.Visible;
+        LockoutOverlay.Focus();
+
+        Eliminate();
+
+        if (!string.IsNullOrEmpty(_pid))
+        {
+            _ = _api.DisqualifyAsync(_pid, "APP_SWITCH_DETECTED");
+        }
+    }
+
+    private void ToggleHostMode()
+    {
+        if (!_isHostUnlocked)
+        {
+            _isHostUnlocked = true;
+            _keyboardHook.IsLocked = false;
+            LockoutOverlay.Visibility = Visibility.Collapsed;
+            Topmost = false;
+            Status("🔓 Host Override Accepted — Keyboard & focus lock disabled (Ctrl+Alt+Shift+H to re-lock).");
+            MessageBox.Show(this, "Host Override Accepted. System unlocked.\nPress Ctrl+Alt+Shift+H again to re-enable kiosk lock.", "AEGIS", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        else
+        {
+            _isHostUnlocked = false;
+            _keyboardHook.IsLocked = true;
+            if (_isDisqualifiedBySwitch)
+            {
+                Topmost = true;
+                LockoutOverlay.Visibility = Visibility.Visible;
+                LockoutOverlay.Focus();
+            }
+            Status("🔒 Kiosk keyboard & focus lock re-engaged.");
+        }
     }
 
     // ---- UI & View Switching -------------------------------------------------------------------------

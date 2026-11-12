@@ -274,6 +274,20 @@ public partial class Database
         return (true, "Enrolled successfully", pid, deskId);
     }
 
+    public bool DisqualifyParticipant(string participantId, string? reason = null)
+    {
+        using var c = Open();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = "UPDATE participants SET status = 'disqualified' WHERE id = $p";
+        cmd.Parameters.AddWithValue("$p", participantId);
+        var rows = cmd.ExecuteNonQuery();
+        var payload = string.IsNullOrWhiteSpace(reason)
+            ? "{}"
+            : System.Text.Json.JsonSerializer.Serialize(new { reason });
+        Log("DISQUALIFIED", participantId, payloadJson: payload);
+        return rows > 0;
+    }
+
     public void Log(string type, string? participantId = null, int? attackId = null, string payloadJson = "{}")
     {
         using var c = Open();

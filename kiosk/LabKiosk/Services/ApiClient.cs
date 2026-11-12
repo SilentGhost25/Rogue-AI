@@ -79,6 +79,16 @@ public sealed class ApiClient
         catch (HttpRequestException) { /* telemetry is best effort */ }
     }
 
+    public async Task DisqualifyAsync(string participantId, string reason = "APP_SWITCH_DETECTED")
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(participantId)) return;
+            using var res = await _http.PostAsJsonAsync($"/api/kiosk/{participantId}/disqualify", new { reason });
+        }
+        catch (HttpRequestException) { /* lockout is already active locally */ }
+    }
+
     private sealed record RegisterResponse(string ParticipantId, string? Token = null);
     private sealed record PayloadResponse(int AttackId, List<SnapshotFileDto> Files);
     private sealed record FetchResponse(List<SnapshotFileDto> Files);

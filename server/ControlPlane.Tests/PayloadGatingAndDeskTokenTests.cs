@@ -151,4 +151,31 @@ public class PayloadGatingAndDeskTokenTests : IDisposable
 
         return true; // 200 OK
     }
+
+    [Fact]
+    public void Disqualify_updates_participant_status_and_logs_event()
+    {
+        var (tok1, tok2) = GetFirstTwoDeskTokens();
+        var (ok, _, pid1, _) = _db.EnrollDesk(tok1, "kiosk-dq-01", "Bob");
+        Assert.True(ok);
+        Assert.NotNull(pid1);
+
+        Assert.False(_db.ValidateDeskToken(tok2, pid1));
+        Assert.True(_db.ValidateDeskToken(tok1, pid1));
+
+        var updated = _db.DisqualifyParticipant(pid1, "APP_SWITCH_DETECTED");
+        Assert.True(updated);
+
+        using var c = _db.Open();
+        using var stCmd = c.CreateCommand();
+        stCmd.CommandText = "SELECT status FROM participants WHERE id = $p";
+        stCmd.Parameters.AddWithValue("$p", pid1);
+        Assert.Equal("disqualified", stCmd.ExecuteScalar()?.ToString());
+
+        using var evCmd = c.CreateCommand();
+        evCmd.CommandText = "SELECT payload_json FROM event_log WHERE type = 'DISQUALIFIED' AND participant_id = $p ORDER BY id DESC LIMIT 1";
+        evCmd.Parameters.AddWithValue("$p", pid1);
+        var payload = evCmd.ExecuteScalar()?.ToString() ?? "";
+        Assert.Contains("APP_SWITCH_DETECTED", payload);
+    }
 }
