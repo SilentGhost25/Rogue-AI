@@ -422,6 +422,7 @@ public partial class MainWindow : Window
             _hub.Resumed += () => Status("Event resumed.");
             _hub.Eliminated += () => Dispatcher.InvokeAsync(Eliminate);
             _hub.Verdict += OnVerdict;
+            _hub.VerdictDetail += OnVerdictDetail;
             _hub.Reconnected += ResyncAsync;
             await _hub.StartAsync();
 
@@ -808,6 +809,35 @@ public partial class MainWindow : Window
             if (anySolved) CelebrateSolve();
             if (anyRejected) ShowSentinelResistance(summary);
             _site?.RequestReload();
+        });
+    }
+
+    private void OnVerdictDetail(VerdictDetailPayload p)
+    {
+        Dispatcher.InvokeAsync(() =>
+        {
+            try
+            {
+                var name = AttackNames.TryGetValue(p.AttackId, out var n) ? n : p.AttackName ?? $"Attack #{p.AttackId}";
+                var dialog = new EvaluationResultWindow(
+                    this,
+                    p.AttackId,
+                    p.Status,
+                    p.Reason,
+                    p.Score,
+                    p.BasePoints,
+                    p.SpeedBonus,
+                    p.Multiplier,
+                    p.LatencyP95Ms,
+                    p.PeakMemoryMb,
+                    p.PromptsUsed,
+                    name);
+                dialog.ShowDialog();
+            }
+            catch (Exception ex)
+            {
+                Status($"Evaluation result pop-up error: {ex.Message}");
+            }
         });
     }
 

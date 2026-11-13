@@ -462,12 +462,12 @@ app.MapPost("/api/kiosk/{id}/submit", (string id, HttpRequest httpReq, Database 
     // Asynchronously dispatch evaluation to Python engine
     _ = Task.Run(async () =>
     {
+        int promptCount = 0;
         try
         {
             var client = http.CreateClient("engine");
 
             // Catch 4: Extract CLI telemetry with fallback (submissions * 3)
-            int promptCount = 0;
             int tokenUsage = 0;
             int subAttempts = 1;
             using (var c = db.Open())
@@ -513,13 +513,21 @@ app.MapPost("/api/kiosk/{id}/submit", (string id, HttpRequest httpReq, Database 
                     foreach (var v in body.Verdicts)
                     {
                         var score = 0.0;
+                        var multiplier = v.Score_Percentage <= 0.0 ? 1.0 : Math.Clamp(v.Score_Percentage, 0.60, 1.00);
+                        long baseCentipoints = 8500;
+                        long speedBonus = 0;
+                        var attackManifest = orch.Attacks.FirstOrDefault(a => a.Id == v.Attack_Id);
+                        var attackName = attackManifest?.Codename ?? $"Attack #{v.Attack_Id}";
+
                         if (v.Status == "SOLVED")
                         {
-                            var attackManifest = orch.Attacks.FirstOrDefault(a => a.Id == v.Attack_Id);
-                            var baseCentipoints = attackManifest?.Scoring.BasePoints ?? 8500;
+                            baseCentipoints = attackManifest?.Scoring.BasePoints ?? 8500;
                             var speedMax = attackManifest?.Scoring.SpeedBonusMax ?? 1500;
                             var windowSec = attackManifest?.Scoring.SpeedBonusWindowSeconds ?? 1800;
                             var lateMult = attackManifest?.Scoring.LateSolveMultiplier ?? 0.70;
+
+                            // Apply optimization multiplier (0.60x to 1.00x)
+                            baseCentipoints = (long)Math.Round(baseCentipoints * multiplier);
 
                             string? landedAtStr = null;
                             using (var landCmd = conn.CreateCommand())
@@ -530,7 +538,6 @@ app.MapPost("/api/kiosk/{id}/submit", (string id, HttpRequest httpReq, Database 
                                 landedAtStr = landCmd.ExecuteScalar() as string;
                             }
 
-                            long speedBonus = 0;
                             if (!string.IsNullOrEmpty(landedAtStr) && DateTime.TryParse(landedAtStr, out var landedAt))
                             {
                                 var elapsedSec = Math.Max(0, (DateTime.UtcNow - landedAt.ToUniversalTime()).TotalSeconds);
@@ -569,7 +576,7 @@ app.MapPost("/api/kiosk/{id}/submit", (string id, HttpRequest httpReq, Database 
                             ledgerCmd.Parameters.AddWithValue("$t", DateTime.UtcNow.ToString("O"));
                             ledgerCmd.ExecuteNonQuery();
 
-                            db.Log("VERDICT", id, v.Attack_Id, JsonSerializer.Serialize(new { status = "SOLVED", score, centipoints = totalCentipoints, baseCentipoints, speedBonus, v.Reason }));
+                            db.Log("VERDICT", id, v.Attack_Id, JsonSerializer.Serialize(new { status = "SOLVED", score, centipoints = totalCentipoints, baseCentipoints, speedBonus, multiplier, v.Reason }));
                             _ = gitMirror.SyncBranchAsync(id, wsStore.PathFor(id), $"Solve Attack #{v.Attack_Id} (+{score:0.#} pts)");
                         }
                         else
@@ -618,7 +625,29 @@ app.MapPost("/api/kiosk/{id}/submit", (string id, HttpRequest httpReq, Database 
                         evalCmd.Parameters.AddWithValue("$t", DateTime.UtcNow.ToString("O"));
                         evalCmd.ExecuteNonQuery();
 
-                        // Broadcast live verdict to participant kiosk!
+                        float p95Ms = 0f;
+                        if (v.Benchmark_Metrics != null && v.Benchmark_Metrics.TryGetValue("latency_p95_ms", out var val))
+                            p95Ms = val;
+
+                        var detailPayload = new
+                        {
+                            attackId = v.Attack_Id,
+                            status = v.Status,
+                            reason = v.Reason,
+                            score = score,
+                            basePoints = (v.Status == "SOLVED" ? baseCentipoints / 100.0 : 0.0),
+                            speedBonus = (speedBonus / 100.0),
+                            multiplier = (v.Status == "SOLVED" ? multiplier : 0.0),
+                            latencyP95Ms = (double)p95Ms,
+                            peakMemoryMb = v.Peak_Memory_Mb,
+                            promptsUsed = promptCount,
+                            attackName = attackName
+                        };
+
+                        // Broadcast rich detail payload for participant modal
+                        await hub.Clients.Group($"p:{id}").SendAsync("VERDICT_DETAIL", detailPayload);
+
+                        // Broadcast live verdict to participant kiosk & admins
                         await hub.Clients.Group($"p:{id}").SendAsync("VERDICT", v.Attack_Id, v.Status, v.Reason, score);
                         await hub.Clients.Group("admins").SendAsync("VERDICT", id, v.Attack_Id, v.Status, v.Reason, score);
                         await hub.Clients.Group("projectors").SendAsync("VERDICT", id, v.Attack_Id, v.Status, v.Reason, score);
@@ -642,6 +671,21 @@ app.MapPost("/api/kiosk/{id}/submit", (string id, HttpRequest httpReq, Database 
 
                 foreach (var aid in activeAttacks)
                 {
+                    var errPayload = new
+                    {
+                        attackId = aid,
+                        status = "FAILED",
+                        reason = $"Engine evaluation error ({(int)evalRes.StatusCode}): {errText}",
+                        score = 0.0,
+                        basePoints = 0.0,
+                        speedBonus = 0.0,
+                        multiplier = 0.0,
+                        latencyP95Ms = 0.0,
+                        peakMemoryMb = 0.0,
+                        promptsUsed = promptCount,
+                        attackName = $"Attack #{aid}"
+                    };
+                    await hub.Clients.Group($"p:{id}").SendAsync("VERDICT_DETAIL", errPayload);
                     await hub.Clients.Group($"p:{id}").SendAsync("VERDICT", aid, "FAILED", $"Engine error ({(int)evalRes.StatusCode}): {errText}", 0.0);
                     await hub.Clients.Group("admins").SendAsync("VERDICT", id, aid, "FAILED", $"Engine error: {errText}", 0.0);
                 }
@@ -662,6 +706,21 @@ app.MapPost("/api/kiosk/{id}/submit", (string id, HttpRequest httpReq, Database 
 
             foreach (var aid in activeAttacks)
             {
+                var connErrPayload = new
+                {
+                    attackId = aid,
+                    status = "FAILED",
+                    reason = $"Evaluator connection error: {ex.Message}",
+                    score = 0.0,
+                    basePoints = 0.0,
+                    speedBonus = 0.0,
+                    multiplier = 0.0,
+                    latencyP95Ms = 0.0,
+                    peakMemoryMb = 0.0,
+                    promptsUsed = promptCount,
+                    attackName = $"Attack #{aid}"
+                };
+                await hub.Clients.Group($"p:{id}").SendAsync("VERDICT_DETAIL", connErrPayload);
                 await hub.Clients.Group($"p:{id}").SendAsync("VERDICT", aid, "FAILED", $"Evaluator connection error: {ex.Message}", 0.0);
                 await hub.Clients.Group("admins").SendAsync("VERDICT", id, aid, "FAILED", $"Evaluator error: {ex.Message}", 0.0);
             }
@@ -1500,7 +1559,14 @@ public sealed record EnrollRequest(string Token, string KioskId, string Name);
 public sealed record TelemetryRequest(string Type, JsonElement? Payload);
 public sealed record BroadcastRequest(string Message);
 public sealed record EvaluationResponse(string Submission_Id, string Evaluator, List<VerdictDto> Verdicts);
-public sealed record VerdictDto(int Attack_Id, string Status, string Reason);
+public sealed record VerdictDto(
+    int Attack_Id, 
+    string Status, 
+    string Reason,
+    double Cpu_Time_Ms = 0.0,
+    double Peak_Memory_Mb = 0.0,
+    double Score_Percentage = 1.0,
+    Dictionary<string, float>? Benchmark_Metrics = null);
 public sealed record DisqualifyRequest(string? Reason = null);
 public sealed record StagedAssignment(string ParticipantId, string DeskId, int Group, int AttackId, string AttackName);
 

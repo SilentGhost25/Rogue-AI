@@ -13,6 +13,7 @@ public sealed class HubClient : IAsyncDisposable
     public event Func<int, Task>? Reset;
     public event Action<string>? Message;
     public event Action<string, JsonElement, string>? Verdict;
+    public event Action<VerdictDetailPayload>? VerdictDetail;
     public event Action? Paused, Resumed, Eliminated;
     public event Func<Task>? Reconnected;
 
@@ -39,6 +40,8 @@ public sealed class HubClient : IAsyncDisposable
             Verdict?.Invoke(id.ToString(), doc.RootElement.Clone(), status);
         });
 
+        _conn.On<VerdictDetailPayload>("VERDICT_DETAIL", p => VerdictDetail?.Invoke(p));
+
         _conn.On("PAUSED", () => Paused?.Invoke());
         _conn.On("RESUMED", () => Resumed?.Invoke());
         _conn.On<string>("ELIMINATED", _ => Eliminated?.Invoke());
@@ -62,3 +65,15 @@ public sealed class HubClient : IAsyncDisposable
 
 public sealed record BreachImminentPayload(int AttackId, int ImminentSeconds, string? LandAtUtcIso = null, string? Title = null, string? Codename = null);
 public sealed record AttackLandedPayload(int AttackId, string? LandedAtUtcIso = null);
+public sealed record VerdictDetailPayload(
+    int AttackId,
+    string Status,
+    string Reason,
+    double Score,
+    double BasePoints,
+    double SpeedBonus,
+    double Multiplier,
+    double LatencyP95Ms,
+    double PeakMemoryMb,
+    int PromptsUsed,
+    string? AttackName = null);
