@@ -4,7 +4,8 @@ import base64
 import hashlib
 import os
 from pathlib import Path
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from . import EVALUATOR_VERSION
@@ -24,7 +25,26 @@ ATTACKS_DIR = ROOT / "attacks"
 REPOS_DIR = Path(ROOT / "infra" / "repos")
 WORKSPACES_DIR = ROOT / "server" / "ControlPlane" / "data" / "workspaces"
 
-app = FastAPI(title="Breach Engine", version=EVALUATOR_VERSION)
+# Hermetic Engine: Disable Swagger/OpenAPI docs in production to prevent schema harvesting
+app = FastAPI(title="Breach Engine", version=EVALUATOR_VERSION, docs_url=None, redoc_url=None, openapi_url=None)
+
+
+@app.middleware("http")
+async def verify_engine_secret(request: Request, call_next):
+    """Enforces cryptographic token authorization on all engine management and grading endpoints."""
+    if request.url.path == "/health":
+        return await call_next(request)
+
+    expected_secret = os.environ.get("ROGUE_ENGINE_SECRET")
+    if expected_secret:
+        provided = request.headers.get("X-Engine-Secret")
+        if not provided or provided != expected_secret:
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "Forbidden: Engine access restricted to ControlPlane."}
+            )
+
+    return await call_next(request)
 
 
 class ApplyRequest(BaseModel):
@@ -51,12 +71,15 @@ def resolve_workspace(participant_id: str) -> Path | None:
         candidates.append(Path(local_app_data) / "BreachKiosk" / "host" / "workspaces" / participant_id)
         candidates.append(Path(local_app_data) / "BreachKiosk" / "workspace")
 
+    drive = ROOT.drive if ROOT.drive else "C:"
     candidates.extend([
         REPOS_DIR / participant_id,
         WORKSPACES_DIR / participant_id,
         ROOT / "server" / "data" / "workspaces" / participant_id,
         ROOT / "data" / "workspaces" / participant_id,
+        Path(f"{drive}/BreachWorkspace"),
         Path("C:/BreachWorkspace"),
+        Path("D:/BreachWorkspace"),
         Path(os.path.expanduser("~")) / "BreachWorkspace",
         ROOT / "site",
     ])

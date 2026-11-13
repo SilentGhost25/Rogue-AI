@@ -53,6 +53,7 @@ Name: "{localappdata}\BreachKiosk"; Permissions: users-full
 Name: "{localappdata}\BreachKiosk\host"; Permissions: users-full
 Name: "{localappdata}\BreachKiosk\host\workspaces"; Permissions: users-full
 Name: "{localappdata}\BreachKiosk\host\backups"; Permissions: users-full
+Name: "{drive:{app}}\BreachWorkspace"; Permissions: users-full
 Name: "C:\BreachWorkspace"; Permissions: users-full
 
 [Files]
@@ -71,15 +72,17 @@ Source: "..\kiosk\LabKiosk\kiosk.json"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\site\*"; DestDir: "{app}\site"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "*.db,*.db-wal,*.db-shm,*.sqlite,*.log,.breach-backup\*"
 ; Control Plane Server (Host Mode - Self-Contained .NET 9)
 Source: "..\server\ControlPlane\bin\SelfContained\*"; DestDir: "{app}\server"; Components: host; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "wwwroot\*.exe,Data\*,data\*,secrets\*"
-; Engine and Attack Packs (Host Mode - all 11 attacks)
-Source: "..\engine\*"; DestDir: "{app}\engine"; Components: host; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "__pycache__\*,*.pyc,*.db"
-Source: "..\attacks\*"; DestDir: "{app}\attacks"; Components: host; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "__pycache__\*,*.pyc"
+; Engine and Attack Packs (Host Mode - all 11 attacks, references and test suites strictly purged for security)
+Source: "..\engine\*"; DestDir: "{app}\engine"; Components: host; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "__pycache__\*,*.pyc,*.db,tests\*"
+Source: "..\attacks\*"; DestDir: "{app}\attacks"; Components: host; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "__pycache__\*,*.pyc,reference\*,*.git*"
 ; Uninstaller Helper Script
 Source: "uninstall.bat"; DestDir: "{app}"; Flags: ignoreversion
 
 [InstallDelete]
 ; Guarantee a clean, untouched base app workspace, templates, and host database on install/reinstall
+Type: filesandordirs; Name: "{drive:{app}}\BreachWorkspace"
 Type: filesandordirs; Name: "C:\BreachWorkspace"
+Type: filesandordirs; Name: "D:\BreachWorkspace"
 Type: filesandordirs; Name: "{app}\site"
 Type: filesandordirs; Name: "{app}\site-template"
 Type: filesandordirs; Name: "{app}\attacks"
@@ -109,9 +112,13 @@ Type: filesandordirs; Name: "{commonprograms}\ROGUE AI*"
 
 [UninstallDelete]
 ; Clean up runtime data, workspaces, DBs, and provisioned AI CLIs on uninstall
+Type: filesandordirs; Name: "{drive:{app}}\BreachWorkspace"
+Type: filesandordirs; Name: "{drive:{app}}\BreachSandboxes"
+Type: filesandordirs; Name: "{drive:{app}}\BreachSecrets"
 Type: filesandordirs; Name: "C:\BreachWorkspace"
 Type: filesandordirs; Name: "C:\BreachSandboxes"
 Type: filesandordirs; Name: "C:\BreachSecrets"
+Type: filesandordirs; Name: "D:\BreachWorkspace"
 Type: filesandordirs; Name: "{localappdata}\BreachKiosk"
 Type: filesandordirs; Name: "{localappdata}\agy"
 Type: files; Name: "{app}\kiosk.json"
@@ -172,12 +179,15 @@ end;
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   JsonContent: string;
-  ServerUrlVal, DeskIdVal: string;
+  ServerUrlVal, DeskIdVal, TargetWsVal: string;
   UserKioskDir, UserKioskJson: string;
   ResultCode: Integer;
 begin
   if CurStep = ssPostInstall then
   begin
+    TargetWsVal := ExpandConstant('{drive:{app}}\BreachWorkspace');
+    StringChangeEx(TargetWsVal, '\', '\\', True);
+
     ServerUrlVal := Trim(ServerPage.Values[0]);
     if (CompareText(ServerUrlVal, 'AUTO') = 0) or (ServerUrlVal = '') then
       ServerUrlVal := 'http://127.0.0.1:5080'
@@ -198,7 +208,7 @@ begin
     JsonContent := '{' + #13#10 +
       '  "ServerUrl": "' + ServerUrlVal + '",' + #13#10 +
       '  "SiteUrl": "http://127.0.0.1:3000",' + #13#10 +
-      '  "WorkspacePath": "C:\\BreachWorkspace",' + #13#10 +
+      '  "WorkspacePath": "' + TargetWsVal + '",' + #13#10 +
       '  "DeskId": "' + DeskIdVal + '",' + #13#10 +
       '  "DeskToken": ""' + #13#10 +
       '}';

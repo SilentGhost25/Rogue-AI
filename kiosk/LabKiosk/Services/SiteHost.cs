@@ -180,7 +180,9 @@ public sealed class SiteHost : IDisposable
             Path.Combine(AppContext.BaseDirectory, "node_modules"),
             Path.Combine(AppContext.BaseDirectory, "site", "node_modules"),
             Path.Combine(AppContext.BaseDirectory, "site-template", "node_modules"),
+            Path.Combine(Path.GetPathRoot(AppContext.BaseDirectory) ?? "C:\\", "BreachWorkspace", "node_modules"),
             @"C:\BreachWorkspace\node_modules",
+            @"D:\BreachWorkspace\node_modules",
         };
         var probe = new DirectoryInfo(AppContext.BaseDirectory);
         for (var i = 0; i < 6 && probe is not null; i++, probe = probe.Parent)

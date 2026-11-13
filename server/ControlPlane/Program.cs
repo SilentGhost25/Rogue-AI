@@ -46,8 +46,19 @@ builder.Services.AddSingleton<RogueAgentOrchestrator>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<RogueAgentOrchestrator>());
 builder.Services.AddHostedService<BackupService>();
 builder.Services.AddHostedService<HostDiscoveryBroadcaster>();
+var engineSecret = Environment.GetEnvironmentVariable("ROGUE_ENGINE_SECRET") 
+    ?? builder.Configuration["Breach:EngineSecret"];
+if (string.IsNullOrWhiteSpace(engineSecret))
+{
+    engineSecret = "RogueBreach_EngineSecret_" + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(Environment.MachineName + "_AegisInternal2026")));
+    Environment.SetEnvironmentVariable("ROGUE_ENGINE_SECRET", engineSecret);
+}
+
 builder.Services.AddHttpClient("engine", (sp, c) =>
-    c.BaseAddress = new Uri(sp.GetRequiredService<IConfiguration>()["Breach:EngineUrl"] ?? "http://127.0.0.1:8000"));
+{
+    c.BaseAddress = new Uri(sp.GetRequiredService<IConfiguration>()["Breach:EngineUrl"] ?? "http://127.0.0.1:8000");
+    c.DefaultRequestHeaders.Add("X-Engine-Secret", engineSecret);
+});
 
 var app = builder.Build();
 app.UseDefaultFiles();

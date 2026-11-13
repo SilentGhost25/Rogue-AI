@@ -276,7 +276,8 @@ class SlotManager:
         self.queue = queue.Queue(maxsize=slot_count)
         for i in range(1, slot_count + 1):
             self.queue.put(i)
-        self.host_sandbox_root = Path("C:/BreachSandboxes")
+        drive = ROOT_DIR.drive if ROOT_DIR.drive else "C:"
+        self.host_sandbox_root = Path(f"{drive}/BreachSandboxes")
         self.local_sandbox_root = USER_DATA_DIR / "sandboxes"
 
     def acquire(self, timeout: float = 60.0) -> int:
@@ -342,10 +343,16 @@ def ensure_node_modules() -> str:
     if site_nm.exists() and (site_nm / "express").exists():
         return str(site_nm.resolve())
 
-    # Fallback to C:\BreachWorkspace\node_modules
-    breach_nm = Path("C:/BreachWorkspace/node_modules")
-    if breach_nm.exists():
-        return str(breach_nm.resolve())
+    # Fallback to BreachWorkspace/node_modules across candidate drives
+    drive = ROOT_DIR.drive if ROOT_DIR.drive else "C:"
+    for nm_cand in [
+        Path(f"{drive}/BreachWorkspace/node_modules"),
+        Path("C:/BreachWorkspace/node_modules"),
+        Path("D:/BreachWorkspace/node_modules"),
+        Path(os.path.expanduser("~")) / "BreachWorkspace" / "node_modules",
+    ]:
+        if nm_cand.exists():
+            return str(nm_cand.resolve())
 
     # Check for site/vendor/node_modules.tar.gz
     vendor_tar = ROOT_DIR / "site" / "vendor" / "node_modules.tar.gz"
@@ -367,7 +374,10 @@ def launch_sandboxed_node(slot_id: int, slot_dir: Path, env: dict, job_sandbox: 
     Launches node server under the BreachRunner{slot_id} user token if credentials are provisioned.
     Falls back to subprocess.Popen with full Job Object containment in development environments.
     """
-    cred_file = Path("C:/BreachSecrets/runner_credentials.json")
+    drive = ROOT_DIR.drive if ROOT_DIR.drive else "C:"
+    cred_file = Path(f"{drive}/BreachSecrets/runner_credentials.json")
+    if not cred_file.exists():
+        cred_file = Path("C:/BreachSecrets/runner_credentials.json")
     if sys.platform == "win32" and cred_file.exists():
         try:
             creds = json.loads(cred_file.read_text(encoding="utf-8"))
@@ -434,7 +444,7 @@ def check_anti_revert(workspace: Path, manifest_data: dict, site_template: Path 
         return True, "Anti-revert enforcement disabled"
 
     if site_template is None:
-        cand = Path("C:/Program Files/RogueAI/site-template")
+        cand = ROOT_DIR / "site-template"
         site_template = cand if cand.exists() else (ROOT_DIR / "site")
 
     if not site_template.exists():

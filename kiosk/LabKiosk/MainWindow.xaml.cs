@@ -515,6 +515,24 @@ public partial class MainWindow : Window
                                   "exit /b 1\r\n";
             File.WriteAllText(Path.Combine(shimDir, "git.cmd"), script);
             File.WriteAllText(Path.Combine(shimDir, "git.bat"), script);
+
+            const string netShim = "@echo off\r\n" +
+                                   "set \"ARGS=%*\"\r\n" +
+                                   "echo %ARGS% | findstr /i \"8000 5080 openapi attacks evaluate\" >nul\r\n" +
+                                   "if %errorlevel% equ 0 (\r\n" +
+                                   "    echo [SECURITY VIOLATION] Host inspection, internal port probing, and evaluate API calls are strictly prohibited during Breach Protocol.\r\n" +
+                                   "    echo Submit defenses and review diagnostics exclusively via the LabKiosk interface.\r\n" +
+                                   "    exit /b 1\r\n" +
+                                   ")\r\n" +
+                                   "if exist \"%SystemRoot%\\System32\\curl.exe\" (\r\n" +
+                                   "    \"%SystemRoot%\\System32\\curl.exe\" %*\r\n" +
+                                   ") else (\r\n" +
+                                   "    exit /b 1\r\n" +
+                                   ")\r\n";
+            File.WriteAllText(Path.Combine(shimDir, "curl.cmd"), netShim);
+            File.WriteAllText(Path.Combine(shimDir, "curl.bat"), netShim);
+            File.WriteAllText(Path.Combine(shimDir, "wget.cmd"), netShim);
+            File.WriteAllText(Path.Combine(shimDir, "wget.bat"), netShim);
             return shimDir;
         }
         catch { return ""; }

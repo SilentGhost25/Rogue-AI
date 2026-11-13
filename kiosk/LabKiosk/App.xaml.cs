@@ -116,7 +116,9 @@ public partial class App : Application
 
         try
         {
-            File.AppendAllText(@"C:\BreachWorkspace\crash.log", entry);
+            var drive = Path.GetPathRoot(AppContext.BaseDirectory) ?? "C:\\";
+            var wsLog = Path.Combine(drive, "BreachWorkspace", "crash.log");
+            File.AppendAllText(wsLog, entry);
         }
         catch { }
     }

@@ -91,7 +91,14 @@ public sealed class HostSupervisor : IDisposable
         {
             status("Starting the attack engine...");
             var python = ResolvePythonExe(_appDir);
-            var psi = Hidden(python, "-m uvicorn breach_engine.api:app --host 0.0.0.0 --port 8000", engineDir);
+            var psi = Hidden(python, "-m uvicorn breach_engine.api:app --host 127.0.0.1 --port 8000", engineDir);
+            var engineSecret = Environment.GetEnvironmentVariable("ROGUE_ENGINE_SECRET");
+            if (string.IsNullOrWhiteSpace(engineSecret))
+            {
+                engineSecret = "RogueBreach_EngineSecret_" + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(Environment.MachineName + "_AegisInternal2026")));
+                Environment.SetEnvironmentVariable("ROGUE_ENGINE_SECRET", engineSecret);
+            }
+            psi.Environment["ROGUE_ENGINE_SECRET"] = engineSecret;
             psi.Environment["PYTHONPATH"] = engineDir;
             psi.Environment["WORKSPACES_DIR"] = workspaces;
             psi.Environment["GIT_MIRROR_URL"] = Environment.GetEnvironmentVariable("GIT_MIRROR_URL") ?? "https://github.com/Prince649294u83/Rogue-AI-competition.git";

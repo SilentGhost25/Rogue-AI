@@ -8,7 +8,7 @@ public sealed class KioskSettings
 {
     public string ServerUrl { get; set; } = "http://127.0.0.1:5080";
     public string SiteUrl { get; set; } = "http://127.0.0.1:3000";
-    public string WorkspacePath { get; set; } = @"C:\BreachWorkspace";
+    public string WorkspacePath { get; set; } = GetDefaultWorkspace();
     public string KioskId { get; set; } = Environment.MachineName;
     public string DisplayName { get; set; } = Environment.MachineName;
     public string? DeskId { get; set; }
@@ -25,6 +25,13 @@ public sealed class KioskSettings
     public string OpenCodeModel { get; set; } = "";
     public int OpenCodePort { get; set; } = 4096;
     public int OpenCodeCap { get; set; } = 30;
+
+    public static string GetDefaultWorkspace()
+    {
+        var drive = Path.GetPathRoot(AppContext.BaseDirectory);
+        if (string.IsNullOrWhiteSpace(drive)) drive = "C:\\";
+        return Path.Combine(drive, "BreachWorkspace");
+    }
 
     public static KioskSettings Load()
     {
@@ -65,7 +72,7 @@ public sealed class KioskSettings
             catch { }
         }
 
-        s.WorkspacePath = Environment.ExpandEnvironmentVariables(s.WorkspacePath ?? @"C:\BreachWorkspace");
+        s.WorkspacePath = Environment.ExpandEnvironmentVariables(s.WorkspacePath ?? GetDefaultWorkspace());
         s.DataPath = Environment.ExpandEnvironmentVariables(s.DataPath ?? @"%LOCALAPPDATA%\BreachKiosk");
         s.AgyPath = Environment.ExpandEnvironmentVariables(s.AgyPath ?? @"%LOCALAPPDATA%\agy\bin\agy.exe");
         s.OpenCodePath = Environment.ExpandEnvironmentVariables(s.OpenCodePath ?? "opencode");
