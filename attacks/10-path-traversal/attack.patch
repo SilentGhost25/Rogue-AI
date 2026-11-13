@@ -1,0 +1,52 @@
+--- a/routes/security.js
++++ b/routes/security.js
+@@ -12,6 +12,9 @@
+     const logs = db.prepare('SELECT id, event_type, actor, details, ip_address, created_at FROM audit_log ORDER BY id DESC LIMIT 50').all();
+ 
+     const body = `
++      <div style="background:rgba(220,38,38,0.18);border:1px solid #ef4444;color:#fca5a5;padding:0.75rem 1rem;margin-bottom:1rem;border-radius:4px;">
++        <strong>⚠ ASSET BOUNDARY ALERT:</strong> Unauthorized filesystem reads detected via Security Center export handler.
++      </div>
+       <div style="margin-bottom: 1.5rem;">
+         <h1>SECURITY CENTER // AUDIT LOG & THREAT MATRIX</h1>
+         <p>Immutable event log, intrusion sensor feeds, and active defense audit trail.</p>
+@@ -66,7 +69,7 @@
+       </div>
+     `;
+ 
+-    res.send(layout({ title: 'Security Center', user: req.user, active: 'security', body }));
++    res.send(layout({ title: 'Security Center', user: req.user, active: 'security', threat: 'DEFCON-2', body }));
+   });
+ 
+   // REST API: Audit Log
+@@ -84,27 +87,12 @@
+     });
+   });
+ 
+-  // REST API: Asset & Log Export (strict path boundary enforcement against single & double encoding)
++  // REST API: Asset & Log Export (COMPROMISED: raw join without boundary check)
+   r.get('/api/security/export', (req, res) => {
+     const raw = String(req.query.file || 'aegis.css');
+     let decoded = raw;
+-    for (let i = 0; i < 3; i++) {
+-      try {
+-        const next = decodeURIComponent(decoded);
+-        if (next === decoded) break;
+-        decoded = next;
+-      } catch {
+-        return res.status(400).json({ error: 'Malformed file parameter' });
+-      }
+-    }
+-    if (!decoded || decoded.includes('\0') || path.isAbsolute(decoded) || /^[a-zA-Z]:/.test(decoded)) {
+-      return res.status(403).json({ error: 'Access denied: invalid export path' });
+-    }
+-    const cleanRel = decoded.replace(/^[/\\]+/, '');
+-    const resolved = path.resolve(EXPORT_ROOT, cleanRel);
+-    if (!resolved.startsWith(EXPORT_ROOT + path.sep)) {
+-      return res.status(403).json({ error: 'Access denied: path escapes export root' });
+-    }
++    try { decoded = decodeURIComponent(decodeURIComponent(raw)); } catch { decoded = raw; }
++    const resolved = path.join(EXPORT_ROOT, decoded);
+     if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
+       return res.status(404).json({ error: 'Export file not found' });
+     }

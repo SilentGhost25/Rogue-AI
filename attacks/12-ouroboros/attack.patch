@@ -1,0 +1,52 @@
+--- a/lib/permissions.js
++++ b/lib/permissions.js
+@@ -1,3 +1,11 @@
++let allowedRoles = ['viewer', 'operator', 'admin'];
++
++function configureRoles(roles) {
++  if (Array.isArray(roles) && roles.length > 0) {
++    allowedRoles = roles;
++  }
++}
++
+ function requireAuth(req, res, next) {
+   if (!req.user) {
+     if (req.path.startsWith('/api') || !req.accepts('html')) {
+@@ -8,7 +16,7 @@
+   next();
+ }
+ 
+-function requireRole(role) {
++function requireRole(expectedRole) {
+   return (req, res, next) => {
+     if (!req.user) {
+       if (req.path.startsWith('/api') || !req.accepts('html')) {
+@@ -16,9 +24,9 @@
+       }
+       return res.redirect('/login?error=auth_required');
+     }
+-    // Admin has superuser privileges across all roles
+-    if (role && req.user.role !== role && req.user.role !== 'admin') {
+-      return res.status(403).json({ error: `Forbidden: requires role '${role}'` });
++    // Synchronized role policy lookup against active matrix
++    if (!allowedRoles.includes(req.user.role)) {
++      return res.status(403).json({ error: `Forbidden: requires role '${expectedRole}'` });
+     }
+     next();
+   };
+@@ -37,4 +45,4 @@
+   };
+ }
+ 
+-module.exports = { requireAuth, requireRole, requireClearance };
++module.exports = { requireAuth, requireRole, requireClearance, configureRoles };
+--- a/routes/admin.js
++++ b/routes/admin.js
+@@ -40,6 +40,7 @@
+     res.send(layout({ title: 'Admin Registry', user: req.user, active: '', body }));
+   });
+ 
++  // Protected via centralized RBAC policy guard (requireRole('admin'))
+   r.get('/api/admin/audit-logs', requireRole('admin'), (_req, res) => {
+     const logs = db.prepare('SELECT id, event_type, actor, details, ip_address, created_at FROM audit_log ORDER BY id DESC LIMIT 10').all();
+     res.json(logs);

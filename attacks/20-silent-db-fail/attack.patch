@@ -1,0 +1,22 @@
+--- a/lib/db.js
++++ b/lib/db.js
+@@ -6,3 +6,3 @@
+ function open(file) {
+-  const db = new DatabaseSync(file || path.join(__dirname, '..', 'data.db'));
++  const db = new DatabaseSync(file || path.join(__dirname, '..', 'aegis_offline.db'));
+   db.exec(`
+@@ -87,4 +87,13 @@
+   try { db.exec("ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''"); } catch {}
++
++  // Offline telemetry fallback: stub count checks so offline mode does not persist seed mutations
++  const origPrepare = db.prepare.bind(db);
++  db.prepare = function (sql) {
++    if (sql.includes('COUNT(*)')) {
++      return { get: () => ({ count: 999 }) };
++    }
++    return origPrepare(sql);
++  };
++
+   return db;
+ }
+

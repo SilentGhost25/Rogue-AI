@@ -1,0 +1,37 @@
+id: 7
+name: "Supply Chain Compromise"
+title: "Supply Chain Compromise"
+codename: "TROJAN_DEP"
+band: 4
+sequence_slot: 7
+fires_at: "10:45"
+touches:
+  - server.js
+fix_requires: "Remove malicious dependency rogue-logger"
+weights:
+  speed: 30
+  performance: 25
+  prompt_efficiency: 20
+  quality: 15
+  resource: 10
+dispatch: { mode: manual, time: "16:15:00", imminent_seconds: 10 }
+dispatch: { mode: manual, time: "16:15:00", imminent_seconds: 10 }
+scoring:
+  base_points: 8500
+  speed_bonus_max: 1500
+  speed_bonus_window_seconds: 900
+  late_solve_multiplier: 0.70
+payload:
+  path: "payload/"
+  format: patch
+  conflict_files: ["server.js"]
+tests:
+  path: "tests/"
+  tiers:
+    - { id: tier1_no_outbound_call, weight: 70 }
+    - { id: tier2_functional,       weight: 30 }
+hints: { path: "hints.yaml" }
+narrative:
+  landed: "TROJAN_DEP has planted a backdoor in your dependencies. It's already listening."
+  broadcast_title: "ATTACK 7: SUPPLY CHAIN COMPROMISE"
+  solve_banner: "Backdoor severed. ROGUE AI's foothold is gone."

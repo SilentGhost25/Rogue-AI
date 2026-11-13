@@ -1,0 +1,2 @@
+tiers:
+  - { level: 1, cost_centipoints: 200, text: "Nothing crashed. But something is slow, and it shouldn't be." }

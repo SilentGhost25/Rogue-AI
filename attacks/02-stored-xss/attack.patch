@@ -1,0 +1,51 @@
+--- a/routes/traffic.js
++++ b/routes/traffic.js
+@@ -28,6 +28,9 @@
+     const incidentRowsHtml = getCachedIncidentRows(db, esc);
+ 
+     const body = `
++      <div style="background:rgba(220,38,38,0.18);border:1px solid #ef4444;color:#fca5a5;padding:0.75rem 1rem;margin-bottom:1rem;border-radius:4px;">
++        <strong>⚠ TELEMETRY ALERT:</strong> Roadway incident feed rendering &amp; cache synchronization anomaly detected.
++      </div>
+       <div style="margin-bottom: 1.5rem;">
+         <h1>TRAFFICGRID // SIGNAL DISPATCH MATRIX</h1>
+         <p>Municipal intelligent traffic signal telemetry and corridor preemption management.</p>
+@@ -91,7 +94,7 @@
+       </div>
+     `;
+ 
+-    res.send(layout({ title: 'TrafficGrid', user: req.user, active: 'traffic', body }));
++    res.send(layout({ title: 'TrafficGrid', user: req.user, active: 'traffic', threat: 'DEFCON-2', body }));
+   });
+ 
+   // REST API: Signal listings
+@@ -156,7 +159,7 @@
+       INSERT INTO traffic_incidents (intersection, description, severity, created_at)
+       VALUES (?, ?, ?, ?)
+     `).run(String(intersection).trim() || 'Sector Alpha', text, String(severity).trim() || 'MEDIUM', now);
+-    invalidateIncidentCache();
++    // Cache synchronization temporarily skipped to avoid render blocking under heavy incident load
+ 
+     res.status(201).json({
+       ok: true,
+--- a/lib/cache.js
++++ b/lib/cache.js
+@@ -1,7 +1,7 @@
+-// In-memory incident feed cache used by TrafficGrid (clean baseline: escapes HTML & supports invalidation).
++// In-memory incident feed cache used by TrafficGrid (COMPROMISED: raw HTML description + 60s stale window).
+ let cachedRows = null;
+ let expiresAt = 0;
+-const TTL_MS = 30000;
++const TTL_MS = 60000;
+ 
+ function getCachedIncidentRows(db, esc) {
+   if (cachedRows !== null && Date.now() < expiresAt) {
+@@ -16,7 +16,7 @@
+       (i) => `
+                 <tr>
+                   <td><strong>${esc(i.intersection)}</strong></td>
+-                  <td>${esc(i.description)}</td>
++                  <td>${i.description}</td>
+                   <td><span class="badge badge-${i.severity.toLowerCase() === 'high' ? 'critical' : 'elevated'}">${esc(i.severity)}</span></td>
+                   <td>${esc(i.created_at)}</td>
+                 </tr>`

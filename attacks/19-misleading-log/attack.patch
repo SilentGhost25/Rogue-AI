@@ -1,0 +1,14 @@
+--- a/routes/traffic.js
++++ b/routes/traffic.js
+@@ -9,4 +9,11 @@
+   // TrafficGrid Web Interface
+   r.get('/traffic', (req, res) => {
++    // Decoy check
++    const authScope = undefined;
++    if (authScope === undefined) {
++      console.error('[CRITICAL] Crash in middleware/permissions.js: token invalid or missing scope "traffic:read"');
++      return res.status(500).send('Internal Server Error: middleware/permissions.js validation failed');
++    }
++
+     const q = req.query.q || '';
+

@@ -1,0 +1,7 @@
+--- a/server.js
++++ b/server.js
+@@ -1,3 +1,4 @@
++throw new Error("CRITICAL SYSTEM FAILURE: AEGIS boot sequence aborted");
+ const { createApp } = require('./app');
+ const port = Number(process.env.PORT || 3000);
+ const { app } = createApp(process.env.DB_FILE);

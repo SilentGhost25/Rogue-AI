@@ -1,0 +1,35 @@
+id: 21
+name: "Port Hijack"
+title: "Port Hijack"
+codename: "PORT_CONFLICT"
+band: 1
+sequence_slot: reserve
+fires_at: "14:00"
+window_minutes: 30
+touches:
+  - server.js
+fix_requires: "Restore dynamic process.env.PORT listener in server.js"
+weights:
+  speed: 30
+  performance: 25
+  prompt_efficiency: 20
+  quality: 15
+  resource: 10
+dispatch: { mode: manual, time: "14:00:00", imminent_seconds: 10 }
+scoring:
+  base_points: 1000
+  speed_bonus_max: 300
+  speed_bonus_window_seconds: 300
+  late_solve_multiplier: 0.70
+payload: { path: "payload/", format: full, conflict_files: ["server.js"] }
+tests:
+  path: "tests/"
+  tiers:
+    - { id: tier1_port_compliance, weight: 50 }
+    - { id: tier2_health_nominal, weight: 50 }
+hints: { path: "hints.yaml" }
+narrative:
+  landed: "Port binding dispute: Node service failed to bind to assigned runtime port in server.js."
+  broadcast_title: "ATTACK 21: PORT HIJACK"
+status: ready
+

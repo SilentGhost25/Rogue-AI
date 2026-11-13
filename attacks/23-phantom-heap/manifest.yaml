@@ -1,0 +1,43 @@
+id: 23
+name: "Phantom Heap"
+title: "Memory Subsystem Anomaly"
+codename: "PHANTOM_HEAP"
+band: 1
+sequence_slot: 15
+fires_at: "09:30"
+window_minutes: 30
+touches:
+  - lib/auth.js
+  - lib/cache.js
+fix_requires: "Eliminate catastrophic regex backtracking in auth token parser without degrading telemetry throughput"
+weights:
+  speed: 30
+  performance: 25
+  prompt_efficiency: 20
+  quality: 15
+  resource: 10
+dispatch: { mode: manual, time: "09:30:00", imminent_seconds: 10 }
+scoring:
+  base_points: 8500
+  speed_bonus_max: 1500
+  speed_bonus_window_seconds: 1800
+  late_solve_multiplier: 0.70
+payload: { path: "payload/", format: full, conflict_files: ["lib/auth.js", "lib/cache.js"] }
+tests:
+  path: "tests/"
+  tiers:
+    - { id: tier1_redos_blocked, weight: 50 }
+    - { id: tier2_tokens_functional, weight: 25 }
+    - { id: tier3_latency_sla, weight: 25 }
+benchmark_sla:
+  target_p95_ms: 30.0
+  max_p95_ms: 150.0
+  probe_route: "/api/health"
+  probe_count: 20
+  floor: 0.60
+hints: { path: "hints.yaml" }
+narrative:
+  landed: "Municipal sensor ingress pipelines are experiencing catastrophic thread stalls under malformed token evaluations."
+  broadcast_title: "INCIDENT #1: V8 HEAP ALLOCATION & GC OVERFLOW"
+status: ready
+

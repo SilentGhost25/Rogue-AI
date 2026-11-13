@@ -1,0 +1,34 @@
+id: 2
+name: "Stored XSS"
+title: "Stored XSS"
+codename: "PERSISTENT_ECHO"
+band: 2
+sequence_slot: 4
+fires_at: "09:30"
+touches:
+  - routes/traffic.js
+  - lib/cache.js
+fix_requires: "Escape stored roadway incident HTML in lib/cache.js and invalidate the incident cache when new incidents are posted"
+weights:
+  speed: 30
+  performance: 25
+  prompt_efficiency: 20
+  quality: 15
+  resource: 10
+dispatch: { mode: manual, time: "10:15:00", imminent_seconds: 10 }
+scoring:
+  base_points: 8500
+  speed_bonus_max: 1500
+  speed_bonus_window_seconds: 900
+  late_solve_multiplier: 0.70
+payload: { path: "payload/", format: full, conflict_files: ["routes/traffic.js", "lib/cache.js"] }
+tests:
+  path: "tests/"
+  tiers:
+    - { id: tier1_store_escape, weight: 40 }
+    - { id: tier2_persistence, weight: 30 }
+    - { id: tier3_functional, weight: 30 }
+hints: { path: "hints.yaml" }
+narrative:
+  landed: "PERSISTENT_ECHO has compromised roadway incident rendering."
+  broadcast_title: "ATTACK 2: STORED XSS"

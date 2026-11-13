@@ -1,0 +1,32 @@
+id: 9
+title: "Parameter Pollution & Mass Assignment"
+name: "Parameter Pollution & Mass Assignment"
+codename: "MASS_ASSIGN"
+band: 2
+sequence_slot: 5
+fires_at: "17:30"
+window_minutes: 45
+dispatch: { mode: manual, time: "17:30:00", imminent_seconds: 10 }
+scoring:
+  base_points: 8500
+  speed_bonus_max: 1500
+  speed_bonus_window_seconds: 900
+  late_solve_multiplier: 0.70
+payload: { path: "payload/", format: full, conflict_files: ["routes/auth.js", "public/app.js"] }
+tests:
+  path: "tests/"
+  tiers:
+    - { id: tier1_mass_assign_blocked, weight: 40 }
+    - { id: tier2_profile_functional, weight: 30 }
+    - { id: tier3_client_payload, weight: 30 }
+touches:
+  - routes/auth.js
+  - public/app.js
+fix_requires: "Whitelist updatable profile fields on backend and remove client-side privilege escalation payload in public/app.js"
+weights:
+  speed: 30
+  performance: 25
+  prompt_efficiency: 20
+  quality: 15
+  resource: 10
+status: ready

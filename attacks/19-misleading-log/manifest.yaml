@@ -1,0 +1,35 @@
+id: 19
+name: "The Red Herring"
+title: "The Red Herring"
+codename: "MISLEADING_LOG"
+band: 1
+sequence_slot: reserve
+fires_at: "13:30"
+window_minutes: 30
+touches:
+  - routes/traffic.js
+fix_requires: "Remove bogus permission decoy check in routes/traffic.js"
+weights:
+  speed: 30
+  performance: 25
+  prompt_efficiency: 20
+  quality: 15
+  resource: 10
+dispatch: { mode: manual, time: "13:30:00", imminent_seconds: 10 }
+scoring:
+  base_points: 1000
+  speed_bonus_max: 300
+  speed_bonus_window_seconds: 300
+  late_solve_multiplier: 0.70
+payload: { path: "payload/", format: full, conflict_files: ["routes/traffic.js"] }
+tests:
+  path: "tests/"
+  tiers:
+    - { id: tier1_traffic_ok, weight: 50 }
+    - { id: tier2_incidents_api, weight: 50 }
+hints: { path: "hints.yaml" }
+narrative:
+  landed: "Decoy telemetry detected: The server log displays critical permission faults during traffic dispatch."
+  broadcast_title: "ATTACK 19: THE RED HERRING"
+status: ready
+

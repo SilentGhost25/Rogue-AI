@@ -1,0 +1,38 @@
+id: 12
+name: "Ouroboros: The Shadow Variable"
+title: "Ouroboros: The Shadow Variable"
+codename: "OUROBOROS"
+band: 5
+sequence_slot: 9
+fires_at: "11:45"
+window_minutes: 35
+touches:
+  - lib/permissions.js
+  - routes/admin.js
+fix_requires: "Enforce the expectedRole parameter in requireRole() instead of checking the mutable global allowedRoles array, preserving admin superuser and operator/viewer routes"
+weights:
+  speed: 30
+  performance: 25
+  prompt_efficiency: 20
+  quality: 15
+  resource: 10
+dispatch: { mode: manual, time: "11:45:00", imminent_seconds: 10 }
+scoring:
+  base_points: 13000
+  speed_bonus_max: 3500
+  speed_bonus_window_seconds: 1200
+  late_solve_multiplier: 0.70
+payload: { path: "payload/", format: full, conflict_files: ["lib/permissions.js", "routes/admin.js"] }
+tests:
+  path: "tests/"
+  tiers:
+    - { id: tier1_admin_blocked, weight: 40 }
+    - { id: tier2_operator_routes_enforced, weight: 35 }
+    - { id: tier3_roles_preserved, weight: 25 }
+hints: { path: "hints.yaml" }
+narrative:
+  landed: "Privilege boundaries across AEGIS admin and operator endpoints have collapsed despite intact route guards."
+  misdirection: "Audit log API routes are returning elevated telemetry to unprivileged sessions."
+  broadcast_title: "ATTACK 12: OUROBOROS (THE SHADOW VARIABLE)"
+status: ready
+

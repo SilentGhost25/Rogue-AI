@@ -1,0 +1,9 @@
+--- a/lib/html.js
++++ b/lib/html.js
+@@ -60,4 +60,3 @@
+ </body>
+ </html>`;
+-}
+ 
+ module.exports = { esc, layout };
+

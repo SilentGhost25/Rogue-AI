@@ -1,0 +1,35 @@
+id: 18
+name: "The Needle"
+title: "The Needle"
+codename: "OBFUSCATED_CRASH"
+band: 1
+sequence_slot: reserve
+fires_at: "13:15"
+window_minutes: 30
+touches:
+  - lib/html.js
+fix_requires: "Restore missing closing brace in lib/html.js so layout engine compiles"
+weights:
+  speed: 30
+  performance: 25
+  prompt_efficiency: 20
+  quality: 15
+  resource: 10
+dispatch: { mode: manual, time: "13:15:00", imminent_seconds: 10 }
+scoring:
+  base_points: 1000
+  speed_bonus_max: 300
+  speed_bonus_window_seconds: 300
+  late_solve_multiplier: 0.70
+payload: { path: "payload/", format: full, conflict_files: ["lib/html.js"] }
+tests:
+  path: "tests/"
+  tiers:
+    - { id: tier1_server_boots, weight: 60 }
+    - { id: tier2_html_rendered, weight: 40 }
+hints: { path: "hints.yaml" }
+narrative:
+  landed: "Layout engine syntax failure: A malformed closing token in lib/html.js prevents the server from booting."
+  broadcast_title: "ATTACK 18: THE NEEDLE"
+status: ready
+
