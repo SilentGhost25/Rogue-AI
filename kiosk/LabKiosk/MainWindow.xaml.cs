@@ -127,6 +127,7 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _submitTimeoutCts;
     private bool _cleanedOnClose;
     private bool _isSiteDownViewShowing;
+    private readonly Dictionary<int, Dictionary<string, bool>> _lastTierResults = new();
 
     public MainWindow(KioskSettings? settings = null)
     {
@@ -397,6 +398,7 @@ public partial class MainWindow : Window
             _hub.ProAccountAllowed += () => Dispatcher.InvokeAsync(HandleProAccountAllowed);
             _hub.ResetBaseline += () => Dispatcher.InvokeAsync(OnResetBaselineAsync);
             _hub.VerdictDetailed += OnVerdictDetailed;
+            _hub.VerdictTiersDetailed += OnVerdictTiersDetailed;
             _hub.Reconnected += ResyncAsync;
             await _hub.StartAsync();
 
@@ -838,6 +840,12 @@ public partial class MainWindow : Window
             border.MouseLeftButtonUp += (_, _) => ShowIncident(localId);
             AttackBadgesPanel.Children.Add(border);
         }
+    }
+
+    private void OnVerdictTiersDetailed(int id, string st, string reason, double pts, Dictionary<string, bool>? tiers)
+    {
+        if (tiers != null) _lastTierResults[id] = tiers;
+        OnVerdictDetailed(id, st, reason, pts);
     }
 
     private void OnVerdictDetailed(int id, string st, string reason, double pts)

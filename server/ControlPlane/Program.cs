@@ -853,7 +853,7 @@ app.MapPost("/api/kiosk/{id}/submit", (string id, HttpRequest httpReq, Database 
 
                         // Broadcast live verdict to participant kiosk!
                         await hub.Clients.Group($"p:{id}").SendAsync("VERDICT", v.Attack_Id, v.Status, v.Reason, score);
-                        await hub.Clients.Group($"p:{id}").SendAsync("VERDICT_DETAILED", v.Attack_Id, v.Status, v.Reason, score);
+                        await hub.Clients.Group($"p:{id}").SendAsync("VERDICT_DETAILED", v.Attack_Id, v.Status, v.Reason, score, v.Tier_Results ?? new());
                         await hub.Clients.Group("admins").SendAsync("VERDICT", id, v.Attack_Id, v.Status, v.Reason, score);
                         await hub.Clients.Group("projectors").SendAsync("VERDICT", id, v.Attack_Id, v.Status, v.Reason, score);
                         await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, id);
@@ -2010,4 +2010,4 @@ public sealed record EnrollRequest(string Token, string KioskId, string Name);
 public sealed record TelemetryRequest(string Type, JsonElement? Payload);
 public sealed record BroadcastRequest(string Message);
 public sealed record EvaluationResponse(string Submission_Id, string Evaluator, List<VerdictDto> Verdicts);
-public sealed record VerdictDto(int Attack_Id, string Status, string Reason, double? Score_Percentage = 1.0, double? Cpu_Time_Ms = 0.0, double? Peak_Memory_Mb = 0.0);
+public sealed record VerdictDto(int Attack_Id, string Status, string Reason, double? Score_Percentage = 1.0, double? Cpu_Time_Ms = 0.0, double? Peak_Memory_Mb = 0.0, Dictionary<string, bool>? Tier_Results = null);

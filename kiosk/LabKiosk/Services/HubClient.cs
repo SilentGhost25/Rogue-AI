@@ -14,6 +14,7 @@ public sealed class HubClient : IAsyncDisposable
     public event Func<int, Task>? Reset;
     public event Action<string>? Message;
     public event Action<int, string, string, double>? VerdictDetailed;
+    public event Action<int, string, string, double, Dictionary<string, bool>?>? VerdictTiersDetailed;
     public event Action? Paused, Resumed, Eliminated, PardonGranted, ProAccountAllowed, ResetBaseline;
     public event Action<string>? AccountSwitchApproved, AccountSwitchDenied, Disqualified;
     public event Action<string, bool, string?>? AccountSwitchResult;
@@ -40,9 +41,15 @@ public sealed class HubClient : IAsyncDisposable
         {
             VerdictDetailed?.Invoke(id, status, reason, score);
         });
+        _conn.On<int, string, string, double, Dictionary<string, bool>?>("VERDICT_DETAILED", (id, status, reason, score, tiers) =>
+        {
+            VerdictDetailed?.Invoke(id, status, reason, score);
+            VerdictTiersDetailed?.Invoke(id, status, reason, score, tiers);
+        });
         _conn.On<int, string, string, double>("VERDICT_DETAILED", (id, status, reason, score) =>
         {
             VerdictDetailed?.Invoke(id, status, reason, score);
+            VerdictTiersDetailed?.Invoke(id, status, reason, score, null);
         });
 
         _conn.On("PAUSED", () => Paused?.Invoke());

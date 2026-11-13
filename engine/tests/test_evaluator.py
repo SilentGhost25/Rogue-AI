@@ -110,6 +110,48 @@ def tier_checks(base_url, context=None):
         self.assertEqual(verdict.tier_results["tier2_functional"], False)
         self.assertIn("70/100%", verdict.reason)
 
+    def test_10_tier_full_pass(self):
+        """10 distinct tiers passing 100% yields OPTIMAL verdict with 10 property booleans."""
+        attack_dir = self.temp_dir / "attack_10_tiers_full"
+        (attack_dir / "checks").mkdir(parents=True)
+        
+        tiers_yaml = "\n".join([f"    - id: t{i}_prop\n      weight: 10" for i in range(1, 11)])
+        manifest_yaml = f"id: 910\ntitle: '10-Tier Test'\ntests:\n  tiers:\n{tiers_yaml}\n"
+        (attack_dir / "manifest.yaml").write_text(manifest_yaml, encoding="utf-8")
+        
+        tier_dict = {f"t{i}_prop": True for i in range(1, 11)}
+        check_code = f"def tier_checks(base_url, context=None):\n    return {repr(tier_dict)}\n"
+        (attack_dir / "checks" / "check.py").write_text(check_code, encoding="utf-8")
+        
+        verdict = evaluate_attack(910, attack_dir, self.workspace, timeout_seconds=10.0)
+        self.assertEqual(verdict.status, "OPTIMAL")
+        self.assertEqual(verdict.score_percentage, 1.0)
+        self.assertEqual(len(verdict.tier_results), 10)
+        self.assertTrue(all(verdict.tier_results.values()))
+        self.assertIn("100/100%", verdict.reason)
+
+    def test_10_tier_progressive_partial_pass(self):
+        """Passing 4 out of 10 tiers yields PROGRESSIVE status with 40% score percentage."""
+        attack_dir = self.temp_dir / "attack_10_tiers_partial"
+        (attack_dir / "checks").mkdir(parents=True)
+        
+        tiers_yaml = "\n".join([f"    - id: t{i}_prop\n      weight: 10" for i in range(1, 11)])
+        manifest_yaml = f"id: 911\ntitle: '10-Tier Progressive Test'\ntests:\n  tiers:\n{tiers_yaml}\n"
+        (attack_dir / "manifest.yaml").write_text(manifest_yaml, encoding="utf-8")
+        
+        # Tiers 1-4 True, 5-10 False
+        tier_dict = {f"t{i}_prop": (i <= 4) for i in range(1, 11)}
+        check_code = f"def tier_checks(base_url, context=None):\n    return {repr(tier_dict)}\n"
+        (attack_dir / "checks" / "check.py").write_text(check_code, encoding="utf-8")
+        
+        verdict = evaluate_attack(911, attack_dir, self.workspace, timeout_seconds=10.0)
+        self.assertEqual(verdict.status, "PROGRESSIVE")
+        self.assertEqual(verdict.score_percentage, 0.40)
+        self.assertEqual(len(verdict.tier_results), 10)
+        self.assertEqual(sum(1 for v in verdict.tier_results.values() if v), 4)
+        self.assertIn("40/100%", verdict.reason)
+        self.assertIn("4/10 passed", verdict.reason)
+
 
 if __name__ == "__main__":
     unittest.main()

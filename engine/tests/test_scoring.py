@@ -59,6 +59,32 @@ class ScoringTests(unittest.TestCase):
         self.assertEqual(passed, ["t1", "t2"])
         self.assertEqual(failed, ["t3"])
 
+    def test_10_tier_progressive_scoring(self):
+        ten_tiers = [{"id": f"t{i}", "weight": 10} for i in range(1, 11)]
+        
+        # 1 passed tier: +850 pts (10%)
+        res1 = {f"t{i}": (i == 1) for i in range(1, 11)}
+        pts1, pct1, p1, f1 = s.progressive_tier_points(ten_tiers, res1, base_points=8500.0)
+        self.assertEqual(pct1, 0.10)
+        self.assertEqual(pts1, 850.0)
+        self.assertEqual(len(p1), 1)
+        self.assertEqual(len(f1), 9)
+
+        # 4 passed tiers: +3,400 pts (40%)
+        res4 = {f"t{i}": (i <= 4) for i in range(1, 11)}
+        pts4, pct4, p4, f4 = s.progressive_tier_points(ten_tiers, res4, base_points=8500.0)
+        self.assertEqual(pct4, 0.40)
+        self.assertEqual(pts4, 3400.0)
+        self.assertEqual(len(p4), 4)
+
+        # 10 passed tiers: +8,500 pts (100%)
+        res10 = {f"t{i}": True for i in range(1, 11)}
+        pts10, pct10, p10, f10 = s.progressive_tier_points(ten_tiers, res10, base_points=8500.0)
+        self.assertEqual(pct10, 1.0)
+        self.assertEqual(pts10, 8500.0)
+        self.assertEqual(len(p10), 10)
+        self.assertEqual(len(f10), 0)
+
     def test_gentle_submission_friction(self):
         self.assertEqual(s.gentle_submission_friction(0), 0)
         self.assertEqual(s.gentle_submission_friction(1), 0)
