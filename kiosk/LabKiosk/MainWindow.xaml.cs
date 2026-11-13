@@ -138,6 +138,36 @@ public partial class MainWindow : Window
             "CRITICAL SEVERITY · MISSING MODULE",
             "Vault routes fail or throw MODULE_NOT_FOUND due to missing workspace source files.",
             "Inspect admin/module bootstrap and restore deleted application modules."
+        ),
+        [18] = new(
+            "Incident #18: The Needle (Layout Syntax)",
+            "LOW SEVERITY · SYNTAX CORRUPTION",
+            "Node.js server crashes immediately during bootstrap with an unexpected layout token.",
+            "Inspect lib/html.js layout template syntax to restore engine compilation."
+        ),
+        [19] = new(
+            "Incident #19: The Red Herring (Decoy Log)",
+            "LOW SEVERITY · TELEMETRY SPOOF",
+            "TrafficGrid returns 500 while error logs indicate critical middleware permission failures.",
+            "Inspect routes/traffic.js and audit logging to eliminate the decoy check."
+        ),
+        [20] = new(
+            "Incident #20: Silent Void (Database Decouple)",
+            "LOW SEVERITY · DATA ANOMALY",
+            "The web server reports nominal health but all database tables return empty records.",
+            "Inspect lib/db.js connection targets and initialization to restore data stores."
+        ),
+        [21] = new(
+            "Incident #21: Port Hijack (Port Override)",
+            "LOW SEVERITY · NETWORK CONFLICT",
+            "The service starts on a fixed conflicting port and fails to listen on the assigned runtime port.",
+            "Inspect server.js listener configuration to restore dynamic PORT binding."
+        ),
+        [22] = new(
+            "Incident #22: The Ghost Typo (Helper Mismatch)",
+            "LOW SEVERITY · FUNCTION MISMATCH",
+            "Overview dashboard routes throw TypeError calling missing template helpers.",
+            "Inspect helper exports in lib/html.js to restore nominal dashboard rendering."
         )
     };
 
@@ -160,7 +190,12 @@ public partial class MainWindow : Window
         [14] = "The Void",
         [15] = "Infinite Loop",
         [16] = "Data Erasure",
-        [17] = "The Ghost"
+        [17] = "The Ghost",
+        [18] = "The Needle",
+        [19] = "The Red Herring",
+        [20] = "Silent Void",
+        [21] = "Port Hijack",
+        [22] = "The Ghost Typo"
     };
 
     private IncidentWindow? _activeIncidentWindow;

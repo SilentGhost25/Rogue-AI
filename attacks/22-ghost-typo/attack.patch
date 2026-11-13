@@ -1,0 +1,21 @@
+--- a/lib/html.js
++++ b/lib/html.js
+@@ -2,1 +2,1 @@
+-const esc = (s) => String(s ?? '')
++const escx = (s) => String(s ?? '')
+@@ -15,1 +15,1 @@
+-<title>${esc(title)} | AEGIS Municipal Defense</title>
++<title>${escx(title)} | AEGIS Municipal Defense</title>
+@@ -26,1 +26,1 @@
+-      <span class="threat-badge threat-${threat.toLowerCase()}">${esc(threat)}</span>
++      <span class="threat-badge threat-${threat.toLowerCase()}">${escx(threat)}</span>
+@@ -40,3 +40,3 @@
+-        <span class="username">${esc(user.username)}</span>
+-        <span class="role-pill role-${esc(user.role)}">${esc(user.role.toUpperCase())}</span>
+-        <span class="clearance-pill">L${esc(user.clearance_level || 1)}</span>
++        <span class="username">${escx(user.username)}</span>
++        <span class="role-pill role-${escx(user.role)}">${escx(user.role.toUpperCase())}</span>
++        <span class="clearance-pill">L${escx(user.clearance_level || 1)}</span>
+@@ -64,1 +64,1 @@
+-module.exports = { esc, layout };
++module.exports = { escx, layout };

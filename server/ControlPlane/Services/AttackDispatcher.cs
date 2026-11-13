@@ -91,6 +91,11 @@ public sealed class AttackDispatcher(
             15 => new List<string> { "app.js" },
             16 => new List<string> { "routes/security.js" },
             17 => new List<string> { "routes/admin.js", "routes/vault.js" },
+            18 => new List<string> { "lib/html.js" },
+            19 => new List<string> { "routes/traffic.js" },
+            20 => new List<string> { "lib/db.js" },
+            21 => new List<string> { "server.js" },
+            22 => new List<string> { "lib/html.js" },
             _ => new List<string>()
         };
 
