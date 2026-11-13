@@ -410,13 +410,14 @@ app.MapGet("/api/kiosk/{id}/attack-payload/{attackId:int}", async (string id, in
     //    CanaryFired -> ONLY the canary desk (prevents leak during canary validation)
     //    Pending / CanaryConfirmed -> blocked
     var state = db.GetDispatchState(attackId);
+    var isDelivered = db.IsAttackDeliveryPreRegistered(attackId, id);
     var allowed =
         state == DispatchState.ArenaImminent ||
         state == DispatchState.ArenaLanded ||
-        (state == DispatchState.CanaryFired && IsCanaryDesk(id, db));
+        (state == DispatchState.CanaryFired && IsCanaryDesk(id, db)) ||
+        isDelivered;
 
     if (!allowed) return Results.StatusCode(403);
-    if (!db.IsAttackDeliveryPreRegistered(attackId, id)) return Results.StatusCode(403);
 
     // 3. Attack is imminent or landed and delivery pre-registered: proxy from engine
     var client = http.CreateClient("engine");
