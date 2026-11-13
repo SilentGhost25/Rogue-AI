@@ -26,7 +26,19 @@ internal static class ConPtyNative
     public struct StartupInfoEx { public StartupInfo StartupInfo; public IntPtr lpAttributeList; }
 
     [StructLayout(LayoutKind.Sequential)]
+    public struct SecurityAttributes
+    {
+        public int nLength;
+        public IntPtr lpSecurityDescriptor;
+        [MarshalAs(UnmanagedType.Bool)]
+        public bool bInheritHandle;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     public struct ProcessInformation { public IntPtr hProcess, hThread; public int dwProcessId, dwThreadId; }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern bool CreatePipe(out IntPtr hReadPipe, out IntPtr hWritePipe, ref SecurityAttributes lpPipeAttributes, uint nSize);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     public static extern bool CreatePipe(out IntPtr hReadPipe, out IntPtr hWritePipe, IntPtr lpPipeAttributes, uint nSize);
