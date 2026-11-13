@@ -10,7 +10,7 @@ def tier_checks(base_url, context=None):
             body = r.read().decode('utf-8', errors='ignore')
             title_ok = "AEGIS // OPERATIONAL" in body and "AEGIS // OPERATOINS" not in body
             results["tier1_title"] = bool(title_ok)
-            csp_ok = "Content-Security-Policy" in body
+            csp_ok = "Content-Security-Policy" in body and "default-src 'none'" not in body and "default-src 'self'" in body
             results["tier2_security_meta"] = bool(csp_ok)
     except Exception:
         pass

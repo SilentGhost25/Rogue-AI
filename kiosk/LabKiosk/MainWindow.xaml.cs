@@ -203,6 +203,9 @@ public partial class MainWindow : Window
 
             Code.Initialize(_s.WorkspacePath);
 
+            // Start terminals immediately in parallel so AI CLI tools and workspace are ready without waiting for site health or registration
+            _ = StartTerminalsAsync();
+
             // 2. Start the live website immediately so participant view renders even while host connects.
             _site = new SiteHost(_s.NodePath, _s.WorkspacePath, _s.SiteUrl, _s.DataPath);
             _site.ReloadRequested += () => Dispatcher.InvokeAsync(() =>
@@ -368,8 +371,7 @@ public partial class MainWindow : Window
     private async Task StartTerminalsAsync()
     {
         var assets = Path.Combine(AppContext.BaseDirectory, "Assets", "terminal");
-        await TermAgy.InitializeAsync(assets);
-        await TermOc.InitializeAsync(assets);
+        await Task.WhenAll(TermAgy.InitializeAsync(assets), TermOc.InitializeAsync(assets));
 
         // Security: Ensure git prohibition shim is installed in BreachKiosk/bin and prepended to PATH
         var shimDir = EnsureGitProhibitionShim();

@@ -39,7 +39,31 @@ public static class WorkspaceBackup
 
             var isEmptyOrIncomplete = !Directory.EnumerateFileSystemEntries(workspacePath).Any()
                                    || !File.Exists(Path.Combine(workspacePath, "server.js"));
-            if (!isEmptyOrIncomplete) return;
+
+            if (!isEmptyOrIncomplete)
+            {
+                // If workspace already exists, verify whether template has newer UI/code (e.g. smart city update)
+                if (!string.IsNullOrWhiteSpace(siteTemplatePath) && Directory.Exists(siteTemplatePath))
+                {
+                    var tmplAppJs = Path.Combine(siteTemplatePath, "public", "app.js");
+                    var wsAppJs = Path.Combine(workspacePath, "public", "app.js");
+                    var tmplCss = Path.Combine(siteTemplatePath, "public", "aegis.css");
+                    var wsCss = Path.Combine(workspacePath, "public", "aegis.css");
+
+                    bool needsRefresh = false;
+                    if (File.Exists(tmplAppJs) && (!File.Exists(wsAppJs) || new FileInfo(tmplAppJs).Length != new FileInfo(wsAppJs).Length))
+                        needsRefresh = true;
+                    else if (File.Exists(tmplCss) && (!File.Exists(wsCss) || new FileInfo(tmplCss).Length != new FileInfo(wsCss).Length))
+                        needsRefresh = true;
+
+                    if (needsRefresh)
+                    {
+                        CopyCleanTemplate(siteTemplatePath, workspacePath);
+                        WipeLocalGitRepo(workspacePath);
+                    }
+                }
+                return;
+            }
 
             var zipCandidates = new[]
             {

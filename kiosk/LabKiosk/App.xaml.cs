@@ -62,12 +62,15 @@ public partial class App : Application
             return;
         }
 
+        // Explicitly control application shutdown so closing dialogs during onboarding does not exit the app
+        ShutdownMode = ShutdownMode.OnExplicitShutdown;
+
         if (!s.Onboarded || string.IsNullOrWhiteSpace(s.DisplayName) || s.DisplayName == Environment.MachineName)
         {
             var onboard = new OnboardingWindow(s);
             if (onboard.ShowDialog() != true)
             {
-                Shutdown();
+                Shutdown(0);
                 return;
             }
         }
@@ -75,9 +78,20 @@ public partial class App : Application
         s.ServerUrl = KioskSettings.NormalizeServerUrl(s.ServerUrl);
         s.WorkspacePath = WorkspaceBackup.ResolveWorkspace(s.WorkspacePath);
 
-        var main = new MainWindow(s);
-        MainWindow = main;
-        main.Show();
+        try
+        {
+            var main = new MainWindow(s);
+            MainWindow = main;
+            ShutdownMode = ShutdownMode.OnMainWindowClose;
+            main.Show();
+        }
+        catch (Exception ex)
+        {
+            LogCrash(ex);
+            MessageBox.Show($"Failed to launch main kiosk workspace:\n\n{ex.Message}\n\nStack:\n{ex.StackTrace}",
+                "Rogue AI - Launch Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            Shutdown(1);
+        }
     }
 
     private static void LogCrash(Exception? ex)

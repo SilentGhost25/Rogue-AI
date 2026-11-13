@@ -12,6 +12,7 @@ function layout({ title = 'Command', user = null, active = 'overview', threat = 
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'">
 <title>${esc(title)} | AEGIS Municipal Defense</title>
 <link rel="stylesheet" href="/aegis.css">
 </head>
@@ -23,8 +24,8 @@ function layout({ title = 'Command', user = null, active = 'overview', threat = 
       <span class="brand-title" style="color:#f87171;text-shadow:0 0 12px rgba(239,68,68,0.6)">AEGIS // OPERATOINS</span>
     </div>
     <div class="system-status">
-      <span class="threat-badge threat-${threat.toLowerCase()}">${esc(threat)}</span>
-      <span class="status-indicator compromised">HEADER FAULT</span>
+      <span class="threat-badge threat-defcon-1">DEFCON-1</span>
+      <span class="status-indicator compromised">[DEFCON-1: SYSTEM INTEGRITY CORRUPTED]</span>
     </div>
   </div>
   <nav class="nav-links">
