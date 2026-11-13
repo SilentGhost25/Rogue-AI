@@ -94,8 +94,22 @@
 
                         <!-- Detailed Diagnostic / Criteria Box -->
                         <TextBlock Text="EVALUATION VERDICT &amp; DIAGNOSTICS:" Foreground="#8AA0AC" FontWeight="SemiBold" FontSize="11" Margin="0,0,0,6"/>
-                        <Border x:Name="DiagnosticsBorder" Background="#0A141A" BorderBrush="#1B313F" BorderThickness="1" CornerRadius="4" Padding="12,10">
+                        <Border x:Name="DiagnosticsBorder" Background="#0A141A" BorderBrush="#1B313F" BorderThickness="1" CornerRadius="4" Padding="12,10" Margin="0,0,0,14">
                             <TextBlock x:Name="TxtDiagnostics" Text="Exploit neutralized. Non-regression green. Response latency within SLA." Foreground="#A6BAC7" FontSize="12" FontFamily="Consolas, monospace" TextWrapping="Wrap" LineHeight="18"/>
+                        </Border>
+
+                        <!-- 10-Tier Verification Matrix & LED Meter -->
+                        <Border x:Name="TierMatrixBorder" Background="#0C1820" BorderBrush="#1B313F" BorderThickness="1" CornerRadius="6" Padding="14">
+                            <StackPanel>
+                                <DockPanel Margin="0,0,0,8">
+                                    <TextBlock Text="10-TIER DEFENSE VERIFICATION MATRIX" Foreground="#8AA0AC" FontWeight="Bold" FontSize="11" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="TxtTierSummary" Text="0 / 10 TIERS PASSED (0%)" Foreground="#00E676" FontWeight="Bold" FontSize="11" HorizontalAlignment="Right" DockPanel.Dock="Right"/>
+                                </DockPanel>
+                                <UniformGrid x:Name="LedGrid" Columns="10" Rows="1" Height="10" Margin="0,0,0,10"/>
+                                <ScrollViewer MaxHeight="160" VerticalScrollBarVisibility="Auto">
+                                    <StackPanel x:Name="TierListPanel"/>
+                                </ScrollViewer>
+                            </StackPanel>
                         </Border>
                     </StackPanel>
                 </Border>

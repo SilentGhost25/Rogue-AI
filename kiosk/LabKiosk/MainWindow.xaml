@@ -362,6 +362,15 @@
 
                         Style="{StaticResource ActionBtn}" Click="OnAdminConsole" AutomationProperties.Name="Open organizer console"/>
 
+                <Border x:Name="DefenseLedBadge" DockPanel.Dock="Right" Visibility="Collapsed" Margin="6,10,6,10" Padding="10,4"
+                        Background="#0D1F2D" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="4">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock x:Name="DefenseLedTitle" Text="DEFENSE: " Foreground="{StaticResource Cyan}" FontSize="11" FontWeight="Bold" Margin="0,0,6,0"/>
+                        <StackPanel x:Name="DefenseLedStrip" Orientation="Horizontal" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="DefenseLedPct" Text=" 100%" Foreground="{StaticResource Ok}" FontSize="11" FontWeight="Bold" Margin="6,0,0,0"/>
+                    </StackPanel>
+                </Border>
+
                 <Border x:Name="SolvedBadge" DockPanel.Dock="Right" Visibility="Collapsed" Margin="6,10,6,10" Padding="14,2"
 
                         Background="#143D31" BorderBrush="{StaticResource Ok}" BorderThickness="1" CornerRadius="4">

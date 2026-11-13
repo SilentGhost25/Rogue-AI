@@ -878,9 +878,11 @@ public partial class MainWindow : Window
             RefreshMeters();
             _site?.RequestReload();
 
+            var tiers = _lastTierResults.TryGetValue(id, out var tr) ? tr : null;
+            UpdateDefenseLedHud(tiers, st);
             try
             {
-                var modal = new VerdictWindow(this, id, attackName, st, pts, reason);
+                var modal = new VerdictWindow(this, id, attackName, st, pts, reason, tiers);
                 modal.ShowDialog();
             }
             catch (Exception ex)
@@ -888,6 +890,57 @@ public partial class MainWindow : Window
                 System.Diagnostics.Debug.WriteLine($"Error showing verdict dialog: {ex}");
             }
         });
+    }
+
+    private void UpdateDefenseLedHud(Dictionary<string, bool>? tiers, string status)
+    {
+        if (tiers == null || tiers.Count == 0)
+        {
+            if (status is "OPTIMAL" or "SOLVED")
+            {
+                DefenseLedBadge.Visibility = Visibility.Visible;
+                DefenseLedStrip.Children.Clear();
+                var greenBrush = (Brush)FindResource("Ok");
+                for (int i = 0; i < 10; i++)
+                {
+                    DefenseLedStrip.Children.Add(new Border
+                    {
+                        Width = 8,
+                        Height = 12,
+                        Background = greenBrush,
+                        CornerRadius = new CornerRadius(1.5),
+                        Margin = new Thickness(1, 0, 1, 0)
+                    });
+                }
+                DefenseLedPct.Text = "100%";
+                DefenseLedPct.Foreground = greenBrush;
+            }
+            return;
+        }
+
+        DefenseLedBadge.Visibility = Visibility.Visible;
+        DefenseLedStrip.Children.Clear();
+        var okBrush = (Brush)FindResource("Ok");
+        var redBrush = (Brush)FindResource("Alert");
+
+        int passed = 0;
+        foreach (var val in tiers.Values)
+        {
+            if (val) passed++;
+            DefenseLedStrip.Children.Add(new Border
+            {
+                Width = 8,
+                Height = 12,
+                Background = val ? okBrush : redBrush,
+                CornerRadius = new CornerRadius(1.5),
+                Margin = new Thickness(1, 0, 1, 0)
+            });
+        }
+
+        int total = tiers.Count;
+        double pct = total > 0 ? (double)passed / total * 100.0 : 0.0;
+        DefenseLedPct.Text = $"{pct:0}%";
+        DefenseLedPct.Foreground = passed == total ? okBrush : (passed > 0 ? (Brush)FindResource("Cyan") : redBrush);
     }
 
     private void OnVerdict(string submissionId, JsonElement verdicts, string note)
@@ -927,7 +980,9 @@ public partial class MainWindow : Window
             {
                 try
                 {
-                    var modal = new VerdictWindow(this, id, attackName, st, pts, reason);
+                    var tiers = _lastTierResults.TryGetValue(id, out var tr) ? tr : null;
+                    UpdateDefenseLedHud(tiers, st);
+                    var modal = new VerdictWindow(this, id, attackName, st, pts, reason, tiers);
                     modal.ShowDialog();
                 }
                 catch { }
