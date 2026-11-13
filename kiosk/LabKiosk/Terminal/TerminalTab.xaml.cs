@@ -30,6 +30,8 @@ public partial class TerminalTab : UserControl, IDisposable
         _flush = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
         _flush.Tick += (_, _) => FlushOutput();
         _flush.Start();
+        GotKeyboardFocus += (_, _) => FocusTerminal();
+        PreviewMouseDown += (_, _) => FocusTerminal();
     }
 
     public async Task InitializeAsync(string assetsDir)
@@ -52,10 +54,11 @@ public partial class TerminalTab : UserControl, IDisposable
             Focus();
             Web.Focus();
             System.Windows.Input.Keyboard.Focus(Web);
+            Web.MoveFocus(new System.Windows.Input.TraversalRequest(System.Windows.Input.FocusNavigationDirection.First));
             Post(new { type = "focus" });
             if (Web.CoreWebView2 is not null)
             {
-                _ = Web.CoreWebView2.ExecuteScriptAsync("if (window.term) window.term.focus();");
+                _ = Web.CoreWebView2.ExecuteScriptAsync("if (window.term) { window.term.focus(); if (window.term.textarea) window.term.textarea.focus(); }");
             }
         }
         catch { }
@@ -91,6 +94,14 @@ public partial class TerminalTab : UserControl, IDisposable
                 _rows = (short)root.GetProperty("rows").GetInt32();
                 _pageReady = true;
                 _ = StartSessionAsync();
+                break;
+            case "focus_request":
+                Dispatcher.InvokeAsync(() =>
+                {
+                    Focus();
+                    Web.Focus();
+                    System.Windows.Input.Keyboard.Focus(Web);
+                });
                 break;
             case "input":
                 if (!_locked) _session?.Write(root.GetProperty("data").GetString() ?? "");

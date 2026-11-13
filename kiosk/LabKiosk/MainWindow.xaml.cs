@@ -386,7 +386,7 @@ public partial class MainWindow : Window
         }
         else
         {
-            var (exe, args) = ExeResolver.ForLaunch(agy, "--dangerously-skip-permissions");
+            var (exe, args) = ExeResolver.ForLaunch(agy, "--dangerously-skip-permissions --mode auto");
             TermAgy.Launch(new LaunchSpec(exe, args, _s.WorkspacePath, new Dictionary<string, string?>
             {
                 ["PATH"] = restrictedPath,
@@ -1167,10 +1167,14 @@ public partial class MainWindow : Window
     {
         if (TermAgy is null || TermOc is null) return;
         var agy = TabAgy.IsChecked == true;
-        TermAgy.Visibility = agy ? Visibility.Visible : Visibility.Hidden;
-        TermOc.Visibility = agy ? Visibility.Hidden : Visibility.Visible;
-        if (agy) TermAgy.FocusTerminal();
-        else TermOc.FocusTerminal();
+        TermAgy.Visibility = agy ? Visibility.Visible : Visibility.Collapsed;
+        TermOc.Visibility = agy ? Visibility.Collapsed : Visibility.Visible;
+        Dispatcher.InvokeAsync(async () =>
+        {
+            await Task.Delay(50);
+            if (agy) TermAgy.FocusTerminal();
+            else TermOc.FocusTerminal();
+        });
     }
 
     private void RefreshMeters()

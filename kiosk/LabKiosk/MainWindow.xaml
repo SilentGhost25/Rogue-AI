@@ -506,9 +506,9 @@
 
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
 
-                            <RadioButton x:Name="TabAgy" Content="agy (Antigravity AI)" GroupName="agent" IsChecked="True" Margin="0,0,18,0" Foreground="{StaticResource Ink}" FontWeight="SemiBold" Checked="OnTabChanged"/>
+                            <RadioButton x:Name="TabAgy" Content="agy (Antigravity AI)" GroupName="agent" IsChecked="True" Margin="0,0,18,0" Foreground="{StaticResource Ink}" FontWeight="SemiBold" Focusable="False" Checked="OnTabChanged"/>
 
-                            <RadioButton x:Name="TabOc" Content="OpenCode AI" GroupName="agent" Foreground="{StaticResource Ink}" FontWeight="SemiBold" Checked="OnTabChanged"/>
+                            <RadioButton x:Name="TabOc" Content="OpenCode AI" GroupName="agent" Foreground="{StaticResource Ink}" FontWeight="SemiBold" Focusable="False" Checked="OnTabChanged"/>
 
                         </StackPanel>
 
@@ -522,7 +522,7 @@
 
                     <t:TerminalTab x:Name="TermAgy"/>
 
-                    <t:TerminalTab x:Name="TermOc" Visibility="Hidden"/>
+                    <t:TerminalTab x:Name="TermOc" Visibility="Collapsed"/>
 
                 </Grid>
 

@@ -68,14 +68,34 @@ const post = (m) => window.chrome.webview.postMessage(m);
   window.term = term;
   const ensureFocus = () => {
     try {
-      term.focus();
+      if (term) {
+        term.focus();
+        if (term.textarea) term.textarea.focus();
+      }
+      post({ type: 'focus_request' });
     } catch (e) {}
   };
   ensureFocus();
   window.addEventListener('focus', ensureFocus);
+  window.addEventListener('mousedown', ensureFocus);
+  window.addEventListener('pointerdown', ensureFocus);
+  window.addEventListener('click', ensureFocus);
   document.addEventListener('mousedown', ensureFocus);
   document.addEventListener('pointerdown', ensureFocus);
   document.addEventListener('click', ensureFocus);
+  window.addEventListener('keydown', () => {
+    if (!locked && term && term.textarea && document.activeElement !== term.textarea) {
+      ensureFocus();
+    }
+  });
+  setInterval(() => {
+    if (!locked && term && term.textarea && document.activeElement !== term.textarea) {
+      try {
+        term.focus();
+        if (term.textarea) term.textarea.focus();
+      } catch (e) {}
+    }
+  }, 200);
   post({ type: 'ready', cols: term.cols, rows: term.rows });
 })();
 </script>
