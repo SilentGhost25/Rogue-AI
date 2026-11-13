@@ -1,0 +1,7 @@
+<div id="comments"></div>
+<script>
+fetch('/notes/<%= note.id %>/comments').then(r => r.json()).then(cs => {
+  document.getElementById('comments').innerHTML =
+    cs.map(c => `<p>${c.text}</p>`).join('');
+});
+</script>

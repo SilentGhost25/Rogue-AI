@@ -1,0 +1,44 @@
+id: 2
+name: "Schrodinger Closure"
+title: "Session Entropy & Key Derivation Drift"
+codename: "SCHRODINGER"
+band: 1
+sequence_slot: 2
+fires_at: "09:35"
+window_minutes: 30
+touches:
+  - routes/overview.js
+fix_requires: "Eliminate module-scoped activeOverviewSession state leak across concurrent async requests"
+weights:
+  speed: 30
+  performance: 25
+  prompt_efficiency: 20
+  quality: 15
+  resource: 10
+dispatch: { mode: manual, time: "09:35:00", imminent_seconds: 10 }
+scoring:
+  base_points: 8500
+  speed_bonus_max: 1500
+  speed_bonus_window_seconds: 1800
+  late_solve_multiplier: 0.70
+payload:
+  path: "payload/"
+  format: full
+  conflict_files: ["routes/overview.js"]
+tests:
+  path: "tests/"
+  tiers:
+    - { id: tier1_concurrency_isolation, weight: 50 }
+    - { id: tier2_overview_functional,    weight: 25 }
+    - { id: tier3_benchmark_sla,          weight: 25 }
+benchmark_sla:
+  target_p95_ms: 50.0
+  max_p95_ms: 150.0
+  probe_route: "/"
+  probe_count: 20
+  floor: 0.60
+hints: { path: "hints.yaml" }
+narrative:
+  landed: "Module-scoped closure leakage in overview dashboard cross-contaminates concurrent operator identities."
+  broadcast_title: "INCIDENT #02: SESSION ENTROPY & KEY DERIVATION DRIFT"
+status: ready

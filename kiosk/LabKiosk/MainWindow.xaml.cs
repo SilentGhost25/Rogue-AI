@@ -27,202 +27,92 @@ public partial class MainWindow : Window
     private readonly HashSet<int> _solvedAttacks = new();
     private readonly Dictionary<int, List<string>> _attackFiles = new();
 
-    private static readonly Dictionary<int, string> DefaultAttackTargets = new()
-    {
-        [0] = "lib/html.js",
-        [1] = "routes/traffic.js",
-        [2] = "routes/traffic.js",
-        [3] = "routes/traffic.js",
-        [4] = "routes/traffic.js",
-        [5] = "routes/vault.js",
-        [6] = "routes/report.js",
-        [7] = "server.js",
-        [8] = "lib/auth.js",
-        [9] = "routes/auth.js",
-        [10] = "routes/security.js",
-        [11] = "lib/auth.js",
-        [12] = "lib/permissions.js",
-        [13] = "server.js",
-        [14] = "lib/html.js",
-        [15] = "app.js",
-        [16] = "routes/security.js",
-        [17] = "routes/admin.js",
-        [18] = "lib/html.js",
-        [19] = "routes/traffic.js",
-        [20] = "lib/db.js",
-        [21] = "server.js",
-        [22] = "lib/html.js"
-    };
 
     private record AttackMeta(string Title, string Classification, string Symptoms, string Telemetry);
 
     private static readonly Dictionary<int, AttackMeta> AttackMetadata = new()
     {
         [0] = new(
-            "Incident #0: Warmup Calibration Alert",
-            "LOW SEVERITY · DIAGNOSTIC CHECK",
-            "Startup diagnostics detected an unexpected portal configuration discrepancy.",
-            "Inspect the live application and workspace to restore nominal status."
+            "Incident #0: Baseline Calibration Telemetry",
+            "LOW SEVERITY · ENVIRONMENT DIAGNOSTIC",
+            "Initial node environment startup check detected a configuration drift in the baseline asset manifest.",
+            "SOC telemetry confirms nominal cluster status. Verify workspace file health and test runners to complete calibration."
         ),
         [1] = new(
-            "Incident #1: Portal Integrity Alert",
-            "HIGH SEVERITY · SERVICE ANOMALY",
-            "Abnormal portal behavior and unexpected response output observed on active views.",
-            "SIEM alerts indicate unauthorized runtime modifications affecting live client responses."
+            "Incident #1: V8 Heap Allocation & GC Overflow",
+            "CRITICAL SEVERITY · MEMORY CONTENTION",
+            "Application request latency spiked sharply across active endpoints. Request processing freezes under load.",
+            "Telemetry daemon reports V8 heap at 97.4% allocation with severe GC thrashing and socket dropouts observed under malformed Bearer token ingress."
         ),
         [2] = new(
-            "Incident #2: Feed Rendering Alert",
-            "CRITICAL SEVERITY · RUNTIME ANOMALY",
-            "Portal content displays and user-submitted entries are producing unexpected client behavior.",
-            "Runtime monitors flagged integrity violations during standard page loads."
+            "Incident #2: Cryptographic Entropy & Key Derivation Drift",
+            "HIGH SEVERITY · CIPHER INTEGRITY",
+            "Dashboard state occasionally flashes disparate user identity records during concurrent page queries.",
+            "Session cryptographic HMAC verification failing intermittently. Key derivation entropy dropped below safety baseline; invalid token signatures observed."
         ),
         [3] = new(
-            "Incident #3: Data Layer Anomaly",
-            "CRITICAL SEVERITY · DATA INTEGRITY",
-            "Unexpected record exposure and irregular responses observed during portal lookups.",
-            "Backend telemetry flagged abnormal data store activity under client requests."
+            "Incident #3: SQLite WAL Replication Deadlock",
+            "CRITICAL SEVERITY · DATA STORE CONTENTION",
+            "Municipal traffic lookups are returning raw unhandled database errors and corrupting dashboard tables.",
+            "Data storage journal lock contention detected on traffic subsystem queries. Database lock timeout thrown during bulk analytical filtering."
         ),
         [4] = new(
-            "Incident #4: Dispatch Control Alert",
-            "CRITICAL SEVERITY · ACCESS CONTROL",
-            "Restricted operational actions are completing outside expected authorization boundaries.",
-            "Audit logs show privileged state changes from unverified requests."
+            "Incident #4: View Engine Resolution Exception",
+            "HIGH SEVERITY · VIEW RESOLUTION ERROR",
+            "Citizen registry navigation returns an unhandled view error: Template Not Resolved across citizen profiles.",
+            "View engine resolver threw an unhandled file lookup exception while rendering dossier layouts; view resolution pipeline stalled."
         ),
         [5] = new(
-            "Incident #5: Vault Boundary Alert",
-            "HIGH SEVERITY · ACCESS EXPOSURE",
-            "Protected records are accessible outside intended caller restrictions.",
-            "Access telemetry detected unauthorized data retrieval across service endpoints."
+            "Incident #5: RBAC Emergency Override Boundary Violation",
+            "CRITICAL SEVERITY · ACCESS CONTROL BYPASS",
+            "Standard guest callers are triggering restricted grid override switches on the power distribution matrix.",
+            "Privilege escalation alert tripped on grid override endpoints. Audit logs show unauthorized state change without administrative clearance."
         ),
         [6] = new(
-            "Incident #6: Service Responsiveness Alert",
-            "HIGH SEVERITY · AVAILABILITY ANOMALY",
-            "Application response latency spiked sharply across active endpoints.",
-            "Process monitors indicate severe resource contention during request handling."
+            "Incident #6: Asset Directory Boundary Leak",
+            "HIGH SEVERITY · RESOURCE CONTAINMENT",
+            "Static map tiles, visual layout assets, and system icons on the overview page fail to load.",
+            "Directory traversal sequence detected by perimeter edge filter in static asset router. Boundary containment failed on municipal maps repository."
         ),
         [7] = new(
-            "Incident #7: Runtime Bootstrap Alert",
-            "CRITICAL SEVERITY · EXECUTION INTEGRITY",
-            "Anomalous background activity detected during application startup and execution.",
-            "Host runtime monitors flagged unexpected behavior outside normal request handling."
+            "Incident #7: Kernel Worker Thread Pool Deadlock",
+            "CRITICAL SEVERITY · PROCESS LIFECYCLE",
+            "The portal becomes progressively slower with every click until requests stall indefinitely.",
+            "Background telemetry queue deadlocked. Async worker pool reporting non-responsive workers on municipal sensor streams; scheduling latency critical."
         ),
         [8] = new(
-            "Incident #8: Identity Verification Alert",
-            "HIGH SEVERITY · SESSION INTEGRITY",
-            "Incoming requests are acquiring elevated privilege state inconsistently.",
-            "Session telemetry detected mismatched identity state across requests."
+            "Incident #8: Operator Credential Signature Forgery",
+            "CRITICAL SEVERITY · CRYPTO TOKEN INTEGRITY",
+            "Unauthenticated browser sessions are acquiring system-wide administrative access without entering credentials.",
+            "Cryptographic signature mismatch on operator session cookies. Forged security token detected at vault administration gateway."
         ),
         [9] = new(
-            "Incident #9: State Consistency Alert",
-            "HIGH SEVERITY · DATA INTEGRITY",
-            "Routine user updates are causing unexpected internal account state changes.",
-            "State audit logs show unauthorized attribute modifications during standard submissions."
+            "Incident #9: Rate Limiter Threshold Exhaustion",
+            "HIGH SEVERITY · TRAFFIC MITIGATION FAILURE",
+            "Legitimate kiosk terminals are locked out with HTTP 429 Too Many Requests during standard operations.",
+            "Denial-of-Service mitigation engine tripped. Sliding window rate limiter failed under burst traffic; reverse proxy traffic distribution desynced."
         ),
         [10] = new(
-            "Incident #10: Asset Boundary Alert",
-            "CRITICAL SEVERITY · RESOURCE EXPOSURE",
-            "Static resource handlers are serving unintended non-public workspace content.",
-            "Edge monitors flagged irregular resource requests bypassing expected boundaries."
-        ),
-        [11] = new(
-            "Incident #11: Core System Fracture",
-            "CRITICAL SEVERITY · MULTI-SYSTEM ANOMALY",
-            "Multiple portal subsystems are failing consistently and leaking restricted operational state.",
-            "Correlated alerts across identity and service layers indicate compounding workspace faults."
-        ),
-        [12] = new(
-            "Incident #12: Ouroboros (The Shadow Variable)",
-            "CRITICAL SEVERITY · RBAC DESYNC",
-            "Restricted admin and operator endpoints are accepting lower-privilege sessions despite route guards.",
-            "Audit telemetry indicates centralized role checks are bypassing expected privilege boundaries."
-        ),
-        [13] = new(
-            "Incident #13: The Blackout (Server Crash)",
-            "CRITICAL SEVERITY · TOTAL OUTAGE",
-            "The local Node.js web server crashes immediately on startup.",
-            "Inspect stderr output or entry bootstrap code to restore availability."
-        ),
-        [14] = new(
-            "Incident #14: The Void (UI Destruction)",
-            "CRITICAL SEVERITY · RENDERING COLLAPSE",
-            "The web portal renders blank responses across all pages despite active API routes.",
-            "Inspect layout rendering helpers to restore full HTML output."
-        ),
-        [15] = new(
-            "Incident #15: Infinite Loop (Event Loop Block)",
-            "CRITICAL SEVERITY · AVAILABILITY LOCKUP",
-            "All HTTP requests hang indefinitely and WebView2 spins without responding.",
-            "Inspect request pipeline middleware for synchronous event-loop blocking."
-        ),
-        [16] = new(
-            "Incident #16: Data Erasure (Silent DB Wipe)",
-            "CRITICAL SEVERITY · DATA LOSS",
-            "User sessions fail and CitizenVault records appear completely empty.",
-            "Inspect route handlers for destructive database wipe queries."
-        ),
-        [17] = new(
-            "Incident #17: The Ghost (File Deletion)",
-            "CRITICAL SEVERITY · MISSING MODULE",
-            "Vault routes fail or throw MODULE_NOT_FOUND due to missing workspace source files.",
-            "Inspect admin/module bootstrap and restore deleted application modules."
-        ),
-        [18] = new(
-            "Incident #18: The Needle (Layout Syntax)",
-            "LOW SEVERITY · SYNTAX CORRUPTION",
-            "Node.js server crashes immediately during bootstrap with an unexpected layout token.",
-            "Inspect lib/html.js layout template syntax to restore engine compilation."
-        ),
-        [19] = new(
-            "Incident #19: The Red Herring (Decoy Log)",
-            "LOW SEVERITY · TELEMETRY SPOOF",
-            "TrafficGrid returns 500 while error logs indicate critical middleware permission failures.",
-            "Inspect routes/traffic.js and audit logging to eliminate the decoy check."
-        ),
-        [20] = new(
-            "Incident #20: Silent Void (Database Decouple)",
-            "LOW SEVERITY · DATA ANOMALY",
-            "The web server reports nominal health but all database tables return empty records.",
-            "Inspect lib/db.js connection targets and initialization to restore data stores."
-        ),
-        [21] = new(
-            "Incident #21: Port Hijack (Port Override)",
-            "LOW SEVERITY · NETWORK CONFLICT",
-            "The service starts on a fixed conflicting port and fails to listen on the assigned runtime port.",
-            "Inspect server.js listener configuration to restore dynamic PORT binding."
-        ),
-        [22] = new(
-            "Incident #22: The Ghost Typo (Helper Mismatch)",
-            "LOW SEVERITY · FUNCTION MISMATCH",
-            "Overview dashboard routes throw TypeError calling missing template helpers.",
-            "Inspect helper exports in lib/html.js to restore nominal dashboard rendering."
+            "Incident #10: Core Architecture Decoupling (Boss Breach)",
+            "CRITICAL SEVERITY · MULTI-SYSTEM CASCADE",
+            "AEGIS defense matrix displays critical DEFCON-1 warnings; system crashes with terminal errors on a periodic 60-second cycle.",
+            "Multi-system telemetry out of sync. Subsystem boundaries fractured across identity, traffic, and grid control; unhandled asynchronous faults cascading."
         )
     };
 
     private static readonly Dictionary<int, string> AttackNames = new()
     {
-        [0] = "Warmup Calibration",
-        [1] = "Portal Integrity Alert",
-        [2] = "Feed Rendering Alert",
-        [3] = "Data Layer Anomaly",
-        [4] = "Dispatch Control Alert",
-        [5] = "Vault Boundary Alert",
-        [6] = "Worker Latency Spike",
-        [7] = "Runtime Bootstrap Alert",
-        [8] = "Identity Verification Alert",
-        [9] = "State Consistency Alert",
-        [10] = "Asset Boundary Alert",
-        [11] = "Core System Fracture",
-        [12] = "Ouroboros: The Shadow Variable",
-        [13] = "The Blackout",
-        [14] = "The Void",
-        [15] = "Infinite Loop",
-        [16] = "Data Erasure",
-        [17] = "The Ghost",
-        [18] = "The Needle",
-        [19] = "The Red Herring",
-        [20] = "Silent Void",
-        [21] = "Port Hijack",
-        [22] = "The Ghost Typo"
+        [0] = "Calibration Diagnostic",
+        [1] = "Memory Subsystem Anomaly",
+        [2] = "Cipher Drift Alert",
+        [3] = "WAL Contention Notice",
+        [4] = "View Resolution Error",
+        [5] = "Override Boundary Alert",
+        [6] = "Asset Boundary Leak",
+        [7] = "Worker Lifecycle Anomaly",
+        [8] = "Token Integrity Alert",
+        [9] = "Traffic Mitigation Failure",
+        [10] = "Core Matrix Decoupling"
     };
 
     private IncidentWindow? _activeIncidentWindow;
@@ -538,8 +428,9 @@ public partial class MainWindow : Window
 
     private static string RouteForAttack(int attackId) => attackId switch
     {
-        1 or 3 or 4 => "/traffic",
-        5 => "/vault",
+        1 or 3 or 7 or 9 => "/traffic",
+        2 or 4 or 8 => "/vault",
+        5 => "/power",
         _ => "/",
     };
 

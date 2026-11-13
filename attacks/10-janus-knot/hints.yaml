@@ -1,0 +1,11 @@
+hints:
+  - tier: 1
+    cost: 500
+    text: "This is a 3-layer cascading attack. Start by removing the defacement HTML in routes/overview.js to restore the operational dashboard."
+  - tier: 2
+    cost: 1000
+    text: "Examine lib/auth.js: in loadUser, check why valid session cookies are immediately deleted from the sessions map upon verification."
+  - tier: 3
+    cost: 1500
+    text: "Examine lib/db.js: look at the bottom of open(). Remove the unhandled setTimeout crash timer causing the Node process to terminate after startup."
+

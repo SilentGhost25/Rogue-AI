@@ -140,26 +140,3 @@ test('api me returns current session identity', async () => {
   assert.equal(me.role, 'admin');
   assert.equal(me.clearance_level, 5);
 });
-
-test('admin audit logs requires admin role', async () => {
-  assert.equal((await fetch(base + '/api/admin/audit-logs')).status, 401);
-
-  const loginOp = await fetch(base + '/login', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-    body: JSON.stringify({ username: 'operator1', password: 'operator-pass' })
-  });
-  const opCookie = loginOp.headers.get('set-cookie').split(';')[0];
-  assert.equal((await fetch(base + '/api/admin/audit-logs', { headers: { 'Cookie': opCookie } })).status, 403);
-
-  const loginAdmin = await fetch(base + '/login', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-    body: JSON.stringify({ username: 'admin', password: 'change-me-locally' })
-  });
-  const adminCookie = loginAdmin.headers.get('set-cookie').split(';')[0];
-  const res = await fetch(base + '/api/admin/audit-logs', { headers: { 'Cookie': adminCookie } });
-  assert.equal(res.status, 200);
-  const logs = await res.json();
-  assert.ok(Array.isArray(logs) && logs.length > 0);
-});

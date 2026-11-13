@@ -101,6 +101,19 @@ public sealed class RogueAgentOrchestrator : BackgroundService
     // ---------- Startup ----------
     public override async Task StartAsync(CancellationToken ct)
     {
+        if (_attacks.Count > 0)
+        {
+            var loadedIds = _attacks.Select(a => a.Id).ToList();
+            using (var conn = _db.Open())
+            using (var delCmd = conn.CreateCommand())
+            {
+                delCmd.CommandText = $"DELETE FROM attack_dispatch WHERE attack_id NOT IN ({string.Join(",", loadedIds)})";
+                delCmd.ExecuteNonQuery();
+                delCmd.CommandText = $"DELETE FROM attack_dispatch_runtime WHERE attack_id NOT IN ({string.Join(",", loadedIds)})";
+                delCmd.ExecuteNonQuery();
+            }
+        }
+
         foreach (var m in _attacks)
         {
             _db.EnsureDispatchRow(m.Id,

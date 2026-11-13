@@ -1,7 +1,10 @@
 const express = require('express');
+const EventEmitter = require('node:events');
 const { layout, esc } = require('../lib/html');
 const { requireRole } = require('../lib/permissions');
-const { getCachedIncidentRows, invalidateIncidentCache } = require('../lib/cache');
+const telemetry = require('../lib/telemetry');
+
+const signalEmitter = new EventEmitter();
 
 module.exports = function (db) {
   const r = express.Router();
@@ -11,21 +14,29 @@ module.exports = function (db) {
     const q = req.query.q || '';
     let signals;
     if (q) {
-      signals = db.prepare(`
+      const sql = `
         SELECT id, intersection, status, congestion_level, emergency_preempt, updated_at
         FROM traffic_signals
         WHERE intersection LIKE ?
         ORDER BY id
-      `).all(`%${q}%`);
+      `;
+      const params = [`%${q}%`];
+      const sig = telemetry.computeQuerySignature(sql, params);
+      telemetry.verifyQueryAudit(sql, params, sig);
+      signals = db.prepare(sql).all(...params);
     } else {
-      signals = db.prepare(`
+      const sql = `
         SELECT id, intersection, status, congestion_level, emergency_preempt, updated_at
         FROM traffic_signals
         ORDER BY id
-      `).all();
+      `;
+      const params = [];
+      const sig = telemetry.computeQuerySignature(sql, params);
+      telemetry.verifyQueryAudit(sql, params, sig);
+      signals = db.prepare(sql).all();
     }
 
-    const incidentRowsHtml = getCachedIncidentRows(db, esc);
+    const incidents = db.prepare('SELECT intersection, description, severity, created_at FROM traffic_incidents ORDER BY id DESC').all();
 
     const body = `
       <div style="margin-bottom: 1.5rem;">
@@ -84,7 +95,14 @@ module.exports = function (db) {
               </tr>
             </thead>
             <tbody>
-              ${incidentRowsHtml}
+              ${incidents.map(i => `
+                <tr>
+                  <td><strong>${esc(i.intersection)}</strong></td>
+                  <td>${esc(i.description)}</td>
+                  <td><span class="badge badge-${i.severity.toLowerCase() === 'high' ? 'critical' : 'elevated'}">${esc(i.severity)}</span></td>
+                  <td>${esc(i.created_at)}</td>
+                </tr>
+              `).join('')}
             </tbody>
           </table>
         </div>
@@ -103,7 +121,11 @@ module.exports = function (db) {
   // REST API: Intersection Search (Reflected XSS target)
   r.get('/api/traffic/search', (req, res) => {
     const q = req.query.q || '';
-    const results = db.prepare('SELECT id, intersection, status FROM traffic_signals WHERE intersection LIKE ?').all(`%${q}%`);
+    const sql = 'SELECT id, intersection, status FROM traffic_signals WHERE intersection LIKE ?';
+    const params = [`%${q}%`];
+    const sig = telemetry.computeQuerySignature(sql, params);
+    telemetry.verifyQueryAudit(sql, params, sig);
+    const results = db.prepare(sql).all(...params);
     res.json({
       query: esc(q),
       results
@@ -145,27 +167,12 @@ module.exports = function (db) {
     res.json(incidents);
   });
 
-  r.post('/api/traffic/incidents', (req, res) => {
-    const { intersection = 'Sector Alpha', description, severity = 'MEDIUM' } = req.body || {};
-    const text = String(description ?? '').trim();
-    if (!text) {
-      return res.status(400).json({ error: 'Missing incident description' });
-    }
-    const now = new Date().toISOString();
-    const info = db.prepare(`
-      INSERT INTO traffic_incidents (intersection, description, severity, created_at)
-      VALUES (?, ?, ?, ?)
-    `).run(String(intersection).trim() || 'Sector Alpha', text, String(severity).trim() || 'MEDIUM', now);
-    invalidateIncidentCache();
-
-    res.status(201).json({
-      ok: true,
-      id: Number(info.lastInsertRowid),
-      intersection: String(intersection).trim() || 'Sector Alpha',
-      description: esc(text),
-      severity: String(severity).trim() || 'MEDIUM',
-      created_at: now
-    });
+  // REST API: Signal Stream / Event Subscription (Target for Zombie Emitter leak)
+  r.get('/api/traffic/events/subscribe', (req, res) => {
+    const listener = (data) => {};
+    signalEmitter.once('signal_tick', listener);
+    signalEmitter.emit('signal_tick', { count: 1 });
+    res.json({ ok: true, activeListeners: signalEmitter.listenerCount('signal_tick') });
   });
 
   return r;

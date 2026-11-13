@@ -141,28 +141,17 @@ public class RogueAgentOrchestratorTests : IDisposable
 
         var hub = new DummyHubContext();
         var orch = new RogueAgentOrchestrator(hub, _db, new SystemClock(), NullLogger<RogueAgentOrchestrator>.Instance, config);
-        Assert.Equal(23, orch.Attacks.Count);
-        for (int i = 0; i < 23; i++)
+        Assert.Equal(11, orch.Attacks.Count);
+        for (int i = 0; i < 11; i++)
         {
             Assert.Equal(i, orch.Attacks[i].Id);
         }
         Assert.Equal("onboarding", orch.Get(0).SequenceSlot);
-        Assert.Equal("1", orch.Get(1).SequenceSlot);
-        Assert.Equal("2", orch.Get(4).SequenceSlot);
-        Assert.Equal("3", orch.Get(5).SequenceSlot);
-        Assert.Equal("4", orch.Get(2).SequenceSlot);
-        Assert.Equal("5", orch.Get(9).SequenceSlot);
-        Assert.Equal("6", orch.Get(10).SequenceSlot);
-        Assert.Equal("7", orch.Get(7).SequenceSlot);
-        Assert.Equal("8", orch.Get(11).SequenceSlot);
-        Assert.Equal("9", orch.Get(12).SequenceSlot);
-        Assert.Equal("10", orch.Get(13).SequenceSlot);
-        Assert.Equal("11", orch.Get(14).SequenceSlot);
-        Assert.Equal("12", orch.Get(15).SequenceSlot);
-        Assert.Equal("13", orch.Get(16).SequenceSlot);
-        Assert.Equal("14", orch.Get(17).SequenceSlot);
-        Assert.Equal("reserve", orch.Get(3).SequenceSlot);
-        Assert.Equal(5, orch.Get(11).Band);
+        for (int i = 1; i <= 10; i++)
+        {
+            Assert.Equal(i.ToString(), orch.Get(i).SequenceSlot);
+        }
+        Assert.Equal(4, orch.Get(10).Band);
     }
 
     [Fact]

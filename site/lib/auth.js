@@ -39,10 +39,20 @@ function endSession(req, res) {
   res.setHeader('Set-Cookie', 'sid=; HttpOnly; Path=/; Max-Age=0');
 }
 
+function parseBearerToken(authHeader) {
+  if (!authHeader || typeof authHeader !== 'string') return null;
+  const parts = authHeader.trim().split(/\s+/);
+  if (parts.length >= 2 && parts[0].toLowerCase() === 'bearer') {
+    return parts[1];
+  }
+  return null;
+}
+
 function loadUser(db) {
   return (req, _res, next) => {
     const cookies = parseCookies(req.headers.cookie);
     const sid = cookies.sid;
+    const bearer = parseBearerToken(req.headers.authorization);
     const session = sid && sessions.get(sid);
     if (session && session.userId) {
       req.user = db.prepare('SELECT id, username, role, clearance_level FROM users WHERE id = ?').get(session.userId) || null;
@@ -70,6 +80,7 @@ module.exports = {
   hashPassword,
   verifyPassword,
   parseCookies,
+  parseBearerToken,
   startSession,
   endSession,
   loadUser,

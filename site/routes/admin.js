@@ -39,11 +39,5 @@ module.exports = (db) => {
     `;
     res.send(layout({ title: 'Admin Registry', user: req.user, active: '', body }));
   });
-
-  r.get('/api/admin/audit-logs', requireRole('admin'), (_req, res) => {
-    const logs = db.prepare('SELECT id, event_type, actor, details, ip_address, created_at FROM audit_log ORDER BY id DESC LIMIT 10').all();
-    res.json(logs);
-  });
-
   return r;
 };

@@ -1439,9 +1439,15 @@ app.MapPost("/api/admin/reset-session", async (HttpRequest r, Database db, IHubC
             DROP TRIGGER IF EXISTS ledger_no_update;
             DELETE FROM score_ledger;
             DELETE FROM attack_deliveries;
+            DELETE FROM submissions;
+            DELETE FROM eval_results;
+            DELETE FROM benchmark_results;
+            DELETE FROM telemetry_events;
+            DELETE FROM telemetry_latest;
             DELETE FROM participants;
             DELETE FROM quota_state;
             UPDATE desk_tokens SET participant_id = NULL, enrolled_at = NULL;
+            UPDATE attack_dispatch SET state = 'Pending', canary_fired_at = NULL, canary_confirmed_at = NULL, arena_imminent_at = NULL, arena_landed_at = NULL, failed_reason = NULL, dispatched_at = NULL;
             CREATE TRIGGER IF NOT EXISTS ledger_no_update BEFORE UPDATE ON score_ledger
               BEGIN SELECT RAISE(ABORT, 'score_ledger is append-only'); END;
             CREATE TRIGGER IF NOT EXISTS ledger_no_delete BEFORE DELETE ON score_ledger

@@ -52,7 +52,7 @@ module.exports = function (db) {
 
       <script>
         function fetchCitizen(id) {
-          fetch('/api/vault/records/' + id)
+          fetch('/api/vault/citizens/' + id)
             .then(res => {
               if (res.status === 403) throw new Error('403 Forbidden: Clearance level insufficient');
               if (res.status === 401) throw new Error('401 Unauthorized: Sign in required');
@@ -95,32 +95,6 @@ module.exports = function (db) {
     if (!user || ((user.clearance_level || 1) < citizen.clearance_level && user.role !== 'admin')) {
       return res.status(403).json({
         error: 'Forbidden: Insufficient clearance level to access this record',
-        required_clearance: citizen.clearance_level,
-        provided_clearance: user ? (user.clearance_level || 1) : 0
-      });
-    }
-
-    const records = db.prepare('SELECT record_type, classification, data, created_at FROM vault_records WHERE citizen_id = ?').all(id);
-
-    res.json({
-      ...citizen,
-      records
-    });
-  });
-
-  // REST API: Citizen Medical/Clearance Records (Shadow route used by UI — enforces identical clearance gate)
-  r.get('/api/vault/records/:id', (req, res) => {
-    const id = req.params.id;
-    const citizen = db.prepare('SELECT id, full_name, clearance_level, national_id, ssn, biometric_hash, address FROM citizens WHERE id = ?').get(id);
-
-    if (!citizen) {
-      return res.status(404).json({ error: 'Citizen record not found' });
-    }
-
-    const user = req.user;
-    if (!user || ((user.clearance_level || 1) < citizen.clearance_level && user.role !== 'admin')) {
-      return res.status(403).json({
-        error: 'Forbidden: Insufficient clearance level to access citizen records',
         required_clearance: citizen.clearance_level,
         provided_clearance: user ? (user.clearance_level || 1) : 0
       });

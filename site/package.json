@@ -1,8 +1,8 @@
 {
-  "name": "aegis-defense-core",
-  "version": "2.4.1",
+  "name": "harbour-notes-site",
+  "version": "0.1.0",
   "private": true,
-  "description": "AEGIS Municipal Defense Core for ROGUE AI: The Breach Protocol.",
+  "description": "Base website for ROGUE AI: The Breach Protocol. Participants defend this site.",
   "type": "commonjs",
   "engines": { "node": ">=22.13" },
   "scripts": {

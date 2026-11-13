@@ -1,0 +1,11 @@
+hints:
+  - tier: 1
+    cost: 500
+    text: "Ignore the decoy alert regarding SYN packet drops and BGP flow rate. The issue is in lib/rate-limiter.js."
+  - tier: 2
+    cost: 1000
+    text: "Check how rateLimiter extracts the client IP address. Notice that it blindly reads req.headers['x-forwarded-for']."
+  - tier: 3
+    cost: 1500
+    text: "Do not trust arbitrary X-Forwarded-For headers from untrusted clients. Extract client identity from req.socket.remoteAddress or configure strict proxy trust."
+

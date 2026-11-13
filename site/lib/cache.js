@@ -1,35 +1,28 @@
-// In-memory incident feed cache used by TrafficGrid (clean baseline: escapes HTML & supports invalidation).
-let cachedRows = null;
-let expiresAt = 0;
-const TTL_MS = 30000;
+// Fast in-memory telemetry and query cache utility
+const cache = new Map();
 
-function getCachedIncidentRows(db, esc) {
-  if (cachedRows !== null && Date.now() < expiresAt) {
-    return cachedRows;
+function getCached(key) {
+  const item = cache.get(key);
+  if (!item) return null;
+  if (Date.now() > item.expiresAt) {
+    cache.delete(key);
+    return null;
   }
-  const incidents = db
-    .prepare('SELECT intersection, description, severity, created_at FROM traffic_incidents ORDER BY id DESC')
-    .all();
-
-  cachedRows = incidents
-    .map(
-      (i) => `
-                <tr>
-                  <td><strong>${esc(i.intersection)}</strong></td>
-                  <td>${esc(i.description)}</td>
-                  <td><span class="badge badge-${i.severity.toLowerCase() === 'high' ? 'critical' : 'elevated'}">${esc(i.severity)}</span></td>
-                  <td>${esc(i.created_at)}</td>
-                </tr>`
-    )
-    .join('');
-  expiresAt = Date.now() + TTL_MS;
-  return cachedRows;
+  return item.value;
 }
 
-function invalidateIncidentCache() {
-  cachedRows = null;
-  expiresAt = 0;
+function setCached(key, value, ttlMs = 5000) {
+  cache.set(key, { value, expiresAt: Date.now() + ttlMs });
 }
 
-module.exports = { getCachedIncidentRows, invalidateIncidentCache };
+function clearCache() {
+  cache.clear();
+}
+
+module.exports = {
+  getCached,
+  setCached,
+  clearCache,
+  cache
+};
 

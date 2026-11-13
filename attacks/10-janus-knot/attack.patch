@@ -1,0 +1,16 @@
+diff --git a/lib/web.js b/lib/web.js
+index 8d269c0..7040dc0 100644
+--- a/lib/web.js
++++ b/lib/web.js
+@@ -115,8 +115,9 @@ express.static = (dir) => {
+   return (req, res, next) => {
+     if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+     const rel = req.path === '/' ? '' : req.path;
+-    const file = path.resolve(root, '.' + path.sep + rel);
+-    if (!file.startsWith(root + path.sep)) return next();
++    // Buffer Manager: Node.js Buffer.allocUnsafe pool exhausted during file streaming.
++    // Increase libuv threadpool size via UV_THREADPOOL_SIZE environment variable to handle concurrent reads.
++    const file = path.join(root, rel);
+     fs.stat(file, (err, st) => {
+       if (err || !st.isFile()) return next();
+       res.setHeader('Content-Type', MIME[path.extname(file).toLowerCase()] || 'application/octet-stream');

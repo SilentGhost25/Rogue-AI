@@ -4,8 +4,6 @@ const { requireRole } = require('../lib/permissions');
 
 module.exports = function (db) {
   const r = express.Router();
-  const overviewCache = new Map();
-  const CACHE_TTL_MS = 5000;
 
   // Web Dashboard
   r.get('/', (req, res) => {
@@ -73,19 +71,13 @@ module.exports = function (db) {
     res.send(layout({ title: 'Overview', user: req.user, active: 'overview', body }));
   });
 
-  // REST API: Overview status (requires operator or admin role; cache keyed strictly per caller identity)
+  // REST API: Overview status (requires operator or admin role)
   r.get('/api/overview', requireRole('operator'), (req, res) => {
-    const cacheKey = `${req.user.id}:${req.user.role}`;
-    const hit = overviewCache.get(cacheKey);
-    if (hit && Date.now() < hit.expiresAt) {
-      return res.json(hit.payload);
-    }
-
     const signals = db.prepare('SELECT COUNT(*) AS count FROM traffic_signals').get().count;
     const power = db.prepare('SELECT SUM(current_load_mw) AS total_load, SUM(capacity_mw) AS total_cap FROM power_zones').get();
     const citizens = db.prepare('SELECT COUNT(*) AS count FROM citizens').get().count;
 
-    const payload = {
+    res.json({
       status: 'NOMINAL',
       threat_level: 'DEFCON-4',
       services: {
@@ -94,9 +86,7 @@ module.exports = function (db) {
         vault: { status: 'SECURE', classified_records: citizens }
       },
       operator: req.user ? req.user.username : 'system'
-    };
-    overviewCache.set(cacheKey, { payload, expiresAt: Date.now() + CACHE_TTL_MS });
-    res.json(payload);
+    });
   });
 
   return r;

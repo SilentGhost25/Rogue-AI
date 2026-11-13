@@ -1,2 +1,0 @@
-tiers:
-  - { level: 1, cost_centipoints: 200, text: "Nothing in the browser looks wrong. Check what the request needs to prove." }

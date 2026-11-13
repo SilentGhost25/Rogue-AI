@@ -1,11 +1,10 @@
 const express = require('express');
 const fs = require('node:fs');
-const path = require('node:path');
 const { layout, esc } = require('../lib/html');
+const { resolveReportPath } = require('../lib/reports');
 
 module.exports = function (db) {
   const r = express.Router();
-  const EXPORT_ROOT = path.resolve(__dirname, '..', 'public');
 
   // Security Center Web Interface
   r.get('/security', (req, res) => {
@@ -84,31 +83,17 @@ module.exports = function (db) {
     });
   });
 
-  // REST API: Asset & Log Export (strict path boundary enforcement against single & double encoding)
-  r.get('/api/security/export', (req, res) => {
-    const raw = String(req.query.file || 'aegis.css');
-    let decoded = raw;
-    for (let i = 0; i < 3; i++) {
-      try {
-        const next = decodeURIComponent(decoded);
-        if (next === decoded) break;
-        decoded = next;
-      } catch {
-        return res.status(400).json({ error: 'Malformed file parameter' });
-      }
+  // REST API: Security Report Download (Target for Chameleon double-encoding traversal)
+  r.get('/api/security/reports/download', (req, res) => {
+    const file = req.query.file;
+    if (!file) {
+      return res.status(400).json({ error: 'Missing file parameter' });
     }
-    if (!decoded || decoded.includes('\0') || path.isAbsolute(decoded) || /^[a-zA-Z]:/.test(decoded)) {
-      return res.status(403).json({ error: 'Access denied: invalid export path' });
+    const targetPath = resolveReportPath(file);
+    if (!targetPath || !fs.existsSync(targetPath)) {
+      return res.status(403).json({ error: 'Access denied: File outside permitted report directory or not found' });
     }
-    const cleanRel = decoded.replace(/^[/\\]+/, '');
-    const resolved = path.resolve(EXPORT_ROOT, cleanRel);
-    if (!resolved.startsWith(EXPORT_ROOT + path.sep)) {
-      return res.status(403).json({ error: 'Access denied: path escapes export root' });
-    }
-    if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
-      return res.status(404).json({ error: 'Export file not found' });
-    }
-    res.type('text/plain').send(fs.readFileSync(resolved, 'utf8'));
+    res.sendFile(targetPath);
   });
 
   return r;
