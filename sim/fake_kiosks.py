@@ -88,6 +88,8 @@ def kiosk_worker(base: str, n: int, rounds: int, token: str | None, eval_load: b
     else:
         reg = call(base, "/api/kiosk/register", {"name": display_name, "kioskId": kiosk_id})
         pid = reg.get("participantId")
+        if reg.get("token"):
+            headers["X-Kiosk-Token"] = reg["token"]
 
     if not pid:
         with lock:

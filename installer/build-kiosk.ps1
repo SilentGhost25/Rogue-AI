@@ -17,7 +17,9 @@ Write-Host "==========================================================" -Foregro
 
 $env:DOTNET_ROOT = "$env:LOCALAPPDATA\dotnet"
 $env:Path = "$env:LOCALAPPDATA\dotnet;$env:Path"
-$dotnetCmd = if (Test-Path "$env:LOCALAPPDATA\dotnet\dotnet.exe") { "$env:LOCALAPPDATA\dotnet\dotnet.exe" } else { "dotnet" }
+$localDotnet = "$env:LOCALAPPDATA\dotnet\dotnet.exe"
+$dotnetCmd = if (Test-Path $localDotnet) { $localDotnet } else { (Get-Command dotnet -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Source) }
+if (-not $dotnetCmd) { $dotnetCmd = "dotnet" }
 
 $root = Resolve-Path (Join-Path $PSScriptRoot "..")
 $kioskProj = Join-Path $root "kiosk\LabKiosk\LabKiosk.csproj"

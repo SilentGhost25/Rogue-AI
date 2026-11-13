@@ -206,10 +206,13 @@ JOB_OBJECT_LIMIT_PROCESS_TIME = 0x2
 
 
 class JobObjectSandbox:
-    """Encapsulates a Win32 Job Object for hard memory, process count, CPU time limit, and auto-kill containment."""
+    """Encapsulates a Win32 Job Object (Windows) or POSIX rlimit containment for hard memory, process count, CPU time limit, and auto-kill containment."""
 
     def __init__(self, max_memory_mb: int = 512, max_processes: int = 16, max_cpu_time_seconds: int = 15):
         self.handle = None
+        self.max_memory_mb = max_memory_mb
+        self.max_processes = max_processes
+        self.max_cpu_time_seconds = max_cpu_time_seconds
         if sys.platform == "win32":
             try:
                 self.handle = ctypes.windll.kernel32.CreateJobObjectW(None, None)
@@ -234,11 +237,27 @@ class JobObjectSandbox:
             except Exception:
                 self.handle = None
 
+    def posix_preexec_fn(self):
+        """Sets resource limits (RAM, CPU, processes) for child process containment on POSIX systems."""
+        if sys.platform != "win32":
+            try:
+                import resource
+                mem_bytes = self.max_memory_mb * 1024 * 1024
+                # Virtual memory limit
+                resource.setrlimit(resource.RLIMIT_AS, (mem_bytes, mem_bytes))
+                # CPU time limit in seconds
+                resource.setrlimit(resource.RLIMIT_CPU, (self.max_cpu_time_seconds, self.max_cpu_time_seconds))
+                # Maximum number of child processes
+                if hasattr(resource, "RLIMIT_NPROC"):
+                    resource.setrlimit(resource.RLIMIT_NPROC, (self.max_processes, self.max_processes))
+            except Exception:
+                pass
+
     def assign(self, proc) -> bool:
         if self.handle and sys.platform == "win32" and hasattr(proc, "_handle") and proc._handle:
             res = ctypes.windll.kernel32.AssignProcessToJobObject(self.handle, int(proc._handle))
             return bool(res)
-        return False
+        return sys.platform != "win32"
 
     def terminate_all(self):
         """Immediately and synchronously terminates all processes assigned to this job."""
@@ -402,7 +421,8 @@ def launch_sandboxed_node(slot_id: int, slot_dir: Path, env: dict, job_sandbox: 
         cwd=str(slot_dir),
         env=env,
         stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL
+        stderr=subprocess.DEVNULL,
+        preexec_fn=job_sandbox.posix_preexec_fn if sys.platform != "win32" else None
     )
     job_sandbox.assign(proc)
     return proc
