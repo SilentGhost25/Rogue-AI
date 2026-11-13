@@ -1,6 +1,7 @@
 using System.IO;
 using System.Net.Http;
 using System.Net.Http.Json;
+using System.Text.Json;
 
 namespace LabKiosk.Services;
 
@@ -20,6 +21,7 @@ public sealed class ApiClient
     }
 
     public string? Token { get; private set; }
+    public string? RegisteredDeskId { get; private set; }
 
     public void SetToken(string token)
     {
@@ -36,6 +38,10 @@ public sealed class ApiClient
         if (!string.IsNullOrEmpty(body?.Token))
         {
             SetToken(body.Token);
+        }
+        if (!string.IsNullOrEmpty(body?.DeskId))
+        {
+            RegisteredDeskId = body.DeskId;
         }
         return body!.ParticipantId;
     }
@@ -75,10 +81,31 @@ public sealed class ApiClient
         res.EnsureSuccessStatusCode();
     }
 
-    public async Task SubmitAsync(string participantId)
+    public async Task<string?> SubmitAsync(string participantId)
     {
         var res = await _http.PostAsync($"/api/kiosk/{participantId}/submit", null);
         res.EnsureSuccessStatusCode();
+        try
+        {
+            var doc = await res.Content.ReadFromJsonAsync<JsonElement>();
+            if (doc.TryGetProperty("submissionId", out var sid)) return sid.GetString();
+        }
+        catch { }
+        return null;
+    }
+
+    public async Task<JsonElement?> GetSubmissionStatusAsync(string participantId, string submissionId)
+    {
+        try
+        {
+            var res = await _http.GetAsync($"/api/kiosk/{participantId}/submission/{submissionId}/status");
+            if (res.IsSuccessStatusCode)
+            {
+                return await res.Content.ReadFromJsonAsync<JsonElement>();
+            }
+        }
+        catch { }
+        return null;
     }
 
     public async Task SendTelemetryAsync(string participantId, string type, object? payload = null)
@@ -87,7 +114,7 @@ public sealed class ApiClient
         catch (HttpRequestException) { /* telemetry is best effort */ }
     }
 
-    private sealed record RegisterResponse(string ParticipantId, string? Token = null);
+    private sealed record RegisterResponse(string ParticipantId, string? Token = null, string? DeskId = null);
     private sealed record PayloadResponse(int AttackId, List<SnapshotFileDto> Files);
     private sealed record FetchResponse(List<SnapshotFileDto> Files);
 }

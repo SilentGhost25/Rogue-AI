@@ -264,6 +264,11 @@ public partial class MainWindow : Window
                     if (!await HostDiscoveryClient.IsHealthyAsync(_s.ServerUrl))
                         throw new HttpRequestException($"Organizer unreachable at {_s.ServerUrl}");
                     _pid = await _api.RegisterAsync(_s.DisplayName, _s.KioskId, _s.DeskId, _s.Password, _s.GitHubHandle, _s.GoogleAccount);
+                    if (!string.IsNullOrEmpty(_api.RegisteredDeskId) && _s.DeskId != _api.RegisteredDeskId)
+                    {
+                        _s.DeskId = _api.RegisteredDeskId;
+                        _s.Save();
+                    }
                     if (!string.IsNullOrEmpty(_api.Token))
                     {
                         _s.DeskToken = _api.Token;
@@ -318,7 +323,6 @@ public partial class MainWindow : Window
             _hub.Paused += () => Status("Event paused by the organizers.");
             _hub.Resumed += () => Status("Event resumed.");
             _hub.Eliminated += () => Dispatcher.InvokeAsync(Eliminate);
-            _hub.Verdict += OnVerdict;
             _hub.VerdictDetailed += OnVerdictDetailed;
             _hub.Reconnected += ResyncAsync;
             await _hub.StartAsync();
@@ -416,6 +420,7 @@ public partial class MainWindow : Window
             var (exe, args) = ExeResolver.ForLaunch(ocPath, $"attach {_oc.Url}");
             TermOc.Launch(new LaunchSpec(exe, args, _s.WorkspacePath, _oc.Environment, _oc.StartAsync));
         }
+        _ = Dispatcher.InvokeAsync(TermAgy.FocusTerminal);
     }
 
     /// <summary>
@@ -918,10 +923,10 @@ public partial class MainWindow : Window
             // ---- Normal submit flow ----------------------------------------------------------------
             Status("Uploading your fix to evaluation engine...");
             await _sync.FlushAsync(force: true);
-            await _api.SubmitAsync(_pid);
+            var subId = await _api.SubmitAsync(_pid);
             Status("Fix submitted! Automated test & security checks are running... [0s / 60s]");
 
-            // Safety timeout & live status ticker: if verdict is delayed past 65s, re-enable submit
+            // Safety timeout & live status ticker: if verdict is delayed, poll status or re-enable submit
             _submitTimeoutCts?.Cancel();
             _submitTimeoutCts = new CancellationTokenSource();
             var token = _submitTimeoutCts.Token;
@@ -933,6 +938,25 @@ public partial class MainWindow : Window
                     {
                         await Task.Delay(1000, token);
                         if (token.IsCancellationRequested) return;
+
+                        // Fallback polling every 2 seconds if submissionId is known
+                        if (!string.IsNullOrEmpty(subId) && elapsed >= 2 && elapsed % 2 == 0)
+                        {
+                            var statusDoc = await _api.GetSubmissionStatusAsync(_pid!, subId);
+                            if (statusDoc.HasValue && statusDoc.Value.TryGetProperty("results", out var resArr) && resArr.GetArrayLength() > 0)
+                            {
+                                foreach (var item in resArr.EnumerateArray())
+                                {
+                                    var aid = item.GetProperty("attackId").GetInt32();
+                                    var st = item.GetProperty("status").GetString() ?? "FAILED";
+                                    var rsn = item.GetProperty("reason").GetString() ?? "";
+                                    var pts = item.GetProperty("points").GetDouble();
+                                    OnVerdictDetailed(aid, st, rsn, pts);
+                                }
+                                return;
+                            }
+                        }
+
                         if (elapsed < 60 && elapsed % 5 == 0)
                         {
                             await Dispatcher.InvokeAsync(() =>
@@ -1145,6 +1169,8 @@ public partial class MainWindow : Window
         var agy = TabAgy.IsChecked == true;
         TermAgy.Visibility = agy ? Visibility.Visible : Visibility.Hidden;
         TermOc.Visibility = agy ? Visibility.Hidden : Visibility.Visible;
+        if (agy) TermAgy.FocusTerminal();
+        else TermOc.FocusTerminal();
     }
 
     private void RefreshMeters()

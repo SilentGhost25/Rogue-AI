@@ -113,6 +113,10 @@ public partial class Database
               normalized_hash TEXT NOT NULL DEFAULT '',
               created_at TEXT NOT NULL,
               PRIMARY KEY (participant_id, attack_id, rel_path));
+            CREATE TABLE IF NOT EXISTS cohort_assignments (
+              participant_id TEXT PRIMARY KEY,
+              column_index INTEGER NOT NULL,
+              assigned_at TEXT NOT NULL);
             CREATE UNIQUE INDEX IF NOT EXISTS ux_attack_deliveries_attack_participant
               ON attack_deliveries (attack_id, participant_id);
             CREATE TABLE IF NOT EXISTS event_log (
@@ -362,5 +366,66 @@ public partial class Database
             list.Add((rel, hash, norm));
         }
         return list;
+    }
+
+    public Dictionary<int, List<string>> GetCohortAssignments()
+    {
+        var dict = new Dictionary<int, List<string>>();
+        for (int i = 0; i < 5; i++) dict[i] = new List<string>();
+        using var c = Open();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = "SELECT column_index, participant_id FROM cohort_assignments ORDER BY column_index, assigned_at";
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+        {
+            var col = r.GetInt32(0);
+            var pid = r.GetString(1);
+            if (!dict.ContainsKey(col)) dict[col] = new List<string>();
+            dict[col].Add(pid);
+        }
+        return dict;
+    }
+
+    public List<string> GetParticipantIdsInCohort(int columnIndex)
+    {
+        var list = new List<string>();
+        using var c = Open();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = "SELECT participant_id FROM cohort_assignments WHERE column_index = $col";
+        cmd.Parameters.AddWithValue("$col", columnIndex);
+        using var r = cmd.ExecuteReader();
+        while (r.Read()) list.Add(r.GetString(0));
+        return list;
+    }
+
+    public void AssignCohortsRandomly(int columnCount = 5, int maxPerColumn = 10)
+    {
+        using var c = Open();
+        var participants = new List<string>();
+        using (var cmd = c.CreateCommand())
+        {
+            cmd.CommandText = "SELECT id FROM participants WHERE status != 'disqualified' ORDER BY RANDOM()";
+            using var r = cmd.ExecuteReader();
+            while (r.Read()) participants.Add(r.GetString(0));
+        }
+
+        using (var del = c.CreateCommand())
+        {
+            del.CommandText = "DELETE FROM cohort_assignments";
+            del.ExecuteNonQuery();
+        }
+
+        var now = DateTime.UtcNow.ToString("O");
+        for (int i = 0; i < participants.Count; i++)
+        {
+            if (i >= columnCount * maxPerColumn) break;
+            var col = i % columnCount;
+            using var ins = c.CreateCommand();
+            ins.CommandText = "INSERT INTO cohort_assignments (participant_id, column_index, assigned_at) VALUES ($p, $col, $t)";
+            ins.Parameters.AddWithValue("$p", participants[i]);
+            ins.Parameters.AddWithValue("$col", col);
+            ins.Parameters.AddWithValue("$t", now);
+            ins.ExecuteNonQuery();
+        }
     }
 }

@@ -152,9 +152,9 @@ begin
     'Specify the Host Server connection for this participant laptop.',
     'Keep AUTO for automatic dynamic discovery, or enter the Host IP / URL:');
   ServerPage.Add('Organizer Host IP / URL (or AUTO for dynamic discovery):', False);
-  ServerPage.Add('Participant Desk Identifier (e.g. DESK-01, DESK-02):', False);
+  ServerPage.Add('Participant Desk Identifier (enter DESK-01..50 or AUTO for collision-free auto lease):', False);
   ServerPage.Values[0] := 'AUTO';
-  ServerPage.Values[1] := 'DESK-01';
+  ServerPage.Values[1] := 'AUTO';
 end;
 
 function ShouldSkipPage(PageID: Integer): Boolean;
@@ -185,7 +185,10 @@ begin
     end;
 
     DeskIdVal := Trim(ServerPage.Values[1]);
-    if DeskIdVal = '' then DeskIdVal := 'DESK-01';
+    if (CompareText(DeskIdVal, 'AUTO') = 0) or (DeskIdVal = '') then
+      DeskIdVal := 'AUTO';
+    if ExpandConstant('{param:DESKID|}') <> '' then
+      DeskIdVal := Trim(ExpandConstant('{param:DESKID|}'));
 
     JsonContent := '{' + #13#10 +
       '  "ServerUrl": "' + ServerUrlVal + '",' + #13#10 +

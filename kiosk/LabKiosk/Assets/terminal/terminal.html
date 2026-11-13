@@ -62,10 +62,20 @@ const post = (m) => window.chrome.webview.postMessage(m);
     else if (m.type === 'status') term.write('\x1b[90m' + m.text + '\x1b[0m\r\n');
     else if (m.type === 'ended') { ended = true; term.write('\r\n\x1b[90m[session ended] Press Enter to start it again.\x1b[0m\r\n'); }
     else if (m.type === 'locked') { locked = true; term.write('\r\n\x1b[31m' + m.text + '\x1b[0m\r\n'); }
+    else if (m.type === 'focus') { ensureFocus(); }
   });
 
-  term.focus();
-  document.addEventListener('click', () => term.focus());
+  window.term = term;
+  const ensureFocus = () => {
+    try {
+      term.focus();
+    } catch (e) {}
+  };
+  ensureFocus();
+  window.addEventListener('focus', ensureFocus);
+  document.addEventListener('mousedown', ensureFocus);
+  document.addEventListener('pointerdown', ensureFocus);
+  document.addEventListener('click', ensureFocus);
   post({ type: 'ready', cols: term.cols, rows: term.rows });
 })();
 </script>

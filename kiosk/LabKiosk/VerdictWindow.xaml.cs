@@ -20,6 +20,8 @@ public partial class VerdictWindow : Window
 
         AttackId = attackId;
         Owner = owner;
+        Topmost = true;
+        WindowStartupLocation = WindowStartupLocation.CenterScreen;
         if (owner is not null)
         {
             Left = owner.Left;

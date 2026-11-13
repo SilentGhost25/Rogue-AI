@@ -585,7 +585,7 @@ async function init() {
     btn.disabled = true;
     btn.textContent = 'Refreshing...';
     try {
-      await Promise.allSettled([refreshEvaluations(), refreshKiosks()]);
+      await Promise.allSettled([refreshEvaluations(), refreshKiosks(), refreshCohorts()]);
       logMessage('[REFRESH] Participant scorecards synced.');
       btn.textContent = '✓ Refreshed';
     } finally {
@@ -619,12 +619,158 @@ async function init() {
   refreshAttacks();
   refreshEvaluations();
   refreshKiosks();
+  refreshCohorts();
   setInterval(() => {
     checkEventStatus();
     refreshAttacks();
     refreshEvaluations();
     refreshKiosks();
+    refreshCohorts();
   }, 3000);
+}
+
+// ---- Cohort Matrix Functions ----
+let currentCohortsData = null;
+
+const ATTACK_NAMES_SHORT = {
+  0: "0: Warm-up",
+  1: "1: Phantom Heap",
+  2: "2: Schrödinger",
+  3: "3: Hydra Query",
+  4: "4: Mirage Route",
+  5: "5: Polite Intruder",
+  6: "6: Chameleon",
+  7: "7: Zombie Emitter",
+  8: "8: Poison Proto",
+  9: "9: Proxy Mirage",
+  10: "10: Janus Knot (Boss)"
+};
+
+async function refreshCohorts() {
+  try {
+    const data = await api('/api/admin/cohorts');
+    currentCohortsData = data;
+    renderCohortMatrix(data);
+  } catch (err) {
+    console.error('Error refreshing cohorts:', err);
+  }
+}
+
+function renderCohortMatrix(data) {
+  const container = document.getElementById('cohort-matrix-grid');
+  const countEl = document.getElementById('cohort-station-count');
+  if (!container || !data || !Array.isArray(data.columns)) return;
+
+  if (countEl) {
+    countEl.textContent = `${data.totalParticipants || 0} / 50 stations`;
+  }
+
+  const attackOptionsHtml = Object.entries(ATTACK_NAMES_SHORT)
+    .map(([num, name]) => `<option value="${num}">Act #${name}</option>`)
+    .join('');
+
+  container.innerHTML = data.columns.map(col => {
+    const participants = col.participants || [];
+    const count = participants.length;
+
+    let cardsHtml = participants.map(p => {
+      const isOnline = p.status === 'online';
+      const statusPill = isOnline 
+        ? `<span class="cohort-status-pill cohort-status-online">Online</span>` 
+        : `<span class="cohort-status-pill cohort-status-offline">Offline</span>`;
+      
+      const activeAttackBadge = p.activeAttack !== null && p.activeAttack !== undefined
+        ? `<span class="badge active" style="font-size:10px;">Attack #${p.activeAttack} Active</span>`
+        : `<span class="muted" style="font-size:10px;">Idle</span>`;
+
+      return `
+        <div class="cohort-card">
+          <div class="cohort-card-top">
+            <span class="cohort-desk-tag">${escapeHtml(p.deskId || p.id)}</span>
+            ${statusPill}
+          </div>
+          <div class="cohort-card-sub">
+            <span class="muted">${escapeHtml(p.name || p.id)}</span>
+            <span class="bold" style="color:#10b981;">${(p.score || 0).toFixed(1)} pts</span>
+          </div>
+          <div class="cohort-card-attack">
+            ${activeAttackBadge}
+            <button class="btn sm" style="padding:2px 6px; font-size:10px;" onclick="promptFireOnKiosk('${escapeHtml(p.id)}', '${escapeHtml(p.deskId || p.name)}')">⚡ Fire</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    const emptySlotsCount = Math.max(0, 10 - count);
+    for (let slot = count + 1; slot <= 10; slot++) {
+      cardsHtml += `<div class="cohort-slot-empty">[Slot ${slot} - Open]</div>`;
+    }
+
+    return `
+      <div class="cohort-col">
+        <div class="cohort-header">
+          <div class="cohort-header-title">
+            <span>${escapeHtml(col.title)}</span>
+            <span class="badge" style="font-size:11px;">${count} / 10 Active</span>
+          </div>
+          <div class="cohort-act-control">
+            <select id="cohort-select-${col.columnIndex}" class="cohort-select">
+              ${attackOptionsHtml}
+            </select>
+            <button class="cohort-launch-btn" onclick="fireCohortAttack(${col.columnIndex}, '${escapeHtml(col.title)}')">
+              ⚡ Launch
+            </button>
+          </div>
+        </div>
+        <div class="cohort-card-list">
+          ${cardsHtml}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function shuffleCohorts() {
+  if (!confirm('Randomize & assign all currently registered stations into 5 columns (10 per column)?')) {
+    return;
+  }
+  try {
+    await api('/api/admin/cohorts/shuffle', { method: 'POST' });
+    logMessage('🎲 [COHORTS] Successfully randomized and assigned stations into 5 columns.');
+    await refreshCohorts();
+  } catch (err) {
+    alert(`Failed to randomize cohorts: ${err.message}`);
+    logMessage(`[ERROR] Randomize cohorts: ${err.message}`);
+  }
+}
+
+async function fireCohortAttack(columnIndex, colTitle) {
+  const selectEl = document.getElementById(`cohort-select-${columnIndex}`);
+  const attackId = selectEl ? parseInt(selectEl.value, 10) : 0;
+  const attackName = ATTACK_NAMES_SHORT[attackId] || `Attack #${attackId}`;
+
+  const colData = currentCohortsData?.columns?.find(c => c.columnIndex === columnIndex);
+  const targetCount = colData?.participants?.length || 0;
+
+  if (targetCount === 0) {
+    alert(`No active stations currently assigned to ${colTitle}. Station must connect first.`);
+    return;
+  }
+
+  if (!confirm(`Deploy ${attackName} to ALL ${targetCount} active stations in ${colTitle}?`)) {
+    return;
+  }
+
+  try {
+    const res = await api(`/api/admin/cohorts/${columnIndex}/fire?attackId=${attackId}`, { method: 'POST' });
+    logMessage(`🔥 [COHORT LAUNCH] ${attackName} deployed to ${colTitle} (${res.targetCount} stations targeted)!`);
+    await refreshCohorts();
+    await refreshAttacks();
+    await refreshEvaluations();
+  } catch (err) {
+    alert(`Failed to launch attack on ${colTitle}: ${err.message}`);
+    logMessage(`[ERROR] Cohort launch on ${colTitle}: ${err.message}`);
+  }
 }
 
 document.addEventListener('DOMContentLoaded', init);

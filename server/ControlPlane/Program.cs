@@ -290,16 +290,32 @@ app.MapPost("/api/kiosk/enroll", async (EnrollRequest req, Database db, IHubCont
 app.MapPost("/api/kiosk/register", async (RegisterRequest req, HttpRequest httpReq, Database db, IHubContext<BreachHub> hub) =>
 {
     var remoteIp = httpReq.HttpContext.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1";
-    var desk = !string.IsNullOrWhiteSpace(req.DeskId) ? req.DeskId : req.KioskId;
+    var rawDesk = (req.DeskId ?? "").Trim();
+    bool isAuto = string.IsNullOrWhiteSpace(rawDesk) || rawDesk.Equals("AUTO", StringComparison.OrdinalIgnoreCase);
+
     using var c = db.Open();
     string id;
-    using var find = c.CreateCommand();
-    find.CommandText = "SELECT id FROM participants WHERE kiosk_id = $k OR (desk_id = $d AND desk_id != '')";
-    find.Parameters.AddWithValue("$k", req.KioskId);
-    find.Parameters.AddWithValue("$d", desk);
-    if (find.ExecuteScalar() is string existing)
+    string desk = rawDesk;
+
+    // Check if this physical machine (kiosk_id) already has an existing registration
+    string? existingIdByKiosk = null;
+    string? existingDeskByKiosk = null;
+    using (var findK = c.CreateCommand())
     {
-        id = existing;
+        findK.CommandText = "SELECT id, desk_id FROM participants WHERE kiosk_id = $k LIMIT 1";
+        findK.Parameters.AddWithValue("$k", req.KioskId);
+        using var rk = findK.ExecuteReader();
+        if (rk.Read())
+        {
+            existingIdByKiosk = rk.GetString(0);
+            existingDeskByKiosk = rk.IsDBNull(1) ? null : rk.GetString(1);
+        }
+    }
+
+    if (existingIdByKiosk != null)
+    {
+        id = existingIdByKiosk;
+        desk = !isAuto ? rawDesk : (existingDeskByKiosk ?? "DESK-01");
         using var upd = c.CreateCommand();
         upd.CommandText = "UPDATE participants SET name = $n, desk_id = $d, password = $pwd, ip_address = $ip, last_seen_at = $t, status = 'online' WHERE id = $id";
         upd.Parameters.AddWithValue("$n", req.Name);
@@ -314,6 +330,43 @@ app.MapPost("/api/kiosk/register", async (RegisterRequest req, HttpRequest httpR
     }
     else
     {
+        // Check if the requested desk is already taken by another station
+        bool deskTaken = false;
+        if (!isAuto)
+        {
+            using var chk = c.CreateCommand();
+            chk.CommandText = "SELECT COUNT(*) FROM participants WHERE desk_id = $d AND kiosk_id != $k";
+            chk.Parameters.AddWithValue("$d", rawDesk);
+            chk.Parameters.AddWithValue("$k", req.KioskId);
+            deskTaken = Convert.ToInt64(chk.ExecuteScalar()) > 0;
+        }
+
+        if (isAuto || deskTaken)
+        {
+            // Auto-lease the lowest available DESK-01..50
+            var takenDesks = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            using (var tdCmd = c.CreateCommand())
+            {
+                tdCmd.CommandText = "SELECT desk_id FROM participants WHERE desk_id LIKE 'DESK-%'";
+                using var rtd = tdCmd.ExecuteReader();
+                while (rtd.Read()) takenDesks.Add(rtd.GetString(0));
+            }
+            desk = "";
+            for (int i = 1; i <= 50; i++)
+            {
+                var candidate = $"DESK-{i:D2}";
+                if (!takenDesks.Contains(candidate))
+                {
+                    desk = candidate;
+                    break;
+                }
+            }
+            if (string.IsNullOrEmpty(desk))
+            {
+                desk = $"DESK-{Guid.NewGuid().ToString("N")[..4].ToUpper()}";
+            }
+        }
+
         id = "p" + Guid.NewGuid().ToString("N")[..10];
         using var ins = c.CreateCommand();
         ins.CommandText = "INSERT INTO participants (id, name, kiosk_id, desk_id, password, ip_address, last_seen_at, status, created_at) VALUES ($i,$n,$k,$d,$pwd,$ip,$t,'online',$t)";
@@ -358,7 +411,7 @@ app.MapPost("/api/kiosk/register", async (RegisterRequest req, HttpRequest httpR
         insTok.ExecuteNonQuery();
     }
 
-    return Results.Ok(new { participantId = id, token = token });
+    return Results.Ok(new { participantId = id, token = token, deskId = desk });
 });
 
 app.MapPost("/api/kiosk/{id}/snapshot", async (string id, SnapshotRequest req, HttpRequest httpReq, WorkspaceStore store, Database db, IHubContext<BreachHub> hub) =>
@@ -623,6 +676,7 @@ app.MapPost("/api/kiosk/{id}/submit", (string id, HttpRequest httpReq, Database 
                         }
                         db.Log("VERDICT", id, aid, JsonSerializer.Serialize(new { status = "INCORRECT", score = -1.0, reason = rejReason }));
                         await hub.Clients.Group($"p:{id}").SendAsync("VERDICT", aid, "INCORRECT", rejReason, -1.0);
+                        await hub.Clients.Group($"p:{id}").SendAsync("VERDICT_DETAILED", aid, "INCORRECT", rejReason, -1.0);
                         await hub.Clients.Group("admins").SendAsync("VERDICT", id, aid, "INCORRECT", rejReason, -1.0);
                         await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, id);
                         continue;
@@ -767,6 +821,7 @@ app.MapPost("/api/kiosk/{id}/submit", (string id, HttpRequest httpReq, Database 
 
                         // Broadcast live verdict to participant kiosk!
                         await hub.Clients.Group($"p:{id}").SendAsync("VERDICT", v.Attack_Id, v.Status, v.Reason, score);
+                        await hub.Clients.Group($"p:{id}").SendAsync("VERDICT_DETAILED", v.Attack_Id, v.Status, v.Reason, score);
                         await hub.Clients.Group("admins").SendAsync("VERDICT", id, v.Attack_Id, v.Status, v.Reason, score);
                         await hub.Clients.Group("projectors").SendAsync("VERDICT", id, v.Attack_Id, v.Status, v.Reason, score);
                         await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, id);
@@ -791,6 +846,7 @@ app.MapPost("/api/kiosk/{id}/submit", (string id, HttpRequest httpReq, Database 
                 foreach (var aid in activeAttacks)
                 {
                     await hub.Clients.Group($"p:{id}").SendAsync("VERDICT", aid, "FAILED", $"Engine error ({(int)evalRes.StatusCode}): {errText}", 0.0);
+                    await hub.Clients.Group($"p:{id}").SendAsync("VERDICT_DETAILED", aid, "FAILED", $"Engine error ({(int)evalRes.StatusCode}): {errText}", 0.0);
                     await hub.Clients.Group("admins").SendAsync("VERDICT", id, aid, "FAILED", $"Engine error: {errText}", 0.0);
                 }
                 await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, id);
@@ -811,6 +867,7 @@ app.MapPost("/api/kiosk/{id}/submit", (string id, HttpRequest httpReq, Database 
             foreach (var aid in activeAttacks)
             {
                 await hub.Clients.Group($"p:{id}").SendAsync("VERDICT", aid, "FAILED", $"Evaluator connection error: {ex.Message}", 0.0);
+                await hub.Clients.Group($"p:{id}").SendAsync("VERDICT_DETAILED", aid, "FAILED", $"Evaluator connection error: {ex.Message}", 0.0);
                 await hub.Clients.Group("admins").SendAsync("VERDICT", id, aid, "FAILED", $"Evaluator error: {ex.Message}", 0.0);
             }
             await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, id);
@@ -818,6 +875,38 @@ app.MapPost("/api/kiosk/{id}/submit", (string id, HttpRequest httpReq, Database 
     });
 
     return Results.Accepted(value: new { submissionId = sid, status = "evaluating" });
+});
+
+app.MapGet("/api/kiosk/{id}/submission/{sid}/status", (string id, string sid, HttpRequest httpReq, Database db) =>
+{
+    var token = httpReq.Headers["X-Kiosk-Token"].ToString();
+    if (string.IsNullOrWhiteSpace(token) || !db.ValidateDeskToken(token, id))
+    {
+        return Results.StatusCode(403);
+    }
+    using var c = db.Open();
+    string? subStatus = null;
+    using (var cmd = c.CreateCommand())
+    {
+        cmd.CommandText = "SELECT status FROM submissions WHERE id = $sid AND participant_id = $p";
+        cmd.Parameters.AddWithValue("$sid", sid);
+        cmd.Parameters.AddWithValue("$p", id);
+        subStatus = cmd.ExecuteScalar() as string;
+    }
+    if (subStatus == null) return Results.NotFound();
+
+    var results = new List<object>();
+    using (var rCmd = c.CreateCommand())
+    {
+        rCmd.CommandText = "SELECT e.attack_id, e.status, e.reason, COALESCE(s.points, 0) FROM eval_results e LEFT JOIN score_ledger s ON s.run_id = e.submission_id AND s.attack_id = e.attack_id WHERE e.submission_id = $sid";
+        rCmd.Parameters.AddWithValue("$sid", sid);
+        using var r = rCmd.ExecuteReader();
+        while (r.Read())
+        {
+            results.Add(new { attackId = r.GetInt32(0), status = r.GetString(1), reason = r.GetString(2), points = r.GetDouble(3) });
+        }
+    }
+    return Results.Ok(new { submissionId = sid, status = subStatus, results });
 });
 
 var handleTelemetry = async (string id, TelemetryRequest req, HttpRequest httpReq, Database db, IHubContext<BreachHub> hub) =>
@@ -1358,6 +1447,144 @@ app.MapPost("/api/admin/event/unfreeze", async (HttpRequest r, Database db, Even
     await hub.Clients.All.SendAsync(HubEvents.ScoreboardUnfrozen, new { frozen = false });
     await hub.Clients.All.SendAsync(HubEvents.EventUnfrozen, new { frozen = false });
     return Results.Ok(new { frozen = false });
+});
+
+app.MapGet("/api/admin/cohorts", (HttpRequest r, Database db) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+
+    using var c = db.Open();
+    var participantsMap = new Dictionary<string, dynamic>();
+    using (var pCmd = c.CreateCommand())
+    {
+        pCmd.CommandText = """
+            SELECT p.id, p.name, COALESCE(p.desk_id, p.kiosk_id) as desk, p.ip_address, p.status,
+                   COALESCE((SELECT SUM(points) FROM score_ledger WHERE participant_id = p.id), 0.0) as score,
+                   (SELECT COUNT(*) FROM attack_deliveries WHERE participant_id = p.id AND solved_at IS NOT NULL) as solved_count,
+                   (SELECT attack_id FROM attack_deliveries WHERE participant_id = p.id AND landed_at IS NOT NULL AND solved_at IS NULL ORDER BY attack_id DESC LIMIT 1) as active_aid
+            FROM participants p
+            WHERE p.status != 'disqualified'
+            ORDER BY desk
+        """;
+        using var pr = pCmd.ExecuteReader();
+        while (pr.Read())
+        {
+            var pid = pr.GetString(0);
+            var name = pr.GetString(1);
+            var desk = pr.IsDBNull(2) ? pid : pr.GetString(2);
+            var ip = pr.IsDBNull(3) ? "127.0.0.1" : pr.GetString(3);
+            var st = pr.IsDBNull(4) ? "online" : pr.GetString(4);
+            var score = pr.IsDBNull(5) ? 0.0 : pr.GetDouble(5);
+            var solved = pr.IsDBNull(6) ? 0 : pr.GetInt32(6);
+            int? activeAid = pr.IsDBNull(7) ? null : pr.GetInt32(7);
+            participantsMap[pid] = new
+            {
+                id = pid,
+                name,
+                deskId = desk,
+                ipAddress = ip,
+                status = st,
+                score,
+                solvedCount = solved,
+                activeAttack = activeAid
+            };
+        }
+    }
+
+    var assignments = db.GetCohortAssignments();
+    var assignedPids = new HashSet<string>(assignments.Values.SelectMany(x => x));
+    foreach (var pid in participantsMap.Keys)
+    {
+        if (!assignedPids.Contains(pid))
+        {
+            var targetCol = 0;
+            var minCount = int.MaxValue;
+            for (int col = 0; col < 5; col++)
+            {
+                var cnt = assignments.ContainsKey(col) ? assignments[col].Count : 0;
+                if (cnt < minCount)
+                {
+                    minCount = cnt;
+                    targetCol = col;
+                }
+            }
+            if (minCount < 10)
+            {
+                if (!assignments.ContainsKey(targetCol)) assignments[targetCol] = new List<string>();
+                assignments[targetCol].Add(pid);
+                using var ins = c.CreateCommand();
+                ins.CommandText = "INSERT OR REPLACE INTO cohort_assignments (participant_id, column_index, assigned_at) VALUES ($p, $col, $t)";
+                ins.Parameters.AddWithValue("$p", pid);
+                ins.Parameters.AddWithValue("$col", targetCol);
+                ins.Parameters.AddWithValue("$t", DateTime.UtcNow.ToString("O"));
+                ins.ExecuteNonQuery();
+            }
+        }
+    }
+
+    var columns = new List<object>();
+    for (int col = 0; col < 5; col++)
+    {
+        var colPids = assignments.ContainsKey(col) ? assignments[col] : new List<string>();
+        var colParticipants = colPids
+            .Where(pid => participantsMap.ContainsKey(pid))
+            .Select(pid => participantsMap[pid])
+            .ToList();
+
+        columns.Add(new
+        {
+            columnIndex = col,
+            title = $"Column {col + 1}",
+            count = colParticipants.Count,
+            participants = colParticipants
+        });
+    }
+
+    return Results.Ok(new
+    {
+        columns,
+        totalParticipants = participantsMap.Count,
+        maxPerColumn = 10
+    });
+});
+
+app.MapPost("/api/admin/cohorts/shuffle", (HttpRequest r, Database db) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+    db.AssignCohortsRandomly(5, 10);
+    db.Log("COHORTS_SHUFFLED", payloadJson: "{\"columnCount\":5,\"maxPerColumn\":10}");
+    return Results.Ok(new { success = true });
+});
+
+app.MapPost("/api/admin/cohorts/{columnIndex:int}/fire", async (int columnIndex, HttpRequest r, Database db, AttackDispatcher dispatcher) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+
+    int attackId = 0;
+    if (r.Query.TryGetValue("attackId", out var aidStr) && int.TryParse(aidStr, out var parsedAid))
+    {
+        attackId = parsedAid;
+    }
+    else
+    {
+        try
+        {
+            var doc = await r.ReadFromJsonAsync<JsonElement>();
+            if (doc.TryGetProperty("attackId", out var pAid)) attackId = pAid.GetInt32();
+        }
+        catch { }
+    }
+
+    var pids = db.GetParticipantIdsInCohort(columnIndex);
+    foreach (var pid in pids)
+    {
+        _ = Task.Run(() => dispatcher.FireAsync(attackId, pid));
+    }
+    db.Log("COHORT_ATTACK_FIRED", attackId: attackId, payloadJson: JsonSerializer.Serialize(new { columnIndex, targetCount = pids.Count, participants = pids }));
+    return Results.Ok(new { success = true, columnIndex, attackId, targetCount = pids.Count, participants = pids });
 });
 
 app.MapGet("/api/admin/attacks", (HttpRequest r, Database db, RogueAgentOrchestrator orch) =>

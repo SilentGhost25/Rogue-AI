@@ -41,7 +41,29 @@ public partial class TerminalTab : UserControl, IDisposable
         core.Settings.IsStatusBarEnabled = false;
         core.SetVirtualHostNameToFolderMapping("terminal.local", assetsDir, CoreWebView2HostResourceAccessKind.Deny);
         core.WebMessageReceived += OnWebMessage;
+        Web.NavigationCompleted += (_, _) => FocusTerminal();
         core.Navigate("https://terminal.local/terminal.html");
+    }
+
+    public void FocusTerminal()
+    {
+        try
+        {
+            Focus();
+            Web.Focus();
+            System.Windows.Input.Keyboard.Focus(Web);
+            Post(new { type = "focus" });
+            if (Web.CoreWebView2 is not null)
+            {
+                _ = Web.CoreWebView2.ExecuteScriptAsync("if (window.term) window.term.focus();");
+            }
+        }
+        catch { }
+    }
+
+    private void Grid_PreviewMouseDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        FocusTerminal();
     }
 
     public void Launch(LaunchSpec spec)

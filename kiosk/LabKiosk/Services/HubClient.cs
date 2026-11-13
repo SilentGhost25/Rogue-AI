@@ -13,7 +13,6 @@ public sealed class HubClient : IAsyncDisposable
     public event Func<int, Task>? Landed;
     public event Func<int, Task>? Reset;
     public event Action<string>? Message;
-    public event Action<string, JsonElement, string>? Verdict;
     public event Action<int, string, string, double>? VerdictDetailed;
     public event Action? Paused, Resumed, Eliminated;
     public event Func<Task>? Reconnected;
@@ -35,12 +34,11 @@ public sealed class HubClient : IAsyncDisposable
         _conn.On<int>("ATTACK_RESET", async id => { if (Reset is not null) await Reset(id); });
         _conn.On<string>("BROADCAST", text => Message?.Invoke(text));
 
-        _conn.On<string, JsonElement, string>("VERDICT", (sid, verdicts, note) => Verdict?.Invoke(sid, verdicts, note));
         _conn.On<int, string, string, double>("VERDICT", (id, status, reason, score) =>
         {
             VerdictDetailed?.Invoke(id, status, reason, score);
         });
-        _conn.On<int, string, string, double, string>("VERDICT", (id, status, reason, score, _) =>
+        _conn.On<int, string, string, double>("VERDICT_DETAILED", (id, status, reason, score) =>
         {
             VerdictDetailed?.Invoke(id, status, reason, score);
         });

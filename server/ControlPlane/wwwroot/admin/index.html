@@ -62,6 +62,24 @@
       </div>
     </section>
 
+    <!-- Section: 5-Column Arena Cohort Matrix (50 Participants, 10 per Column) -->
+    <section class="card">
+      <div class="card-header">
+        <div>
+          <h2>Arena Cohort Matrix (5 Columns &times; 10 Max Stations)</h2>
+          <div class="muted" style="font-size:12px; margin-top:2px;">Randomized participant partitioning across 5 columns with column-targeted act deployment</div>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <span id="cohort-station-count" class="counter-badge">0 / 50 stations</span>
+          <button id="shuffle-cohorts-btn" class="btn warning sm" onclick="shuffleCohorts()">🎲 Randomize &amp; Assign Cohorts</button>
+          <button id="refresh-cohorts-btn" class="btn secondary sm" onclick="refreshCohorts()">Refresh Matrix</button>
+        </div>
+      </div>
+      <div class="cohort-matrix-container" id="cohort-matrix-grid">
+        <div class="muted" style="padding:16px;">Loading cohort matrix...</div>
+      </div>
+    </section>
+
     <!-- Section 2: Detailed Participant Evaluation Scorecard & Pass/Fail Metrics -->
     <section class="card">
       <div class="card-header">
