@@ -61,3 +61,4 @@ function layout({ title = 'Command', user = null, active = 'overview', threat = 
 </html>`;
 
 module.exports = { esc, layout };
+

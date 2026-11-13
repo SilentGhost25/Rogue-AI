@@ -27,6 +27,33 @@ public partial class MainWindow : Window
     private readonly HashSet<int> _solvedAttacks = new();
     private readonly Dictionary<int, List<string>> _attackFiles = new();
 
+    private static readonly Dictionary<int, string> DefaultAttackTargets = new()
+    {
+        [0] = "lib/html.js",
+        [1] = "routes/traffic.js",
+        [2] = "routes/traffic.js",
+        [3] = "routes/traffic.js",
+        [4] = "routes/traffic.js",
+        [5] = "routes/vault.js",
+        [6] = "routes/report.js",
+        [7] = "server.js",
+        [8] = "lib/auth.js",
+        [9] = "routes/auth.js",
+        [10] = "routes/security.js",
+        [11] = "lib/auth.js",
+        [12] = "lib/permissions.js",
+        [13] = "server.js",
+        [14] = "lib/html.js",
+        [15] = "app.js",
+        [16] = "routes/security.js",
+        [17] = "routes/admin.js",
+        [18] = "lib/html.js",
+        [19] = "routes/traffic.js",
+        [20] = "lib/db.js",
+        [21] = "server.js",
+        [22] = "lib/html.js"
+    };
+
     private record AttackMeta(string Title, string Classification, string Symptoms, string Telemetry);
 
     private static readonly Dictionary<int, AttackMeta> AttackMetadata = new()
@@ -1077,9 +1104,19 @@ public partial class MainWindow : Window
     private void OnInvestigateWorkspace(int attackId)
     {
         SelectViewMode("CodeAi");
+        string? targetFile = null;
         if (_attackFiles.TryGetValue(attackId, out var files) && files.Count > 0)
         {
-            Code.OpenRelative(files[0]);
+            targetFile = files[0];
+        }
+        else if (DefaultAttackTargets.TryGetValue(attackId, out var fallback))
+        {
+            targetFile = fallback;
+        }
+
+        if (!string.IsNullOrEmpty(targetFile))
+        {
+            Code.OpenRelative(targetFile);
         }
     }
 

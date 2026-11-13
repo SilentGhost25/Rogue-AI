@@ -14,3 +14,4 @@ def tier_checks(base_url, context=None):
     except Exception:
         pass
     return results
+

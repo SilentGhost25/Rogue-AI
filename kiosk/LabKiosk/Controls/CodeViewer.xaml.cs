@@ -93,7 +93,9 @@ public partial class CodeViewer : UserControl, IDisposable
     // ---- file ---------------------------------------------------------------------------------------
     public void OpenRelative(string relPath)
     {
-        var full = Path.Combine(_root, relPath.Replace('/', Path.DirectorySeparatorChar));
+        if (string.IsNullOrWhiteSpace(relPath)) return;
+        var cleanRel = relPath.TrimStart('/', '\\').Replace('/', Path.DirectorySeparatorChar);
+        var full = Path.Combine(_root, cleanRel);
         if (File.Exists(full))
         {
             Dispatcher.InvokeAsync(() =>

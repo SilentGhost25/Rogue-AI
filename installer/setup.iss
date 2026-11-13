@@ -204,10 +204,9 @@ begin
   if CurUninstallStep = usUninstall then
   begin
     // Terminate running processes cleanly so binaries and workspace handles are unlocked before removal
-    Exec(ExpandConstant('{cmd}'), '/c taskkill /F /IM LabKiosk.exe /IM ControlPlane.exe /IM opencode.exe /IM agy.exe /IM node.exe /IM python.exe /IM uvicorn.exe /T >nul 2>&1', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  end
-  else if CurUninstallStep = usPostUninstall then
-  begin
+    Exec(ExpandConstant('{cmd}'), '/c taskkill /F /IM LabKiosk.exe /IM ControlPlane.exe /IM opencode.exe /IM agy.exe /IM node.exe /IM python.exe /IM uvicorn.exe /IM git.exe /T >nul 2>&1', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+
+    // Execute forensic deep cleanup while the script file is still present on disk
     PsScript := ExpandConstant('{app}\scripts\uninstall-complete.ps1');
     if FileExists(PsScript) then
     begin

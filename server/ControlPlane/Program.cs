@@ -1308,18 +1308,58 @@ app.MapPost("/api/admin/assign-groups", (HttpRequest r, Database db, RogueAgentO
     }
     if (rotation.Count == 0) return Results.BadRequest(new { error = "No attacks available to assign." });
 
-    var assignments = new List<object>();
-    for (int i = 0; i < participants.Count; i++)
+    lock (_stagedAssignments)
     {
-        int groupIdx = i / 5;
-        int attackId = rotation[groupIdx % rotation.Count];
-        var (pid, deskId) = participants[i];
-        _ = Task.Run(() => dispatcher.FireAsync(attackId, pid));
-        assignments.Add(new { participantId = pid, deskId, group = groupIdx + 1, attackId });
+        _stagedAssignments.Clear();
+        for (int i = 0; i < participants.Count; i++)
+        {
+            int groupIdx = i / 5;
+            int attackId = rotation[groupIdx % rotation.Count];
+            var (pid, deskId) = participants[i];
+            var att = orch.Attacks.FirstOrDefault(a => a.Id == attackId);
+            var attackName = att?.Name ?? $"Attack #{attackId}";
+            _stagedAssignments.Add(new StagedAssignment(pid, deskId, groupIdx + 1, attackId, attackName));
+        }
     }
 
-    db.Log("ASSIGN_GROUPS", payloadJson: JsonSerializer.Serialize(new { totalAssigned = assignments.Count }));
-    return Results.Ok(new { totalAssigned = assignments.Count, assignments });
+    db.Log("ASSIGN_GROUPS_STAGED", payloadJson: JsonSerializer.Serialize(new { totalAssigned = _stagedAssignments.Count }));
+    return Results.Ok(new { staged = true, totalAssigned = _stagedAssignments.Count, assignments = _stagedAssignments });
+});
+
+app.MapPost("/api/admin/fire-assigned", (HttpRequest r, Database db, AttackDispatcher dispatcher) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+
+    List<StagedAssignment> toFire;
+    lock (_stagedAssignments)
+    {
+        toFire = new List<StagedAssignment>(_stagedAssignments);
+    }
+
+    if (toFire.Count == 0)
+    {
+        return Results.BadRequest(new { error = "No staged assignments found. Click 'Assign Attacks (Groups of 5)' first." });
+    }
+
+    foreach (var a in toFire)
+    {
+        _ = Task.Run(() => dispatcher.FireAsync(a.AttackId, a.ParticipantId));
+    }
+
+    db.Log("FIRE_ASSIGNED", payloadJson: JsonSerializer.Serialize(new { totalFired = toFire.Count }));
+    return Results.Ok(new { success = true, totalFired = toFire.Count });
+});
+
+app.MapGet("/api/admin/staged-assignments", (HttpRequest r, Database db) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+
+    lock (_stagedAssignments)
+    {
+        return Results.Ok(new { assignments = _stagedAssignments });
+    }
 });
 
 app.MapPost("/api/admin/reset-session", async (HttpRequest r, Database db, IHubContext<BreachHub> hub) =>
@@ -1457,3 +1497,9 @@ public sealed record BroadcastRequest(string Message);
 public sealed record EvaluationResponse(string Submission_Id, string Evaluator, List<VerdictDto> Verdicts);
 public sealed record VerdictDto(int Attack_Id, string Status, string Reason);
 public sealed record DisqualifyRequest(string? Reason = null);
+public sealed record StagedAssignment(string ParticipantId, string DeskId, int Group, int AttackId, string AttackName);
+
+public partial class Program
+{
+    private static readonly List<StagedAssignment> _stagedAssignments = new();
+}

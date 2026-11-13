@@ -20,3 +20,4 @@ def tier_checks(base_url, context=None):
         pass
 
     return results
+

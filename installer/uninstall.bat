@@ -21,6 +21,8 @@ taskkill /F /IM agy.exe /T 2>nul
 taskkill /F /IM node.exe /T 2>nul
 taskkill /F /IM ControlPlane.exe /T 2>nul
 taskkill /F /IM python.exe /T 2>nul
+taskkill /F /IM uvicorn.exe /T 2>nul
+taskkill /F /IM git.exe /T 2>nul
 echo [+] Active processes cleared.
 echo.
 

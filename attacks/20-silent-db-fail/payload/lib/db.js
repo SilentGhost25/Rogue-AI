@@ -99,3 +99,4 @@ function open(file) {
 }
 
 module.exports = { open };
+

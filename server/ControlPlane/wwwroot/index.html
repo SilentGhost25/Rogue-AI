@@ -202,6 +202,11 @@
           <option value="">&bull; ALL ACTIVE PARTICIPANTS</option>
         </select>
         <button id="btnAssignGroups" onclick="assignGroups()" style="width:100%; margin-top:6px; background:#1c3242; border-color:var(--ok); color:var(--ok)">&#x1F3B2; Assign Attacks (Groups of 5)</button>
+        <div id="stagedAssignmentBox" style="display:none; margin-top:8px; padding:10px; background:#12202a; border:1px solid #37d6e8; border-radius:4px">
+          <div style="font-size:12px; font-weight:bold; color:#37d6e8; margin-bottom:4px">🎯 Staged Attacks Ready (<span id="stagedCount">0</span> desks)</div>
+          <div id="stagedSummary" style="font-size:11px; color:#8aa0ac; max-height:120px; overflow-y:auto; margin-bottom:8px"></div>
+          <button id="btnFireAssigned" onclick="fireAssigned()" style="width:100%; background:#8b1c1c; border-color:#e5533d; color:#fff; font-weight:bold; padding:8px 12px; cursor:pointer">&#x1F680; FIRE ASSIGNED ATTACKS</button>
+        </div>
       </div>
       <div id="attacksDeck"></div>
     </section>
@@ -340,15 +345,41 @@ async function refreshAttacks() {
 }
 
 async function assignGroups() {
-  if (!confirm('Assign different attacks in groups of 5 desks across Easy / Medium / Hard?')) return;
+  if (!confirm('Stage different attacks in groups of 5 desks across Easy / Medium / Hard? (You will have a Fire button to launch manually)')) return;
   const res = await post('/api/admin/assign-groups');
   if (res.ok) {
     const data = await res.json();
-    alert(`Assigned attacks to ${data.totalAssigned} active participants in groups of 5.`);
+    const box = $('stagedAssignmentBox');
+    $('stagedCount').textContent = data.totalAssigned;
+    let summaryHtml = '';
+    const groups = {};
+    for (const a of data.assignments) {
+      if (!groups[a.group]) groups[a.group] = { attack: a.attackName, desks: [] };
+      groups[a.group].desks.push(a.deskId);
+    }
+    for (const [grp, info] of Object.entries(groups)) {
+      summaryHtml += `<div style="margin-bottom:3px"><strong>Group ${grp}:</strong> ${info.attack} (${info.desks.join(', ')})</div>`;
+    }
+    $('stagedSummary').innerHTML = summaryHtml;
+    box.style.display = 'block';
+    alert(`Staged attacks for ${data.totalAssigned} participants in ${Object.keys(groups).length} groups. Review the staged plan and click 'FIRE ASSIGNED ATTACKS' when ready.`);
+  } else {
+    alert(`Failed to stage groups (HTTP ${res.status}). Verify your Admin Key.`);
+  }
+}
+
+async function fireAssigned() {
+  const count = $('stagedCount').textContent;
+  if (!confirm(`CONFIRM ATTACK WAVE\n\nFire the staged attacks across all ${count} participants now?`)) return;
+  const res = await post('/api/admin/fire-assigned');
+  if (res.ok) {
+    const data = await res.json();
+    alert(`🚀 Attack wave launched! Dispatched to ${data.totalFired} participants.`);
+    $('stagedAssignmentBox').style.display = 'none';
     refreshAttacks();
     refreshKiosks();
   } else {
-    alert(`Failed to assign groups (HTTP ${res.status}). Verify your Admin Key.`);
+    alert(`Failed to fire assigned attacks (HTTP ${res.status}).`);
   }
 }
 

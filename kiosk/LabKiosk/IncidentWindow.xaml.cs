@@ -1,5 +1,10 @@
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Automation.Peers;
 using System.Windows.Input;
+using System.Windows.Interop;
 
 namespace LabKiosk;
 
@@ -8,6 +13,10 @@ public partial class IncidentWindow : Window
     private readonly Action? _onInvestigate;
 
     public int AttackId { get; }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetWindowDisplayAffinity(IntPtr hWnd, uint dwAffinity);
+    private const uint WDA_EXCLUDEFROMCAPTURE = 0x00000011;
 
     public IncidentWindow(
         Window owner,
@@ -36,6 +45,36 @@ public partial class IncidentWindow : Window
         TxtClassification.Text = classification;
         TxtSymptoms.Text = symptoms;
         TxtTelemetry.Text = telemetry;
+    }
+
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        try
+        {
+            var handle = new WindowInteropHelper(this).Handle;
+            if (handle != IntPtr.Zero)
+            {
+                // Disables screen capture, screenshots, and visual scraping tools
+                SetWindowDisplayAffinity(handle, WDA_EXCLUDEFROMCAPTURE);
+            }
+        }
+        catch { /* best effort */ }
+    }
+
+    // Suppress all WPF UI Automation peers to block AI agents and automated inspection tools from reading popup text
+    protected override AutomationPeer OnCreateAutomationPeer()
+    {
+        return new BlankWindowAutomationPeer(this);
+    }
+
+    private sealed class BlankWindowAutomationPeer : WindowAutomationPeer
+    {
+        public BlankWindowAutomationPeer(Window owner) : base(owner) { }
+        protected override List<AutomationPeer>? GetChildrenCore() => null;
+        protected override string GetNameCore() => string.Empty;
+        protected override string GetItemStatusCore() => string.Empty;
+        protected override string GetHelpTextCore() => string.Empty;
     }
 
     private void OnDismissClick(object sender, RoutedEventArgs e)
@@ -68,4 +107,3 @@ public partial class IncidentWindow : Window
         }
     }
 }
-

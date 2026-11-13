@@ -62,3 +62,4 @@ function layout({ title = 'Command', user = null, active = 'overview', threat = 
 }
 
 module.exports = { esc, layout };
+

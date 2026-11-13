@@ -157,7 +157,8 @@ public sealed class WorkspaceSync(ApiClient api, string participantId, string ro
             }
             if (File.Exists(target))
             {
-                var backup = Path.Combine(root, ".breach-backup", tag, f.Path.Replace('/', Path.DirectorySeparatorChar));
+                var backupDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "LabKiosk", "backups", tag);
+                var backup = Path.Combine(backupDir, f.Path.Replace('/', Path.DirectorySeparatorChar));
                 Directory.CreateDirectory(Path.GetDirectoryName(backup)!);
                 File.Copy(target, backup, overwrite: true);
             }
