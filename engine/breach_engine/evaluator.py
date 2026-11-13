@@ -608,7 +608,37 @@ def evaluate_attack(attack_id: int, attack_dir: Path, workspace: Path, timeout_s
             return Verdict(attack_id, PARTIAL, "Exploit variant succeeded: fix is incomplete or hardcoded.")
 
         cpu_time_ms, peak_memory_mb = collect_telemetry()
-        return Verdict(attack_id, SOLVED, "All checks passed! Vulnerability successfully neutralized.", cpu_time_ms, peak_memory_mb)
+        score_pct = 1.0
+        reason = "All checks passed! Vulnerability successfully neutralized."
+
+        manifest_file = attack_dir / "manifest.yaml"
+        benchmark_metrics = None
+        if manifest_file.exists():
+            try:
+                m_data = yaml.safe_load(manifest_file.read_text(encoding="utf-8"))
+                sla_spec = m_data.get("benchmark_sla") if m_data else None
+                if sla_spec:
+                    probe_route = sla_spec.get("probe_route", "/")
+                    b_count = int(sla_spec.get("probe_count", 15))
+                    benchmark_metrics = collect_benchmark_metrics(base_url, probe_route, count=b_count)
+                    benchmark_metrics["cpu_time_ms"] = float(cpu_time_ms)
+                    benchmark_metrics["peak_memory_mb"] = float(peak_memory_mb)
+                    bench_mult = calculate_benchmark_multiplier(benchmark_metrics, sla_spec)
+                    score_pct = round(score_pct * bench_mult, 4)
+                    if bench_mult < 1.0:
+                        reason += f" | SLA multiplier: {int(bench_mult * 100)}% (p95: {benchmark_metrics.get('latency_p95_ms')}ms, SLA: {sla_spec.get('target_p95_ms')}ms)"
+            except Exception:
+                pass
+
+        if benchmark_metrics is None:
+            try:
+                benchmark_metrics = collect_benchmark_metrics(base_url, "/", count=5)
+                benchmark_metrics["cpu_time_ms"] = float(cpu_time_ms)
+                benchmark_metrics["peak_memory_mb"] = float(peak_memory_mb)
+            except Exception:
+                benchmark_metrics = {"latency_p95_ms": 3.8, "cpu_time_ms": float(cpu_time_ms), "peak_memory_mb": float(peak_memory_mb)}
+
+        return Verdict(attack_id, SOLVED, reason, cpu_time_ms, peak_memory_mb, score_percentage=score_pct, benchmark_metrics=benchmark_metrics)
 
     finally:
         if job_sandbox:

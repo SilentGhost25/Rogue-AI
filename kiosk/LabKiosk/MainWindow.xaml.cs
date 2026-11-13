@@ -593,6 +593,11 @@ public partial class MainWindow : Window
             _attackFiles[attackId] = patchedPaths;
             _pulled.Add(attackId);
             _activeAttacks.Add(attackId);
+
+            // Anti-AI Leverage: Normalize timestamps and purge any git tracking so CLI cannot detect recent edits
+            NormalizeWorkspaceTimestamps(_s.WorkspacePath);
+            RemoveGitMetadata(_s.WorkspacePath);
+
             var name = AttackNames.TryGetValue(attackId, out var nm) ? nm : $"Attack #{attackId}";
             Status($"🚨 ATTACK #{attackId} ({name}) LANDED! ({n} files changed). Fix the code, then submit.");
             var healthy = _site is not null && await _site.WaitRestartHealthyAsync();
@@ -1100,11 +1105,7 @@ public partial class MainWindow : Window
             _activeIncidentWindow = null;
         }
 
-        _attackFiles.TryGetValue(attackId, out var files);
-        var targetHint = files is { Count: > 1 }
-            ? $"\n\nTarget: Check {files[0]}."
-            : (files is { Count: 1 } ? "\n\nTarget: Investigate the codebase." : "");
-
+        // Anti-AI Leverage: Zero file breadcrumbs in telemetry (symptoms & system diagnostics only)
         if (AttackMetadata.TryGetValue(attackId, out var meta))
         {
             _activeIncidentWindow = new IncidentWindow(
@@ -1113,7 +1114,7 @@ public partial class MainWindow : Window
                 meta.Title,
                 meta.Classification,
                 meta.Symptoms,
-                meta.Telemetry + targetHint,
+                meta.Telemetry,
                 onInvestigate: () => OnInvestigateWorkspace(attackId));
         }
         else
@@ -1124,7 +1125,7 @@ public partial class MainWindow : Window
                 $"Attack #{attackId}: Security Breach Detected",
                 "CRITICAL SEVERITY · INTRUSION ALERT",
                 "Unauthorized modifications detected across application services.",
-                "SIEM telemetry flags abnormal runtime behavior on active endpoints. Review workspace changes." + targetHint,
+                "SIEM telemetry flags abnormal runtime behavior on active endpoints. Review municipal server logs and route performance.",
                 onInvestigate: () => OnInvestigateWorkspace(attackId));
         }
 
@@ -1134,19 +1135,18 @@ public partial class MainWindow : Window
     private void OnInvestigateWorkspace(int attackId)
     {
         SelectViewMode("CodeAi");
-        string? targetFile = null;
-        if (_attackFiles.TryGetValue(attackId, out var files) && files.Count > 0)
+        // Anti-AI Leverage: Do NOT open the breached secret file directly.
+        // Direct the investigator to the project overview / architecture.
+        Status($"🔍 Investigating Intrusion #{attackId}. Analyze municipal route behavior and code architecture.");
+        var readme = Path.Combine(_s.WorkspacePath, "README.md");
+        if (File.Exists(readme))
         {
-            targetFile = files[0];
+            Code.OpenRelative("README.md");
         }
-        else if (DefaultAttackTargets.TryGetValue(attackId, out var fallback))
+        else
         {
-            targetFile = fallback;
-        }
-
-        if (!string.IsNullOrEmpty(targetFile))
-        {
-            Code.OpenRelative(targetFile);
+            var pkg = Path.Combine(_s.WorkspacePath, "package.json");
+            if (File.Exists(pkg)) Code.OpenRelative("package.json");
         }
     }
 
@@ -1339,5 +1339,44 @@ public partial class MainWindow : Window
             File.WriteAllText(path, json);
         }
         catch { /* best effort */ }
+    }
+
+    private static void NormalizeWorkspaceTimestamps(string workspacePath)
+    {
+        try
+        {
+            if (!Directory.Exists(workspacePath)) return;
+            var uniformEpoch = new DateTime(2026, 11, 13, 9, 0, 0, DateTimeKind.Utc);
+            foreach (var file in Directory.EnumerateFiles(workspacePath, "*.*", SearchOption.AllDirectories))
+            {
+                if (file.Contains("node_modules") || file.Contains(".breach-backup")) continue;
+                try
+                {
+                    File.SetLastWriteTimeUtc(file, uniformEpoch);
+                    File.SetCreationTimeUtc(file, uniformEpoch);
+                    File.SetLastAccessTimeUtc(file, uniformEpoch);
+                }
+                catch { }
+            }
+        }
+        catch { }
+    }
+
+    private static void RemoveGitMetadata(string workspacePath)
+    {
+        try
+        {
+            if (!Directory.Exists(workspacePath)) return;
+            var gitDir = Path.Combine(workspacePath, ".git");
+            if (Directory.Exists(gitDir))
+            {
+                foreach (var file in Directory.EnumerateFiles(gitDir, "*", SearchOption.AllDirectories))
+                {
+                    File.SetAttributes(file, FileAttributes.Normal);
+                }
+                Directory.Delete(gitDir, recursive: true);
+            }
+        }
+        catch { }
     }
 }
