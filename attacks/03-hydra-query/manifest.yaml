@@ -32,9 +32,16 @@ payload:
 tests:
   path: "tests/"
   tiers:
-    - { id: tier1_sqli_blocked, weight: 40 }
-    - { id: tier2_telemetry_intact, weight: 30 }
-    - { id: tier3_benchmark_sla, weight: 30 }
+    - { id: tier1_sqli_quote_handled,      weight: 10 }
+    - { id: tier2_sqli_tautology_blocked,  weight: 10 }
+    - { id: tier3_parameterized_telemetry, weight: 10 }
+    - { id: tier4_search_functional,       weight: 10 }
+    - { id: tier5_empty_query_all,         weight: 10 }
+    - { id: tier6_web_interface_render,    weight: 10 }
+    - { id: tier7_signal_override_audit,   weight: 10 }
+    - { id: tier8_benchmark_sla,           weight: 10 }
+    - { id: tier9_incidents_functional,    weight: 10 }
+    - { id: tier10_clean_architecture,     weight: 10 }
 benchmark_sla:
   target_p95_ms: 30.0
   max_p95_ms: 150.0

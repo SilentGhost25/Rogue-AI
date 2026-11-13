@@ -32,10 +32,16 @@ payload:
 tests:
   path: "tests/"
   tiers:
-    - { id: tier1_redos_blocked, weight: 35 }
-    - { id: tier2_tokens_functional, weight: 35 }
-    - { id: tier3_cache_capacity, weight: 15 }
-    - { id: tier4_latency_sla, weight: 15 }
+    - { id: tier1_redos_blocked, weight: 10 }
+    - { id: tier2_tokens_functional, weight: 10 }
+    - { id: tier3_cache_capacity, weight: 10 }
+    - { id: tier4_latency_sla, weight: 10 }
+    - { id: tier5_case_insensitive_bearer, weight: 10 }
+    - { id: tier6_alphanumeric_bound, weight: 10 }
+    - { id: tier7_no_allocation_leak, weight: 10 }
+    - { id: tier8_unauthenticated_health, weight: 10 }
+    - { id: tier9_session_integrity, weight: 10 }
+    - { id: tier10_clean_architecture, weight: 10 }
 benchmark_sla:
   target_p95_ms: 30.0
   max_p95_ms: 150.0

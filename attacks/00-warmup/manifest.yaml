@@ -32,8 +32,16 @@ payload:
 tests:
   path: "tests/"
   tiers:
-    - { id: tier1_title, weight: 60 }
-    - { id: tier2_security_meta, weight: 40 }
+    - { id: tier1_title, weight: 10 }
+    - { id: tier2_security_meta, weight: 10 }
+    - { id: tier3_header_integrity, weight: 10 }
+    - { id: tier4_threat_badge, weight: 10 }
+    - { id: tier5_status_indicator, weight: 10 }
+    - { id: tier6_entity_escaping, weight: 10 }
+    - { id: tier7_navigation_intact, weight: 10 }
+    - { id: tier8_operational_health, weight: 10 }
+    - { id: tier9_benchmark_sla, weight: 10 }
+    - { id: tier10_clean_architecture, weight: 10 }
 hints:
   path: "hints.yaml"
 narrative:

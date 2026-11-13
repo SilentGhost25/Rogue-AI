@@ -57,9 +57,9 @@ class Attack02Tests(unittest.TestCase):
         verdict = evaluate_attack(2, self.attack_dir, self.workspace, timeout_seconds=12.0)
         self.assertEqual(verdict.status, SOLVED)
         self.assertGreaterEqual(verdict.score_percentage, 0.95)
-        self.assertTrue(verdict.tier_results["tier1_concurrency_isolation"])
-        self.assertTrue(verdict.tier_results["tier2_overview_functional"])
-        self.assertTrue(verdict.tier_results["tier3_benchmark_sla"])
+        self.assertEqual(len(verdict.tier_results), 10)
+        for t_name, passed in verdict.tier_results.items():
+            self.assertTrue(passed, f"Tier {t_name} failed unexpectedly")
 
 
 if __name__ == "__main__":
