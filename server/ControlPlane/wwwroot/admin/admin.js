@@ -8,17 +8,20 @@ function logMessage(msg) {
 }
 
 async function api(path, opts = {}) {
+  const adminKey = window.__ADMIN_KEY || localStorage.getItem('breachAdminKey') || '';
+  const headers = {
+    'Accept': 'application/json',
+    'Content-Type': 'application/json',
+    ...(adminKey ? { 'X-Admin-Key': adminKey } : {}),
+    ...(opts.headers || {})
+  };
   const res = await fetch(path, {
     credentials: 'include',
-    headers: {
-      'Accept': 'application/json',
-      'Content-Type': 'application/json',
-      ...(opts.headers || {})
-    },
+    headers,
     ...opts
   });
 
-  if (res.status === 401) {
+  if (res.status === 401 && !adminKey) {
     window.location.href = '/admin/login.html';
     throw new Error('Unauthorized');
   }

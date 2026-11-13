@@ -21,12 +21,9 @@ public sealed class BreachHub(IConfiguration config, Database db) : Hub
     {
         if (string.IsNullOrWhiteSpace(token) || !db.ValidateDeskToken(token, participantId))
         {
-            var participantExists = db.QueryScalar<long>("SELECT COUNT(*) FROM participants WHERE id = @p", ("@p", participantId)) > 0;
-            if (!participantExists)
-            {
-                Context.Abort();
-                return;
-            }
+            db.Log("HUB_KIOSK_AUTH_FAILED", participantId, payloadJson: $"{{\"connectionId\":\"{Context.ConnectionId}\"}}");
+            Context.Abort();
+            return;
         }
         Context.Items["participantId"] = participantId;
         ActiveConnections[Context.ConnectionId] = participantId;
@@ -44,24 +41,23 @@ public sealed class BreachHub(IConfiguration config, Database db) : Hub
 
     public Task JoinAdmin(string adminKey)
     {
-        var expected = Environment.GetEnvironmentVariable("BREACH_ADMIN_KEY") ?? config["Breach:AdminKey"] ?? "";
-        var httpContext = Context.GetHttpContext();
-        var remoteIp = httpContext?.Connection.RemoteIpAddress;
-        var allowedIps = config.GetSection("Breach:AdminAllowedIps").Get<string[]>() ?? Array.Empty<string>();
-        var ipStr = remoteIp?.ToString();
-        var isAuthorized = remoteIp is null ||
-                           System.Net.IPAddress.IsLoopback(remoteIp) ||
-                           (remoteIp.IsIPv4MappedToIPv6 && System.Net.IPAddress.IsLoopback(remoteIp.MapToIPv4())) ||
-                           ipStr == "::1" || ipStr == "127.0.0.1" || ipStr == "::ffff:127.0.0.1" ||
-                           (ipStr != null && allowedIps.Contains(ipStr));
-
-        var loopbackOnly = config.GetValue<bool>("Breach:AdminLoopbackOnly", true);
-
-        if (loopbackOnly && !isAuthorized)
+        var expected = Environment.GetEnvironmentVariable("BREACH_ADMIN_KEY")
+                    ?? Environment.GetEnvironmentVariable("ROGUE_ADMIN_KEY")
+                    ?? config["Breach:AdminKey"];
+        if (string.IsNullOrWhiteSpace(expected) || expected.Equals("CHANGE-ME-BEFORE-EVENT", StringComparison.OrdinalIgnoreCase))
         {
-            db.Log("HUB_ADMIN_DENIED_LAN", payloadJson: $"{{\"connectionId\":\"{Context.ConnectionId}\",\"ip\":\"{remoteIp}\"}}");
-            return Task.CompletedTask;
+            try
+            {
+                var keyFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BreachKiosk", "host", "admin.key");
+                if (File.Exists(keyFile))
+                {
+                    expected = File.ReadAllText(keyFile).Trim();
+                }
+            }
+            catch { }
         }
+        expected = expected?.Trim() ?? "";
+        adminKey = adminKey?.Trim() ?? "";
 
         var match = !string.IsNullOrEmpty(adminKey) && !string.IsNullOrEmpty(expected) &&
                     System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(
@@ -70,9 +66,28 @@ public sealed class BreachHub(IConfiguration config, Database db) : Hub
 
         if (!match)
         {
-            db.Log("HUB_ADMIN_AUTH_FAILED", payloadJson: $"{{\"connectionId\":\"{Context.ConnectionId}\"}}");
+            var httpContext = Context.GetHttpContext();
+            var remoteIp = httpContext?.Connection.RemoteIpAddress;
+            var ipStr = remoteIp?.ToString();
+            var allowedIps = config.GetSection("Breach:AdminAllowedIps").Get<string[]>() ?? Array.Empty<string>();
+            var isAuthorized = remoteIp is null ||
+                               System.Net.IPAddress.IsLoopback(remoteIp) ||
+                               (remoteIp.IsIPv4MappedToIPv6 && System.Net.IPAddress.IsLoopback(remoteIp.MapToIPv4())) ||
+                               ipStr == "::1" || ipStr == "127.0.0.1" || ipStr == "::ffff:127.0.0.1" ||
+                               (ipStr != null && allowedIps.Contains(ipStr));
+
+            var loopbackOnly = config.GetValue<bool>("Breach:AdminLoopbackOnly", true);
+            if (loopbackOnly && !isAuthorized)
+            {
+                db.Log("HUB_ADMIN_DENIED_LAN", payloadJson: $"{{\"connectionId\":\"{Context.ConnectionId}\",\"ip\":\"{remoteIp}\"}}");
+            }
+            else
+            {
+                db.Log("HUB_ADMIN_AUTH_FAILED", payloadJson: $"{{\"connectionId\":\"{Context.ConnectionId}\"}}");
+            }
             return Task.CompletedTask;
         }
+
         return Groups.AddToGroupAsync(Context.ConnectionId, "admins");
     }
 

@@ -708,7 +708,7 @@ public partial class OnboardingWindow : Window
 
     private void OnModelComplianceChanged(object sender, RoutedEventArgs e)
     {
-        if (ChkModelCompliance.IsChecked == true && TxtWarning.Text.Contains("Integrity Pledge"))
+        if (ChkModelCompliance?.IsChecked == true && TxtWarning?.Text != null && TxtWarning.Text.Contains("Integrity Pledge"))
         {
             TxtWarning.Text = "";
         }

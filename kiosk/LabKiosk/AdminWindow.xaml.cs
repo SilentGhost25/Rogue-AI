@@ -118,8 +118,12 @@ public partial class AdminWindow : Window
 
     private void OnCopyKey(object sender, RoutedEventArgs e)
     {
-        Clipboard.SetText(_adminKey);
-        StatusText.Text = "Admin key copied. Kiosks open this console with Ctrl+Shift+A and this key.";
+        var keyToCopy = (_supervisor?.AdminKey ?? _adminKey)?.Trim();
+        if (!string.IsNullOrEmpty(keyToCopy))
+        {
+            Clipboard.SetText(keyToCopy);
+            StatusText.Text = "Admin key copied. Kiosks open this console with Ctrl+Shift+A and this key.";
+        }
     }
 
     private void OnOpenProjector(object sender, RoutedEventArgs e)

@@ -179,28 +179,32 @@ IResult? AuthorizeAdmin(HttpRequest r, Database db)
     var remoteIp = r.HttpContext.Connection.RemoteIpAddress;
     var ipStr = remoteIp?.ToString() ?? "127.0.0.1";
 
-    // 1. IP boundary check: block unauthorized LAN connections
-    if (adminLoopbackOnly && !IsAuthorizedIp(remoteIp))
-    {
-        db.Log("ADMIN_ACCESS_DENIED_LAN", payloadJson: JsonSerializer.Serialize(new { ip = ipStr, path = r.Path.Value }));
-        return Results.StatusCode(403);
-    }
-
-    // 2. Extract Key
+    // 1. Extract Key
     var key = r.Headers["X-Admin-Key"].ToString();
     if (string.IsNullOrEmpty(key) && r.Query.TryGetValue("key", out var qKey))
     {
         key = qKey.ToString();
     }
+    key = key?.Trim() ?? "";
 
-    // 3. Authenticate Key FIRST (Fix for rate limiter lockout weapon):
-    // A valid admin key NEVER gets blocked or locked out by bad actor spam.
-    var isValidKey = !string.IsNullOrEmpty(key) && !string.IsNullOrEmpty(adminKey) && FixedTimeEquals(key, adminKey);
+    // 2. Authenticate Key FIRST:
+    // A valid admin key ALWAYS authenticates the administrator, from loopback or LAN.
+    var currentAdminKey = (adminKey ?? "").Trim();
+    var isValidKey = !string.IsNullOrEmpty(key) && !string.IsNullOrEmpty(currentAdminKey) &&
+                     (FixedTimeEquals(key, currentAdminKey) || key.Equals(currentAdminKey, StringComparison.Ordinal));
     if (isValidKey)
     {
         // Successful login resets any failure count from this IP
         failedAdminAttempts.TryRemove(ipStr, out _);
         return null; // Authorized
+    }
+
+    // 3. Unauthorized access checks:
+    // IP boundary check: block unauthorized LAN connections presenting missing/invalid keys
+    if (adminLoopbackOnly && !IsAuthorizedIp(remoteIp))
+    {
+        db.Log("ADMIN_ACCESS_DENIED_LAN", payloadJson: JsonSerializer.Serialize(new { ip = ipStr, path = r.Path.Value }));
+        return Results.StatusCode(403);
     }
 
     // 4. Rate-limiting applies ONLY to callers presenting invalid/missing keys
@@ -304,7 +308,7 @@ app.MapPost("/api/kiosk/register", async (RegisterRequest req, HttpRequest httpR
 app.MapPost("/api/kiosk/{id}/snapshot", async (string id, SnapshotRequest req, HttpRequest httpReq, WorkspaceStore store, Database db, IHubContext<BreachHub> hub) =>
 {
     var token = httpReq.Headers["X-Kiosk-Token"].ToString();
-    if (!string.IsNullOrWhiteSpace(token) && !db.ValidateDeskToken(token, id))
+    if (string.IsNullOrWhiteSpace(token) || !db.ValidateDeskToken(token, id))
     {
         return Results.StatusCode(403);
     }
@@ -323,15 +327,25 @@ app.MapGet("/api/kiosk/{id}/status", (string id, Database db, EventState s) =>
     return Results.Ok(new { status, activeAttacks = active, paused = s.Paused });
 });
 
-app.MapGet("/api/kiosk/{id}/files", (string id, Database db, WorkspaceStore store) =>
+app.MapGet("/api/kiosk/{id}/files", (string id, HttpRequest httpReq, Database db, WorkspaceStore store) =>
 {
+    var token = httpReq.Headers["X-Kiosk-Token"].ToString();
+    var isAuthorizedKiosk = !string.IsNullOrWhiteSpace(token) && db.ValidateDeskToken(token, id);
+    var isAuthorizedAdmin = AuthorizeAdmin(httpReq, db) == null;
+    if (!isAuthorizedKiosk && !isAuthorizedAdmin) return Results.StatusCode(403);
+
     var exists = db.QueryScalar<long>("SELECT COUNT(*) FROM participants WHERE id = @p", ("@p", id)) > 0;
     if (!exists) return Results.NotFound();
     return Results.Ok(store.List(id));
 });
 
-app.MapPost("/api/kiosk/{id}/files/fetch", (string id, FetchRequest req, Database db, WorkspaceStore store) =>
+app.MapPost("/api/kiosk/{id}/files/fetch", (string id, FetchRequest req, HttpRequest httpReq, Database db, WorkspaceStore store) =>
 {
+    var token = httpReq.Headers["X-Kiosk-Token"].ToString();
+    var isAuthorizedKiosk = !string.IsNullOrWhiteSpace(token) && db.ValidateDeskToken(token, id);
+    var isAuthorizedAdmin = AuthorizeAdmin(httpReq, db) == null;
+    if (!isAuthorizedKiosk && !isAuthorizedAdmin) return Results.StatusCode(403);
+
     var exists = db.QueryScalar<long>("SELECT COUNT(*) FROM participants WHERE id = @p", ("@p", id)) > 0;
     if (!exists) return Results.NotFound();
     return Results.Ok(new { files = store.Read(id, req.Paths) });
@@ -418,6 +432,10 @@ app.MapPost("/api/kiosk/{id}/submit", (string id, HttpRequest httpReq, Database 
     if (string.IsNullOrWhiteSpace(token) || !db.ValidateDeskToken(token, id))
     {
         return Results.StatusCode(403);
+    }
+    if (eventState.Paused)
+    {
+        return Results.Conflict(new { error = "Event is currently paused by organizers. Submissions are temporarily blocked.", code = "PAUSED" });
     }
     if (eventState.Frozen)
     {
@@ -814,10 +832,14 @@ app.MapPost("/api/kiosk/{id}/telemetry", handleTelemetry);
 app.MapPost("/api/desk/{id}/telemetry", handleTelemetry);
 
 // ---- Admin API (X-Admin-Key header; Loopback only) ---------------------------
-app.MapPost("/admin/attacks/{n:int}/fire", (int n, string? targetId, HttpRequest r, Database db, AttackDispatcher d) =>
+app.MapPost("/admin/attacks/{n:int}/fire", (int n, string? targetId, HttpRequest r, Database db, AttackDispatcher d, EventState s) =>
 {
     var authErr = AuthorizeAdmin(r, db);
     if (authErr != null) return authErr;
+    if (s.Paused && !r.Query.ContainsKey("force"))
+    {
+        return Results.Conflict(new { error = "Cannot dispatch attacks while the event is paused.", code = "PAUSED" });
+    }
     _ = Task.Run(() => d.FireAsync(n, targetId));
     return Results.Accepted();
 });
@@ -828,7 +850,7 @@ app.MapPost("/admin/pause", async (HttpRequest r, EventState s, Database db, IHu
     if (authErr != null) return authErr;
     s.Pause(); db.Log("PAUSE");
     await hub.Clients.All.SendAsync(HubEvents.Paused);
-    return Results.Ok();
+    return Results.Ok(new { success = true, paused = true });
 });
 
 app.MapPost("/admin/resume", async (HttpRequest r, EventState s, Database db, IHubContext<BreachHub> hub) =>
@@ -837,8 +859,10 @@ app.MapPost("/admin/resume", async (HttpRequest r, EventState s, Database db, IH
     if (authErr != null) return authErr;
     s.Resume(); db.Log("RESUME");
     await hub.Clients.All.SendAsync(HubEvents.Resumed);
-    return Results.Ok();
+    return Results.Ok(new { success = true, paused = false });
 });
+
+app.MapGet("/admin/status", (EventState s) => Results.Ok(new { paused = s.Paused, frozen = s.Frozen, pausedAt = s.PausedAt }));
 
 app.MapPost("/admin/scoreboard/freeze", async (HttpRequest r, EventState s, Database db, IHubContext<BreachHub> hub) =>
 {
@@ -1159,6 +1183,60 @@ app.MapPost("/admin/kiosks/{id}/disqualify", async (string id, HttpRequest r, Da
     return Results.Ok();
 });
 
+app.MapPost("/admin/kiosks/{id}/remove", async (string id, HttpRequest r, Database db, IHubContext<BreachHub> hub) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+
+    // 1. Evict active SignalR connection if connected
+    var activeEntries = BreachHub.ActiveConnections.Where(kv => kv.Value.Equals(id, StringComparison.OrdinalIgnoreCase)).ToList();
+    foreach (var entry in activeEntries)
+    {
+        BreachHub.ActiveConnections.TryRemove(entry.Key, out _);
+    }
+    await hub.Clients.Group($"p:{id}").SendAsync("Evicted", "Participant session terminated by administrator.");
+
+    // 2. Set participant status to offline, clear last_seen_at (preserving credentials, desk_tokens, scores, submissions, workspaces)
+    using (var c = db.Open())
+    using (var cmd = c.CreateCommand())
+    {
+        cmd.CommandText = "UPDATE participants SET status = 'offline', last_seen_at = NULL WHERE id = $id";
+        cmd.Parameters.AddWithValue("$id", id);
+        cmd.ExecuteNonQuery();
+    }
+
+    db.Log("PARTICIPANT_SESSION_REMOVED", id, payloadJson: JsonSerializer.Serialize(new { participantId = id, reason = "Admin terminated active session without wiping history" }));
+
+    // 3. Notify admins so grid updates immediately
+    await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, id);
+    return Results.Ok(new { success = true, participantId = id, status = "offline", message = "Participant session removed. Historical records and scores preserved." });
+});
+
+app.MapPost("/api/admin/participants/{id}/remove", async (string id, HttpRequest r, Database db, IHubContext<BreachHub> hub) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+
+    var activeEntries = BreachHub.ActiveConnections.Where(kv => kv.Value.Equals(id, StringComparison.OrdinalIgnoreCase)).ToList();
+    foreach (var entry in activeEntries)
+    {
+        BreachHub.ActiveConnections.TryRemove(entry.Key, out _);
+    }
+    await hub.Clients.Group($"p:{id}").SendAsync("Evicted", "Participant session terminated by administrator.");
+
+    using (var c = db.Open())
+    using (var cmd = c.CreateCommand())
+    {
+        cmd.CommandText = "UPDATE participants SET status = 'offline', last_seen_at = NULL WHERE id = $id";
+        cmd.Parameters.AddWithValue("$id", id);
+        cmd.ExecuteNonQuery();
+    }
+
+    db.Log("PARTICIPANT_SESSION_REMOVED", id, payloadJson: JsonSerializer.Serialize(new { participantId = id, reason = "Admin terminated active session without wiping history" }));
+    await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, id);
+    return Results.Ok(new { success = true, participantId = id, status = "offline" });
+});
+
 app.MapGet("/admin/events", (HttpRequest r, Database db) =>
 {
     var authErr = AuthorizeAdmin(r, db);
@@ -1244,7 +1322,7 @@ app.MapPost("/api/admin/event/unfreeze", async (HttpRequest r, Database db, Even
     return Results.Ok(new { frozen = false });
 });
 
-app.MapGet("/api/admin/attacks", (HttpRequest r, Database db, RogueAgentOrchestrator orch) =>
+var handleGetAttacks = (HttpRequest r, Database db, RogueAgentOrchestrator orch) =>
 {
     var authErr = AuthorizeAdmin(r, db);
     if (authErr != null) return authErr;
@@ -1260,7 +1338,9 @@ app.MapGet("/api/admin/attacks", (HttpRequest r, Database db, RogueAgentOrchestr
         state        = db.GetDispatchState(a.Id).ToString()
     });
     return Results.Ok(list);
-});
+};
+app.MapGet("/api/admin/attacks", handleGetAttacks);
+app.MapGet("/admin/attacks", handleGetAttacks);
 
 app.MapGet("/api/admin/attacks/{id:int}/state", (int id, HttpRequest r, Database db, RogueAgentOrchestrator orch) =>
 {
@@ -1301,10 +1381,14 @@ app.MapPost("/api/admin/attacks/{id:int}/confirm-canary", (int id, HttpRequest r
     catch (InvalidOperationException ex) { return Results.Conflict(new { error = ex.Message }); }
 });
 
-app.MapPost("/api/admin/attacks/{id:int}/fire-arena", async (int id, HttpRequest r, Database db, RogueAgentOrchestrator orch, AttackDispatcher dispatcher) =>
+app.MapPost("/api/admin/attacks/{id:int}/fire-arena", async (int id, HttpRequest r, Database db, RogueAgentOrchestrator orch, AttackDispatcher dispatcher, EventState s) =>
 {
     var authErr = AuthorizeAdmin(r, db);
     if (authErr != null) return authErr;
+    if (s.Paused && !r.Query.ContainsKey("force"))
+    {
+        return Results.Conflict(new { error = "Cannot dispatch attacks while the event is paused.", code = "PAUSED" });
+    }
     try
     {
         var landAt = await orch.ConfirmAndFireArenaAsync(id);
