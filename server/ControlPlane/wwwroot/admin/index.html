@@ -27,6 +27,20 @@
   </header>
 
   <main class="container">
+    <!-- Section 0: Arbiter Alert Center (Account Switch Requests & Pro Account Compliance) -->
+    <section id="arbiter-alerts-panel" class="card" style="display:none; border-color:#f59e0b; background: rgba(245, 158, 11, 0.05); margin-bottom: 20px;">
+      <div class="card-header" style="border-bottom: 1px solid rgba(245, 158, 11, 0.3);">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:18px;">⚠️</span>
+          <h2 style="color:#fbbf24; margin:0;">Arbiter Alerts &amp; Participant Requests</h2>
+        </div>
+        <span id="arbiter-alert-count" class="counter-badge" style="background:#b45309; color:#fff;">0 pending</span>
+      </div>
+      <div id="arbiter-alerts-list" style="padding:12px; display:flex; flex-direction:column; gap:10px;">
+        <!-- Injected dynamically -->
+      </div>
+    </section>
+
     <!-- Section 1: Attack Dispatcher -->
     <section class="card">
       <div class="card-header">
@@ -36,6 +50,7 @@
         </div>
         <div style="display:flex; gap:8px; align-items:center;">
           <button id="freeze-btn" class="btn warning sm" onclick="toggleFreeze()">❄ Freeze Submissions</button>
+          <button id="reset-all-btn" class="btn warning sm" onclick="resetAllBaseline()">↺ Reset All to Baseline</button>
           <button id="fire-boss-btn" class="btn danger sm" onclick="fireBossAttack()">🔥 Fire Boss Attack</button>
           <button id="refresh-btn" class="btn secondary sm">Refresh</button>
         </div>

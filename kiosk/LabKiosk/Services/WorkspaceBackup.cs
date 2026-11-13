@@ -21,6 +21,47 @@ public static class WorkspaceBackup
     public static void CopyCleanTemplate(string src, string dst) => Copy(src, dst);
 
     /// <summary>
+    /// Checks whether the workspace matches the clean AEGIS site template across core routes, lib, and server files.
+    /// Returns false if files are missing or modified from an active/stale attack.
+    /// </summary>
+    public static bool IsWorkspaceHealthyAndNominal(string workspacePath, string? siteTemplatePath)
+    {
+        if (string.IsNullOrWhiteSpace(workspacePath) || !Directory.Exists(workspacePath)) return false;
+        if (!File.Exists(Path.Combine(workspacePath, "server.js"))) return false;
+
+        if (!string.IsNullOrWhiteSpace(siteTemplatePath) && Directory.Exists(siteTemplatePath))
+        {
+            var keyFiles = new[]
+            {
+                Path.Combine("routes", "traffic.js"),
+                Path.Combine("routes", "power.js"),
+                Path.Combine("routes", "vault.js"),
+                Path.Combine("routes", "settings.js"),
+                Path.Combine("routes", "overview.js"),
+                Path.Combine("lib", "auth.js"),
+                Path.Combine("lib", "db.js"),
+                Path.Combine("public", "app.js"),
+                Path.Combine("public", "aegis.css"),
+                "server.js"
+            };
+
+            foreach (var rel in keyFiles)
+            {
+                var tmpl = Path.Combine(siteTemplatePath, rel);
+                var ws = Path.Combine(workspacePath, rel);
+                if (File.Exists(tmpl))
+                {
+                    if (!File.Exists(ws)) return false;
+                    var tmplLen = new FileInfo(tmpl).Length;
+                    var wsLen = new FileInfo(ws).Length;
+                    if (tmplLen != wsLen) return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    /// <summary>
     /// Ensures the participant workspace is populated with a pristine baseline if missing or empty.
     /// Extracts site.zip if bundled next to the executable, otherwise copies the clean site template directory.
     /// Also purges any legacy Git or backup folders inside the workspace.
@@ -42,25 +83,9 @@ public static class WorkspaceBackup
 
             if (!isEmptyOrIncomplete)
             {
-                // If workspace already exists, verify whether template has newer UI/code (e.g. smart city update)
-                if (!string.IsNullOrWhiteSpace(siteTemplatePath) && Directory.Exists(siteTemplatePath))
+                if (!IsWorkspaceHealthyAndNominal(workspacePath, siteTemplatePath))
                 {
-                    var tmplAppJs = Path.Combine(siteTemplatePath, "public", "app.js");
-                    var wsAppJs = Path.Combine(workspacePath, "public", "app.js");
-                    var tmplCss = Path.Combine(siteTemplatePath, "public", "aegis.css");
-                    var wsCss = Path.Combine(workspacePath, "public", "aegis.css");
-
-                    bool needsRefresh = false;
-                    if (File.Exists(tmplAppJs) && (!File.Exists(wsAppJs) || new FileInfo(tmplAppJs).Length != new FileInfo(wsAppJs).Length))
-                        needsRefresh = true;
-                    else if (File.Exists(tmplCss) && (!File.Exists(wsCss) || new FileInfo(tmplCss).Length != new FileInfo(wsCss).Length))
-                        needsRefresh = true;
-
-                    if (needsRefresh)
-                    {
-                        CopyCleanTemplate(siteTemplatePath, workspacePath);
-                        WipeLocalGitRepo(workspacePath);
-                    }
+                    ForceResetToPristine(workspacePath, siteTemplatePath);
                 }
                 return;
             }
@@ -85,6 +110,50 @@ public static class WorkspaceBackup
             }
         }
         catch { /* MainWindow.StartAsync still verifies & pulls baseline from Control Plane if needed */ }
+    }
+
+    /// <summary>
+    /// Forces complete purge and restoration of the workspace back to 100% pristine AEGIS baseline.
+    /// Also wipes local site.db if dataPath is provided.
+    /// </summary>
+    public static void ForceResetToPristine(string workspacePath, string? siteTemplatePath, string? dataPath = null)
+    {
+        try
+        {
+            Directory.CreateDirectory(workspacePath);
+            WipeLocalGitRepo(workspacePath);
+            foreach (var staleDir in new[] { "routes", "views", "lib", "public", "test", ".breach-backup" })
+            {
+                var p = Path.Combine(workspacePath, staleDir);
+                if (Directory.Exists(p))
+                {
+                    try { Directory.Delete(p, true); } catch { }
+                }
+            }
+
+            var zipCandidates = new[]
+            {
+                Path.Combine(AppContext.BaseDirectory, "site.zip"),
+                Path.Combine(AppContext.BaseDirectory, "site-template.zip")
+            };
+            var zipPath = zipCandidates.FirstOrDefault(File.Exists);
+            if (zipPath is not null)
+            {
+                ZipFile.ExtractToDirectory(zipPath, workspacePath, overwriteFiles: true);
+            }
+            else if (!string.IsNullOrWhiteSpace(siteTemplatePath) && Directory.Exists(siteTemplatePath))
+            {
+                CopyCleanTemplate(siteTemplatePath, workspacePath);
+            }
+
+            WipeLocalGitRepo(workspacePath);
+
+            if (!string.IsNullOrWhiteSpace(dataPath))
+            {
+                WipeSiteDb(dataPath);
+            }
+        }
+        catch { }
     }
 
     /// <summary>

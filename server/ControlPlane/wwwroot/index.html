@@ -130,6 +130,7 @@
   <div class="hdr-controls">
     <label style="font-size:12px; color:var(--mute)">Admin Key: <input id="adminKey" type="password" style="width:200px" value="CHANGE-ME-BEFORE-EVENT"></label>
     <button id="btnRefresh" title="Refresh kiosks, leaderboard, attacks, and events">&#x21BB; Refresh</button>
+    <button id="btnResetBaseline" class="btn-warn" style="background:rgba(255,165,2,0.15); border-color:var(--warn); color:var(--warn);" title="Reset all participant workspaces to clean pristine baseline">&#x21BA; Reset All Baseline</button>
     <button id="btnPause" class="btn-warn">&#x23F8; Pause Event</button>
     <button id="btnResume" class="btn-ok">&#x25B6; Resume</button>
     <button id="btnFreeze" class="btn-warn">&#x2744; Freeze Board</button>
@@ -162,6 +163,16 @@
 
   <!-- Right Side: Live Dashboard -->
   <div style="display:flex; flex-direction:column; gap:1rem">
+    <!-- ARBITER COMPLIANCE & ACCOUNT SWITCH ALERTS -->
+    <div id="arbiterAlertsContainer" style="display:none; margin-bottom: 0.5rem;">
+      <div class="card" style="border: 2px solid var(--accent); background: rgba(255, 71, 87, 0.12); padding: 1rem; border-radius: 6px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <h2 style="color:var(--accent); margin:0; font-size:14px; font-weight:700;">🚨 COMPLIANCE &amp; ARBITER ALERTS (<span id="alertCount">0</span> pending)</h2>
+        </div>
+        <div id="alertsList" style="margin-top:0.8rem; display:flex; flex-direction:column; gap:0.6rem;"></div>
+      </div>
+    </div>
+
     <div class="tabs-nav">
       <button class="tab-btn active" onclick="showTab('kiosks', this)">Defender Grid (<span id="countKiosks">0</span>)</button>
       <button class="tab-btn" onclick="showTab('board', this)">Live Leaderboard</button>
@@ -300,6 +311,16 @@ $('btnFreeze').onclick = async () => {
 $('btnExport').onclick = () => {
   window.open(`/admin/export/ledger?key=${encodeURIComponent($('adminKey').value)}`, '_blank');
 };
+$('btnResetBaseline').onclick = async () => {
+  if (!confirm('DANGER: RESET ARENA BASELINE\n\nThis will:\n1. Cancel all active intrusions across all participants.\n2. Restore all participant workspaces back to the clean site template.\n3. Clear active attack state on all connected kiosks.\n\nProceed with full baseline reset?')) return;
+  const res = await post('/admin/reset-baseline-all');
+  if (res.ok) {
+    alert('✓ All participant workspaces reset to clean baseline.');
+    refreshAll(true);
+  } else {
+    alert(`Failed to reset baseline: ${res.statusText}`);
+  }
+};
 $('btnRefresh').onclick = () => refreshAll(true);
 $('btnSendBroadcast').onclick = () => {
   const msg = $('broadcastInput').value.trim();
@@ -308,6 +329,40 @@ $('btnSendBroadcast').onclick = () => {
     $('broadcastInput').value = '';
   }
 };
+
+async function refreshComplianceAlerts() {
+  try {
+    const res = await fetch('/admin/compliance/alerts', { headers: getHeaders() });
+    if (!res.ok) return;
+    const alerts = await res.json();
+    pendingArbiterAlerts.clear();
+    for (const a of alerts) {
+      if (a.type === 'switch') {
+        pendingArbiterAlerts.set(`switch_${a.participantId}`, {
+          type: 'switch',
+          reqId: a.id.replace('switch_', ''),
+          pid: a.participantId,
+          deskId: a.deskId,
+          name: a.name,
+          email: a.email,
+          reason: a.tier,
+          timestamp: a.createdAt
+        });
+      } else {
+        pendingArbiterAlerts.set(`pro_${a.participantId}`, {
+          type: 'pro',
+          pid: a.participantId,
+          deskId: a.deskId,
+          name: a.name,
+          email: a.email,
+          tier: a.tier,
+          timestamp: a.createdAt
+        });
+      }
+    }
+    renderArbiterAlerts();
+  } catch (_) {}
+}
 
 async function refreshAll(manual = false) {
   const btn = $('btnRefresh');
@@ -321,7 +376,8 @@ async function refreshAll(manual = false) {
       refreshKiosks(),
       refreshLeaderboard(),
       refreshEvents(),
-      refreshBackupStatus()
+      refreshBackupStatus(),
+      refreshComplianceAlerts()
     ]);
     if (manual && btn) btn.textContent = '✓ Refreshed';
   } finally {
@@ -378,12 +434,16 @@ async function refreshKiosks() {
   } else {
     $('kiosksGrid').innerHTML = kiosksCache.map(k => {
       let isDead = k.status === 'disqualified';
-      let cardClass = isDead ? 'kiosk-card dead' : (k.agyExhausted ? 'kiosk-card warn-quota' : 'kiosk-card');
+      let hasPro = pendingArbiterAlerts.has(`pro_${k.id}`);
+      let hasSwitch = pendingArbiterAlerts.has(`switch_${k.id}`);
+      let complianceBadge = hasPro ? `<span style="background:var(--accent); color:#fff; font-size:10px; font-weight:800; padding:2px 6px; border-radius:3px; margin-left:6px">&#x26A0; PRO TIER</span>`
+                          : hasSwitch ? `<span style="background:var(--warn); color:#000; font-size:10px; font-weight:800; padding:2px 6px; border-radius:3px; margin-left:6px">&#x21BB; SWITCH REQ</span>` : '';
+      let cardClass = isDead ? 'kiosk-card dead' : (hasPro ? 'kiosk-card dead' : (k.agyExhausted ? 'kiosk-card warn-quota' : 'kiosk-card'));
       let activeBadge = k.activeAttacks ? `<span style="background:var(--accent); color:#fff; font-size:10px; font-weight:800; padding:2px 6px; border-radius:3px; margin-left:6px">&#x26A1; #${k.activeAttacks} ACTIVE</span>` : '';
       return `
         <div class="${cardClass}" onclick="openModal('${k.id}')">
           <div class="kc-head">
-            <span>${k.id} ${activeBadge}</span>
+            <span>${k.id} ${activeBadge} ${complianceBadge}</span>
             <span>&#x2705; ${k.solvedCount}/7</span>
           </div>
           <div class="kc-name">${k.name}</div>
@@ -504,12 +564,173 @@ async function reinstateParticipant(id) {
 
 function closeModal() { $('modal').style.display = 'none'; }
 
+// Compliance & Arbiter Alerts State
+const pendingArbiterAlerts = new Map();
+
+function playAlertSound() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.3);
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.35);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.35);
+  } catch (_) {}
+}
+
+function renderArbiterAlerts() {
+  const container = $('arbiterAlertsContainer');
+  const list = $('alertsList');
+  const countEl = $('alertCount');
+  if (!container || !list) return;
+
+  if (pendingArbiterAlerts.size === 0) {
+    container.style.display = 'none';
+    return;
+  }
+
+  container.style.display = 'block';
+  if (countEl) countEl.textContent = pendingArbiterAlerts.size;
+
+  list.innerHTML = Array.from(pendingArbiterAlerts.values()).map(a => {
+    if (a.type === 'switch') {
+      return `
+        <div style="background:#13222d; border:1px solid var(--warn); border-radius:5px; padding:10px 14px; display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span class="status-pill" style="border-color:var(--warn); color:var(--warn); font-weight:700;">${escapeHtml(a.deskId)}</span>
+              <strong>${escapeHtml(a.name || a.pid)}</strong>
+              <span style="color:var(--mute); font-size:12px;">(${escapeHtml(a.email || 'No email')})</span>
+            </div>
+            <div style="font-size:12px; color:var(--mute); margin-top:4px;">
+              Participant requests authorization to switch linked Google account.
+              ${a.reason ? `<span style="font-style:italic">Reason: ${escapeHtml(a.reason)}</span>` : ''}
+            </div>
+          </div>
+          <div style="display:flex; gap:6px;">
+            <button class="btn-ok" onclick="approveAccountSwitch('${escapeHtml(a.pid)}', '${escapeHtml(a.reqId)}')">&#x2713; Approve</button>
+            <button class="btn-danger" onclick="denyAccountSwitch('${escapeHtml(a.pid)}', '${escapeHtml(a.reqId)}')">&#x2715; Deny</button>
+          </div>
+        </div>
+      `;
+    } else {
+      return `
+        <div style="background:#1f1318; border:1px solid var(--accent); border-radius:5px; padding:10px 14px; display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span class="status-pill" style="border-color:var(--accent); color:var(--accent); font-weight:700;">${escapeHtml(a.deskId)}</span>
+              <strong style="color:var(--accent);">&#x26A0; UNAUTHORIZED COMPUTE TIER: ${escapeHtml(a.tier || 'Google AI Pro')}</strong>
+              <span style="color:var(--mute); font-size:12px;">${escapeHtml(a.name || a.pid)} (${escapeHtml(a.email)})</span>
+            </div>
+            <div style="font-size:12px; color:var(--mute); margin-top:4px;">
+              Paid AI subscription detected on terminal stream. Event rules mandate free quota tier for compute parity.
+            </div>
+          </div>
+          <div style="display:flex; gap:6px;">
+            <button class="btn-ok" style="background:rgba(30,144,255,0.2); border-color:var(--cyan); color:var(--cyan);" onclick="allowProAccount('${escapeHtml(a.pid)}', '${escapeHtml(a.name)}')">&#x26A1; Allow Pro Plan</button>
+            <button class="btn-warn" onclick="pardonParticipant('${escapeHtml(a.pid)}', '${escapeHtml(a.name)}')">&#x1F54A; Pardon &amp; Reset</button>
+            <button class="btn-danger" onclick="disqualifyParticipant('${escapeHtml(a.pid)}', '${escapeHtml(a.name)}')">&#x26D4; Disqualify</button>
+          </div>
+        </div>
+      `;
+    }
+  }).join('');
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
+
+async function allowProAccount(pid, name) {
+  try {
+    const res = await post(`/admin/kiosks/${encodeURIComponent(pid)}/allow-pro-account`);
+    if (!res.ok) throw new Error(res.statusText);
+    pendingArbiterAlerts.delete(`pro_${pid}`);
+    renderArbiterAlerts();
+    refreshKiosks();
+    alert(`⚡ Google AI Pro authorized for ${name || pid}. Participant kiosk unlocked.`);
+  } catch (err) {
+    alert(`Failed to authorize Pro plan: ${err.message}`);
+  }
+}
+
+async function pardonParticipant(pid, name) {
+  try {
+    const res = await post(`/admin/kiosks/${encodeURIComponent(pid)}/pardon-pro-account`);
+    if (!res.ok) throw new Error(res.statusText);
+    pendingArbiterAlerts.delete(`pro_${pid}`);
+    renderArbiterAlerts();
+    refreshKiosks();
+    alert(`🕊️ Pardon granted to ${name || pid}. Participant prompted to sign in with standard free account.`);
+  } catch (err) {
+    alert(`Failed to pardon participant: ${err.message}`);
+  }
+}
+
+async function disqualifyParticipant(pid, name) {
+  if (!confirm(`Are you sure you want to DISQUALIFY ${name || pid}? Their session will be terminated immediately.`)) return;
+  try {
+    const res = await post(`/admin/kiosks/${encodeURIComponent(pid)}/disqualify`, { reason: 'Unauthorized paid AI compute tier' });
+    if (!res.ok) throw new Error(res.statusText);
+    pendingArbiterAlerts.delete(`pro_${pid}`);
+    renderArbiterAlerts();
+    refreshKiosks();
+  } catch (err) {
+    alert(`Failed to disqualify participant: ${err.message}`);
+  }
+}
+
+async function approveAccountSwitch(pid, reqId) {
+  try {
+    const res = await post(`/admin/kiosks/${encodeURIComponent(pid)}/account-switch/approve?requestId=${encodeURIComponent(reqId)}`);
+    if (!res.ok) throw new Error(res.statusText);
+    pendingArbiterAlerts.delete(`switch_${pid}`);
+    renderArbiterAlerts();
+    refreshKiosks();
+    alert(`Account switch approved for participant ${pid}.`);
+  } catch (err) {
+    alert(`Failed to approve account switch: ${err.message}`);
+  }
+}
+
+async function denyAccountSwitch(pid, reqId) {
+  try {
+    const res = await post(`/admin/kiosks/${encodeURIComponent(pid)}/account-switch/deny?requestId=${encodeURIComponent(reqId)}`);
+    if (!res.ok) throw new Error(res.statusText);
+    pendingArbiterAlerts.delete(`switch_${pid}`);
+    renderArbiterAlerts();
+    refreshKiosks();
+    alert(`Account switch denied for participant ${pid}.`);
+  } catch (err) {
+    alert(`Failed to deny account switch: ${err.message}`);
+  }
+}
+
 // SignalR Realtime connection
 const hubConn = new signalR.HubConnectionBuilder().withUrl('/hub').withAutomaticReconnect().build();
 hubConn.on('KIOSK_UPDATED', () => { refreshKiosks(); refreshLeaderboard(); });
 hubConn.on('VERDICT', () => { refreshKiosks(); refreshLeaderboard(); });
 hubConn.on('PAUSED', () => $('btnPause').textContent = '⏸ Paused (Active)');
 hubConn.on('RESUMED', () => $('btnPause').textContent = '⏸ Pause Event');
+hubConn.on('PRO_ACCOUNT_FLAGGED', (pid, deskId, name, email, tier, timestamp) => {
+  playAlertSound();
+  pendingArbiterAlerts.set(`pro_${pid}`, { type: 'pro', pid, deskId, name, email, tier, timestamp });
+  renderArbiterAlerts();
+  refreshKiosks();
+});
+hubConn.on('ACCOUNT_SWITCH_REQUEST', (reqId, pid, deskId, name, email, reason, timestamp) => {
+  playAlertSound();
+  pendingArbiterAlerts.set(`switch_${pid}`, { type: 'switch', reqId, pid, deskId, name, email, reason, timestamp });
+  renderArbiterAlerts();
+  refreshKiosks();
+});
 
 async function refreshBackupStatus() {
   try {

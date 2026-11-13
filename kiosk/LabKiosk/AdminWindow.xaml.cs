@@ -1,3 +1,4 @@
+using System.IO;
 using System.Text.Json;
 using System.Windows;
 using LabKiosk.Services;
@@ -27,6 +28,17 @@ public partial class AdminWindow : Window
             if (_supervisor is not null) await _supervisor.StartAsync(t => Dispatcher.InvokeAsync(() => StatusText.Text = t));
             await Web.EnsureCoreWebView2Async(await WebViewEnv.GetAsync());
             await Web.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync($"window.__ADMIN_KEY = {JsonSerializer.Serialize(_adminKey)};");
+            Web.CoreWebView2.NavigationCompleted += (_, e) =>
+            {
+                if (!e.IsSuccess && e.WebErrorStatus != Microsoft.Web.WebView2.Core.CoreWebView2WebErrorStatus.OperationCanceled)
+                {
+                    Dispatcher.InvokeAsync(async () =>
+                    {
+                        await Task.Delay(800);
+                        try { Web.Reload(); } catch { }
+                    });
+                }
+            };
             var fullUrl = _serverUrl.TrimEnd('/') + (_path.StartsWith('/') ? _path : "/" + _path);
             if (Uri.TryCreate(fullUrl, UriKind.Absolute, out var adminUri))
                 Web.Source = adminUri;
@@ -35,7 +47,17 @@ public partial class AdminWindow : Window
             var lanIp = GetLocalIp();
             StatusText.Text = _fullscreen ? "" : $"Connected to {_serverUrl} | LAN IP for Kiosks: {lanIp}";
         }
-        catch (Exception ex) { StatusText.Text = $"Could not start: {ex.Message}"; }
+        catch (Exception ex)
+        {
+            StatusText.Text = $"Could not start: {ex.Message}";
+            try
+            {
+                var logDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BreachKiosk", "logs");
+                Directory.CreateDirectory(logDir);
+                File.AppendAllText(Path.Combine(logDir, "admin_crash.log"), $"[{DateTime.UtcNow:O}] {ex}\n\n");
+            }
+            catch { }
+        }
     }
 
     private static string GetLocalIp()

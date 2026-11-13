@@ -23,11 +23,14 @@ public sealed class ConPtySession : IDisposable
 
     public event Action<string>? Output;
     public event Action<int>? Exited;
+    public bool HasExited => _process == null || _process.HasExited || _disposed != 0;
 
     private ConPtySession() { }
 
     public static ConPtySession Start(string exe, string args, string cwd, IReadOnlyDictionary<string, string?> env, short cols, short rows)
     {
+        cols = cols <= 0 ? (short)100 : cols;
+        rows = rows <= 0 ? (short)30 : rows;
         var s = new ConPtySession();
         try { s.Launch(exe, args, cwd, env, cols, rows); }
         catch { s.Dispose(); throw; }
@@ -47,16 +50,17 @@ public sealed class ConPtySession : IDisposable
             throw new Win32Exception(Marshal.GetLastWin32Error(), "CreatePipe failed");
 
         var hr = CreatePseudoConsole(new Coord(cols, rows), inRead, outWrite, 0, out _hpc);
+        // The pseudo console now owns these ends; closing our copies immediately prevents inheritance and leaks
+        CloseHandle(inRead);
+        CloseHandle(outWrite);
         if (hr != 0)
         {
-            CloseHandle(inRead);
             CloseHandle(inWrite);
             CloseHandle(outRead);
-            CloseHandle(outWrite);
             throw new Win32Exception(hr, "CreatePseudoConsole failed (needs Windows 10 1809 or newer)");
         }
 
-        _input = new FileStream(new SafeFileHandle(inWrite, true), FileAccess.Write, 4096, false);
+        _input = new FileStream(new SafeFileHandle(inWrite, true), FileAccess.Write, bufferSize: 0, false);
         _output = new FileStream(new SafeFileHandle(outRead, true), FileAccess.Read, 4096, false);
 
         var size = IntPtr.Zero;
@@ -74,20 +78,18 @@ public sealed class ConPtySession : IDisposable
             envBlock = BuildEnvironment(env);
             var cmd = new StringBuilder($"\"{exe}\" {args}");
 
-            if (!CreateProcessW(null, cmd, IntPtr.Zero, IntPtr.Zero, true, ExtendedStartupInfoPresent | CreateUnicodeEnvironment,
+            if (!CreateProcessW(null, cmd, IntPtr.Zero, IntPtr.Zero, false, ExtendedStartupInfoPresent | CreateUnicodeEnvironment,
                     envBlock, cwd, ref si, out var pi))
                 throw new Win32Exception(Marshal.GetLastWin32Error(), $"Could not start {Path.GetFileName(exe)}");
 
             CloseHandle(pi.hThread);
             CloseHandle(pi.hProcess);
-            // Close pseudoconsole-owned pipe handles strictly after process creation has completed
-            CloseHandle(inRead);
-            CloseHandle(outWrite);
 
             _process = Process.GetProcessById(pi.dwProcessId);
             _process.EnableRaisingEvents = true;
             _process.Exited += (_, _) =>
             {
+                if (Volatile.Read(ref _disposed) != 0) return;
                 int code = 0; try { code = _process.ExitCode; } catch { /* already gone */ }
                 Exited?.Invoke(code);
                 Task.Run(Dispose); // closing the pseudo console lets the reader finish
@@ -160,6 +162,8 @@ public sealed class ConPtySession : IDisposable
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
+        Output = null;
+        Exited = null;
         Kill();
         var hpc = _hpc; _hpc = IntPtr.Zero;
         // ClosePseudoConsole can wait for pending output, so never call it on the UI thread.

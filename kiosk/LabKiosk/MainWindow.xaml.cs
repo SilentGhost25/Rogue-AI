@@ -23,6 +23,7 @@ public partial class MainWindow : Window
     private readonly HashSet<int> _pulled = new();
     private readonly HashSet<int> _activeAttacks = new();
     private readonly HashSet<int> _solvedAttacks = new();
+    private bool _proPlanAuthorized;
 
     private record AttackMeta(string Title, string Classification, string Symptoms, string Telemetry);
 
@@ -216,7 +217,18 @@ public partial class MainWindow : Window
                     NavigateSiteToRoute("/");
                 Code.RefreshAll();
             });
-            _site.SiteDown += (err) => Dispatcher.InvokeAsync(() => ShowSiteDownInWebView(err));
+            _site.SiteDown += (err) => Dispatcher.InvokeAsync(() =>
+            {
+                if (_activeAttacks.Count == 0 && !WorkspaceBackup.IsWorkspaceHealthyAndNominal(_s.WorkspacePath, _s.SiteTemplatePath))
+                {
+                    WorkspaceBackup.ForceResetToPristine(_s.WorkspacePath, _s.SiteTemplatePath, _s.DataPath);
+                    _site?.RequestReload();
+                    Code.RefreshAll();
+                    Status("↺ Auto-healed corrupted baseline workspace. Restarting municipal grid...");
+                    return;
+                }
+                ShowSiteDownInWebView(err);
+            });
             _site.SiteRestored += () => Dispatcher.InvokeAsync(() =>
             {
                 if (StatusText.Text.Contains("not running"))
@@ -225,7 +237,21 @@ public partial class MainWindow : Window
             _site.Problem += Status;
             _site.Start();
             await Site.EnsureCoreWebView2Async(await WebViewEnv.GetAsync());
-            if (!await _site.WaitHealthyAsync(15)) Status("The website did not start. Check Node.js (NodePath in kiosk.json).");
+            const string loadingHtml = """
+                <!DOCTYPE html><html><head><meta charset="utf-8"><style>
+                body { margin:0; height:100vh; background:#0a1218; color:#00e5ff; display:flex; flex-direction:column; align-items:center; justify-content:center; font-family:'Segoe UI',sans-serif; user-select:none; }
+                .spinner { width:38px; height:38px; border:3px solid rgba(0,229,255,0.18); border-top-color:#00e5ff; border-radius:50%; animation:spin 0.75s linear infinite; margin-bottom:16px; }
+                @keyframes spin { to { transform:rotate(360deg); } }
+                h3 { margin:0; letter-spacing:1px; font-weight:700; text-transform:uppercase; font-size:13px; font-family:monospace; }
+                p { color:#64748b; font-size:12px; margin-top:6px; }
+                </style></head><body>
+                <div class="spinner"></div>
+                <h3>AEGIS Defensive Grid Initializing</h3>
+                <p>Starting local municipal services on port 3000...</p>
+                </body></html>
+                """;
+            Site.CoreWebView2.NavigateToString(loadingHtml);
+
             Site.CoreWebView2.NavigationStarting += (_, e) =>
             {
                 if (string.IsNullOrWhiteSpace(e.Uri) ||
@@ -248,16 +274,32 @@ public partial class MainWindow : Window
             {
                 if (!e.IsSuccess && e.WebErrorStatus != Microsoft.Web.WebView2.Core.CoreWebView2WebErrorStatus.OperationCanceled)
                 {
-                    Dispatcher.InvokeAsync(() => ShowSiteDownInWebView(_site?.LastError));
+                    if (_site?.IsProcessAlive == false)
+                    {
+                        Dispatcher.InvokeAsync(() => ShowSiteDownInWebView(_site?.LastError));
+                    }
                 }
             };
-            if (Uri.TryCreate(_s.SiteUrl, UriKind.Absolute, out var siteUri))
-                Site.Source = siteUri;
-            else
-                Site.Source = new Uri("http://127.0.0.1:3000");
 
-            // Start terminals immediately so AI CLI tools and workspace are ready without waiting for network registration
-            _ = StartTerminalsAsync();
+            _ = Task.Run(async () =>
+            {
+                var healthy = await _site.WaitHealthyAsync(20);
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    if (healthy)
+                    {
+                        NavigateSiteToRoute("/");
+                        Status(_activeAttacks.Count > 0
+                            ? $"Active breach detected: #{string.Join(", #", _activeAttacks)}. Fix the code, then submit."
+                            : "Site online. All systems nominal.");
+                    }
+                    else
+                    {
+                        ShowSiteDownInWebView(_site?.LastError);
+                        Status("The website did not start. Check Node.js (NodePath in kiosk.json).");
+                    }
+                });
+            });
 
             // 3. Register with the control plane (auto-discover LAN host if configured URL is unreachable).
             while (_pid is null)
@@ -290,7 +332,7 @@ public partial class MainWindow : Window
                         Status($"Discovered Organizer at {_s.ServerUrl}. Connecting...");
                         continue;
                     }
-                    await Task.Delay(2500);
+                    await Task.Delay(500);
                 }
             }
 
@@ -299,18 +341,29 @@ public partial class MainWindow : Window
             _sync.Hold();
             _pull = new WorkspaceSync(_api, _pid, _s.WorkspacePath, _sync);
             var status = await _api.GetStatusAsync(_pid);
-            var pulled = await _pull.PullAsync("startup");
-            if (pulled > 0)
+            if (status?.ActiveAttacks != null && status.ActiveAttacks.Count > 0)
             {
-                _site.RequestReload();
-                Code.RefreshAll();
-            }
-            if (status?.ActiveAttacks != null)
-            {
+                var pulled = await _pull.PullAsync("startup");
+                if (pulled > 0)
+                {
+                    _site.RequestReload();
+                    Code.RefreshAll();
+                }
                 foreach (var id in status.ActiveAttacks)
                 {
                     _pulled.Add(id);
                     _activeAttacks.Add(id);
+                }
+            }
+            else
+            {
+                _activeAttacks.Clear();
+                _pulled.Clear();
+                if (!WorkspaceBackup.IsWorkspaceHealthyAndNominal(_s.WorkspacePath, _s.SiteTemplatePath))
+                {
+                    WorkspaceBackup.ForceResetToPristine(_s.WorkspacePath, _s.SiteTemplatePath, _s.DataPath);
+                    _site?.RequestReload();
+                    Code.RefreshAll();
                 }
             }
             _sync.Release();
@@ -326,6 +379,10 @@ public partial class MainWindow : Window
             _hub.Paused += () => Status("Event paused by the organizers.");
             _hub.Resumed += () => Status("Event resumed.");
             _hub.Eliminated += () => Dispatcher.InvokeAsync(Eliminate);
+            _hub.Disqualified += reason => Dispatcher.InvokeAsync(Eliminate);
+            _hub.PardonGranted += () => Dispatcher.InvokeAsync(HandlePardonGranted);
+            _hub.ProAccountAllowed += () => Dispatcher.InvokeAsync(HandleProAccountAllowed);
+            _hub.ResetBaseline += () => Dispatcher.InvokeAsync(OnResetBaselineAsync);
             _hub.VerdictDetailed += OnVerdictDetailed;
             _hub.Reconnected += ResyncAsync;
             await _hub.StartAsync();
@@ -368,8 +425,11 @@ public partial class MainWindow : Window
         catch { /* best effort */ }
     }
 
+    private int _terminalsStarted;
+
     private async Task StartTerminalsAsync()
     {
+        if (Interlocked.Exchange(ref _terminalsStarted, 1) == 1) return;
         var assets = Path.Combine(AppContext.BaseDirectory, "Assets", "terminal");
         await Task.WhenAll(TermAgy.InitializeAsync(assets), TermOc.InitializeAsync(assets));
 
@@ -400,6 +460,7 @@ public partial class MainWindow : Window
         }
         TermAgy.OutputText += _quota.Feed;
         _quota.Exhausted += () => Dispatcher.InvokeAsync(OnAgyExhausted);
+        _quota.ProAccountDetected += tier => Dispatcher.InvokeAsync(() => HandleProAccountDetected(tier));
         _quota.OtherSignal += kind => _ = _api.SendTelemetryAsync(_pid!, "QUOTA_SIGNAL", new { kind });
 
         // OpenCode: `opencode serve` runs hidden; visible terminal attaches to it, prompts counted from server
@@ -844,10 +905,11 @@ public partial class MainWindow : Window
     // ---- budgets -------------------------------------------------------------------------------------
     private void OnAgyExhausted()
     {
+        if (_proPlanAuthorized || _quota.InhibitExhaustion) return;
         if (_budget.AgyExhausted) return;
         _budget.MarkAgyExhausted();
-        TermAgy.Lock("agy quota is used up. Use the OpenCode tab.");
         TabOc.IsChecked = true;
+        Status("⚠️ Antigravity AI reported quota limits. Switched to OpenCode AI tab (or switch models in agy).");
         _ = _api.SendTelemetryAsync(_pid!, "AGY_EXHAUSTED");
         RefreshMeters();
         CheckBothSpent();
@@ -1115,13 +1177,100 @@ public partial class MainWindow : Window
         }
     }
 
+    private async Task OnResetBaselineAsync()
+    {
+        _sync?.Hold();
+        try
+        {
+            _activeAttacks.Clear();
+            _pulled.Clear();
+            _solvedAttacks.Clear();
+
+            WorkspaceBackup.ForceResetToPristine(_s.WorkspacePath, _s.SiteTemplatePath, _s.DataPath);
+            _site?.RequestReload();
+            Code.RefreshAll();
+
+            await Dispatcher.InvokeAsync(() =>
+            {
+                try { _activeIncidentWindow?.Close(); } catch { }
+                _activeIncidentWindow = null;
+                UpdateAttackBadges();
+                Status("↺ Workspace restored to pristine DEFCON-4 baseline. All systems nominal.");
+                NavigateSiteToRoute("/");
+            });
+        }
+        catch (Exception ex)
+        {
+            Status($"Reset baseline failed: {ex.Message}");
+        }
+        finally
+        {
+            _sync?.Release();
+        }
+    }
+
     private void OnProfileClick(object sender, RoutedEventArgs e)
     {
-        var onboard = new OnboardingWindow(_s);
+        var onboard = new OnboardingWindow(_s, _hub) { Owner = this };
         if (onboard.ShowDialog() == true)
         {
             BtnProfile.Content = $"👤 {_s.DisplayName}";
             Status($"Identity updated to {_s.DisplayName}");
+        }
+    }
+
+    private void HandleProAccountDetected(string tier)
+    {
+        if (_proPlanAuthorized || _quota.InhibitExhaustion) return;
+        TermAgy.Lock("COMPLIANCE REVIEW: Unauthorized Google AI Pro tier detected.");
+        Status("🚨 COMPLIANCE ALERT: Google AI Pro detected. Transmitted to event arbiters.");
+        var dlg = new ComplianceLockoutDialog(_hub, _s.GoogleAccount, tier, _s.DeskId ?? "")
+        {
+            Owner = this
+        };
+        var res = dlg.ShowDialog();
+        if (res == true)
+        {
+            if (dlg.AllowedProPlan)
+            {
+                HandleProAccountAllowed();
+            }
+            else
+            {
+                HandlePardonGranted();
+            }
+        }
+        else
+        {
+            Eliminate();
+        }
+    }
+
+    private void HandleProAccountAllowed()
+    {
+        _proPlanAuthorized = true;
+        _quota.InhibitExhaustion = true;
+        _quota.Reset();
+        _budget.ResetAgy();
+        TermAgy.UnlockAndRestart();
+        TabAgy.IsChecked = true;
+        Status("⚡ Google AI Pro plan authorized by Organizer. Antigravity AI unlocked.");
+        RefreshMeters();
+    }
+
+    private void HandlePardonGranted()
+    {
+        CredentialManager.ClearAntigravityGoogleCredential();
+        _s.GoogleAccount = "";
+        _s.Save();
+        _quota.Reset();
+        Status("🕊️ Arbiter pardon granted. Please sign in with an approved standard Google account.");
+
+        var onboard = new OnboardingWindow(_s, _hub) { Owner = this };
+        if (onboard.ShowDialog() == true)
+        {
+            _terminalsStarted = 0;
+            _ = StartTerminalsAsync();
         }
     }
 

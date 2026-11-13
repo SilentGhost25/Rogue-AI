@@ -44,25 +44,83 @@ const post = (m) => window.chrome.webview.postMessage(m);
   const fit = new FitAddon.FitAddon();
   term.loadAddon(fit);
   term.open(document.getElementById('term'));
-  fit.fit();
+
+  const ensureFitted = () => {
+    try {
+      const el = document.getElementById('term');
+      if (el && el.clientWidth > 20 && el.clientHeight > 20) {
+        fit.fit();
+      }
+    } catch {}
+  };
+  window.ensureFitted = ensureFitted;
+  window.fit = fit;
+  window.term = term;
+
+  ensureFitted();
+  requestAnimationFrame(ensureFitted);
+  setTimeout(ensureFitted, 50);
+  setTimeout(ensureFitted, 150);
+  setTimeout(ensureFitted, 300);
+  setTimeout(ensureFitted, 600);
 
   let locked = false, ended = false;
   term.onData((d) => {
     if (locked) return;
-    if (ended) { if (d === '\r') { ended = false; post({ type: 'restart' }); } return; }
+    if (ended) {
+      if (d === '\r' || d === '\n') {
+        ended = false;
+        post({ type: 'restart' });
+      }
+      return;
+    }
     post({ type: 'input', data: d });
   });
-  term.onResize(({ cols, rows }) => post({ type: 'resize', cols, rows }));
-  new ResizeObserver(() => { try { fit.fit(); } catch {} }).observe(document.body);
+  term.onResize(({ cols, rows }) => {
+    if (cols > 0 && rows > 0) post({ type: 'resize', cols, rows });
+  });
+
+  const ro = new ResizeObserver(() => { ensureFitted(); });
+  ro.observe(document.body);
+  const termEl = document.getElementById('term');
+  if (termEl) ro.observe(termEl);
 
   window.chrome.webview.addEventListener('message', (e) => {
     const m = e.data;
-    if (m.type === 'output') term.write(m.data);
-    else if (m.type === 'clear') term.reset();
-    else if (m.type === 'status') term.write('\x1b[90m' + m.text + '\x1b[0m\r\n');
-    else if (m.type === 'ended') { ended = true; term.write('\r\n\x1b[90m[session ended] Press Enter to start it again.\x1b[0m\r\n'); }
-    else if (m.type === 'locked') { locked = true; term.write('\r\n\x1b[31m' + m.text + '\x1b[0m\r\n'); }
-    else if (m.type === 'focus') { focusDOM(); }
+    if (m.type === 'output') {
+      ended = false;
+      term.write(m.data);
+    }
+    else if (m.type === 'clear') {
+      ended = false;
+      term.reset();
+    }
+    else if (m.type === 'status') {
+      ended = false;
+      term.write('\x1b[90m' + m.text + '\x1b[0m\r\n');
+    }
+    else if (m.type === 'started') {
+      ended = false;
+      locked = false;
+      focusDOM();
+    }
+    else if (m.type === 'ended') {
+      ended = true;
+      term.write('\r\n\x1b[90m[session ended] Press Enter to start it again.\x1b[0m\r\n');
+    }
+    else if (m.type === 'locked') {
+      locked = true;
+      term.write('\r\n\x1b[31m' + m.text + '\x1b[0m\r\n');
+    }
+    else if (m.type === 'unlocked') {
+      locked = false;
+      ended = false;
+      term.reset();
+      focusDOM();
+    }
+    else if (m.type === 'focus') {
+      focusDOM();
+    }
   });
 
   window.term = term;
@@ -74,28 +132,27 @@ const post = (m) => window.chrome.webview.postMessage(m);
       }
     } catch (e) {}
   };
-  const requestHostFocus = () => {
-    focusDOM();
-    try { post({ type: 'focus_request' }); } catch (e) {}
-  };
 
   focusDOM();
   window.addEventListener('focus', focusDOM);
-  window.addEventListener('mousedown', requestHostFocus);
-  window.addEventListener('pointerdown', requestHostFocus);
-  document.addEventListener('mousedown', requestHostFocus);
-  document.addEventListener('pointerdown', requestHostFocus);
-  window.addEventListener('keydown', () => {
+  window.addEventListener('mousedown', focusDOM);
+  window.addEventListener('pointerdown', focusDOM);
+  document.addEventListener('mousedown', focusDOM);
+  document.addEventListener('pointerdown', focusDOM);
+  document.addEventListener('click', focusDOM);
+  window.addEventListener('keydown', (e) => {
     if (!locked && term && term.textarea && document.activeElement !== term.textarea) {
       focusDOM();
     }
-  });
+  }, true);
   setInterval(() => {
     if (!locked && term && term.textarea && document.activeElement !== term.textarea) {
       focusDOM();
     }
   }, 200);
-  post({ type: 'ready', cols: term.cols, rows: term.rows });
+  const c = term.cols > 0 ? term.cols : 100;
+  const r = term.rows > 0 ? term.rows : 30;
+  post({ type: 'ready', cols: c, rows: r });
 })();
 </script>
 </body>

@@ -33,6 +33,8 @@ public sealed class SiteHost : IDisposable
         }
     }
 
+    public bool IsProcessAlive => _proc is { HasExited: false };
+
     public SiteHost(string nodePath, string workspace, string siteUrl, string dataPath)
     {
         _node = nodePath; _dir = workspace; _siteUrl = siteUrl.TrimEnd('/');
@@ -123,13 +125,13 @@ public sealed class SiteHost : IDisposable
     /// <summary>Waits for the first successful answer from the site (used before the first page load).</summary>
     public async Task<bool> WaitHealthyAsync(int seconds)
     {
-        for (var i = 0; i < seconds * 4; i++)
+        for (var i = 0; i < seconds * 15; i++)
         {
             if (_proc is { HasExited: true }) return false;
             try { using var res = await Http.GetAsync(_siteUrl + "/api/health"); if (res.IsSuccessStatusCode) return true; }
             catch (HttpRequestException) { }
             catch (TaskCanceledException) { }
-            await Task.Delay(250);
+            await Task.Delay(65);
         }
         return false;
     }

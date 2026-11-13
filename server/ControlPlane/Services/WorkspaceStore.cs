@@ -207,6 +207,51 @@ public sealed class WorkspaceStore
         }
         return result;
     }
+
+    /// <summary>Resets the participant workspace completely back to the clean site template.</summary>
+    public bool ResetParticipantWorkspace(string participantId)
+    {
+        var dir = PathFor(participantId);
+        if (Directory.Exists(dir))
+        {
+            try { Directory.Delete(dir, true); } catch { }
+        }
+        Directory.CreateDirectory(dir);
+        if (Directory.Exists(_template))
+        {
+            CopyDirectory(_template, dir);
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>Resets all participant workspaces back to the clean site template.</summary>
+    public void ResetAllParticipantWorkspaces()
+    {
+        if (!Directory.Exists(_root)) return;
+        foreach (var sub in Directory.EnumerateDirectories(_root))
+        {
+            var pid = Path.GetFileName(sub);
+            try { ResetParticipantWorkspace(pid); } catch { }
+        }
+    }
+
+    private static void CopyDirectory(string src, string dst)
+    {
+        Directory.CreateDirectory(dst);
+        foreach (var file in Directory.EnumerateFiles(src))
+        {
+            var name = Path.GetFileName(file);
+            if (name.EndsWith(".db") || name.EndsWith(".db-wal") || name.EndsWith(".db-shm")) continue;
+            File.Copy(file, Path.Combine(dst, name), true);
+        }
+        foreach (var dir in Directory.EnumerateDirectories(src))
+        {
+            var name = Path.GetFileName(dir);
+            if (BlockedSegments.Contains(name)) continue;
+            CopyDirectory(dir, Path.Combine(dst, name));
+        }
+    }
 }
 
 public sealed record FileEntry(string Path, string Sha256);

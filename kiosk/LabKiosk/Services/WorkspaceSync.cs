@@ -114,6 +114,7 @@ public sealed class WorkspaceSync(ApiClient api, string participantId, string ro
 
         await Parallel.ForEachAsync(remote, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, async (r, _) =>
         {
+            if (IsIgnoredRuntimeFile(r.Path)) return;
             var local = SafeLocal(r.Path);
             if (local is null) return;
             if (!File.Exists(local))

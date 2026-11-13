@@ -295,6 +295,188 @@ const ATTACK_NAMES = {
 };
 
 let hubConn = null;
+const pendingArbiterAlerts = new Map();
+
+function renderArbiterAlerts() {
+  const panel = document.getElementById('arbiter-alerts-panel');
+  const list = document.getElementById('arbiter-alerts-list');
+  const countBadge = document.getElementById('arbiter-alert-count');
+  if (!panel || !list) return;
+
+  if (pendingArbiterAlerts.size === 0) {
+    panel.style.display = 'none';
+    return;
+  }
+
+  panel.style.display = 'block';
+  if (countBadge) countBadge.textContent = `${pendingArbiterAlerts.size} pending`;
+
+  list.innerHTML = Array.from(pendingArbiterAlerts.values()).map(a => {
+    if (a.type === 'switch_request') {
+      return `
+        <div class="card" style="background:#1e293b; border:1px solid #f59e0b; padding:12px; display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span class="badge warning font-mono bold">${escapeHtml(a.deskId)}</span>
+              <strong style="color:#f8fafc;">${escapeHtml(a.name || a.participantId)}</strong>
+              <span class="text-muted" style="font-size:12px;">(${escapeHtml(a.email || 'No email')})</span>
+            </div>
+            <div style="font-size:13px; color:#cbd5e1; margin-top:4px;">
+              Participant requests authorization to switch linked Google account.
+              ${a.reason ? `<span class="italic text-muted">Reason: ${escapeHtml(a.reason)}</span>` : ''}
+            </div>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button class="btn sm success" onclick="approveAccountSwitch('${escapeHtml(a.participantId)}', '${escapeHtml(a.requestId)}')">
+              ✓ Approve Switch
+            </button>
+            <button class="btn sm danger" onclick="denyAccountSwitch('${escapeHtml(a.participantId)}', '${escapeHtml(a.requestId)}')">
+              ✕ Deny
+            </button>
+          </div>
+        </div>
+      `;
+    } else if (a.type === 'pro_flag') {
+      return `
+        <div class="card" style="background:#450a0a; border:1px solid #ef4444; padding:12px; display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span class="badge danger font-mono bold">${escapeHtml(a.deskId)}</span>
+              <strong style="color:#fca5a5;">⚠️ COMPLIANCE VIOLATION: ${escapeHtml(a.tier || 'Google AI Pro')}</strong>
+              <span style="color:#f87171; font-size:12px;">Desk: ${escapeHtml(a.deskId)} (${escapeHtml(a.email)})</span>
+            </div>
+            <div style="font-size:13px; color:#fecaca; margin-top:4px;">
+              Unauthorized paid compute tier detected on kiosk terminal stream. Regulation mandates standard Antigravity Starter quota.
+            </div>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button class="btn sm danger" onclick="disqualifyParticipant('${escapeHtml(a.participantId)}', '${escapeHtml(a.name)}')">
+              ⛔ Disqualify
+            </button>
+            <button class="btn sm warning" onclick="pardonParticipant('${escapeHtml(a.participantId)}', '${escapeHtml(a.name)}')">
+              🕊️ Pardon &amp; Reset Account
+            </button>
+            <button class="btn sm success" onclick="allowProAccount('${escapeHtml(a.participantId)}', '${escapeHtml(a.name)}')">
+              ⚡ Allow Pro Plan
+            </button>
+          </div>
+        </div>
+      `;
+    }
+    return '';
+  }).join('');
+}
+
+async function approveAccountSwitch(participantId, requestId) {
+  try {
+    await api(`/admin/kiosks/${encodeURIComponent(participantId)}/account-switch/approve?requestId=${encodeURIComponent(requestId)}`, { method: 'POST' });
+    logMessage(`[ARBITER] Approved account switch for participant ${participantId}`);
+    pendingArbiterAlerts.delete(`switch_${participantId}`);
+    renderArbiterAlerts();
+    refreshKiosks();
+  } catch (err) {
+    alert(`Failed to approve switch: ${err.message}`);
+  }
+}
+
+async function denyAccountSwitch(participantId, requestId) {
+  const reason = prompt("Enter denial reason (shown to participant):", "Switch request denied by event arbiter.") || "Denied by event arbiter.";
+  try {
+    await api(`/admin/kiosks/${encodeURIComponent(participantId)}/account-switch/deny?requestId=${encodeURIComponent(requestId)}`, {
+      method: 'POST',
+      body: JSON.stringify({ reason })
+    });
+    logMessage(`[ARBITER] Denied account switch for participant ${participantId}: ${reason}`);
+    pendingArbiterAlerts.delete(`switch_${participantId}`);
+    renderArbiterAlerts();
+    refreshKiosks();
+  } catch (err) {
+    alert(`Failed to deny switch: ${err.message}`);
+  }
+}
+
+async function disqualifyParticipant(participantId, name) {
+  if (!confirm(`Are you sure you want to permanently DISQUALIFY participant "${name}" (${participantId})?`)) return;
+  try {
+    await api(`/admin/kiosks/${encodeURIComponent(participantId)}/disqualify`, { method: 'POST' });
+    logMessage(`[ARBITER] DISQUALIFIED participant ${name} (${participantId})`);
+    pendingArbiterAlerts.delete(`pro_${participantId}`);
+    renderArbiterAlerts();
+    refreshKiosks();
+  } catch (err) {
+    alert(`Failed to disqualify participant: ${err.message}`);
+  }
+}
+
+async function reinstateParticipant(participantId, name) {
+  try {
+    await api(`/admin/kiosks/${encodeURIComponent(participantId)}/reinstate`, { method: 'POST' });
+    logMessage(`[ARBITER] REINSTATED participant ${name} (${participantId})`);
+    refreshKiosks();
+  } catch (err) {
+    alert(`Failed to reinstate participant: ${err.message}`);
+  }
+}
+
+async function pardonParticipant(participantId, name) {
+  if (!confirm(`Pardon participant "${name}" (${participantId})? This will clear their Google AI Pro credentials and prompt them to re-authenticate with a compliant account.`)) return;
+  try {
+    await api(`/admin/kiosks/${encodeURIComponent(participantId)}/pardon-pro-account`, { method: 'POST' });
+    logMessage(`[ARBITER] PARDONED participant ${name} (${participantId})`);
+    pendingArbiterAlerts.delete(`pro_${participantId}`);
+    renderArbiterAlerts();
+    refreshKiosks();
+  } catch (err) {
+    alert(`Failed to pardon participant: ${err.message}`);
+  }
+}
+
+async function allowProAccount(participantId, name) {
+  if (!confirm(`Authorize participant "${name}" (${participantId}) to compete using their Google AI Pro plan? This grants an official exemption.`)) return;
+  try {
+    await api(`/admin/kiosks/${encodeURIComponent(participantId)}/allow-pro-account`, { method: 'POST' });
+    logMessage(`[ARBITER] ALLOWED Google AI Pro for participant ${name} (${participantId})`);
+    pendingArbiterAlerts.delete(`pro_${participantId}`);
+    renderArbiterAlerts();
+    refreshKiosks();
+  } catch (err) {
+    alert(`Failed to authorize pro plan: ${err.message}`);
+  }
+}
+
+async function refreshComplianceAlerts() {
+  try {
+    const alerts = await api('/admin/compliance/alerts');
+    if (!Array.isArray(alerts)) return;
+    pendingArbiterAlerts.clear();
+    for (const a of alerts) {
+      if (a.type === 'switch') {
+        pendingArbiterAlerts.set(`switch_${a.participantId}`, {
+          type: 'switch_request',
+          requestId: a.id.replace('switch_', ''),
+          participantId: a.participantId,
+          deskId: a.deskId,
+          name: a.name,
+          email: a.email,
+          reason: a.tier,
+          timestamp: a.createdAt
+        });
+      } else {
+        pendingArbiterAlerts.set(`pro_${a.participantId}`, {
+          type: 'pro_flag',
+          participantId: a.participantId,
+          deskId: a.deskId,
+          name: a.name,
+          email: a.email,
+          tier: a.tier,
+          timestamp: a.createdAt
+        });
+      }
+    }
+    renderArbiterAlerts();
+  } catch (_) {}
+}
+
 function initSignalR() {
   if (typeof signalR === 'undefined') return;
   try {
@@ -319,6 +501,36 @@ function initSignalR() {
     hubConn.on('KIOSK_UPDATED', (deskId) => {
       refreshKiosks();
       refreshEvaluations();
+    });
+
+    hubConn.on('ACCOUNT_SWITCH_REQUEST', (requestId, participantId, deskId, name, email, reason, timestamp) => {
+      logMessage(`🔔 [ARBITER] Account switch request: Desk ${deskId} (${name})`);
+      pendingArbiterAlerts.set(`switch_${participantId}`, {
+        type: 'switch_request',
+        requestId,
+        participantId,
+        deskId,
+        name,
+        email,
+        reason,
+        timestamp
+      });
+      renderArbiterAlerts();
+    });
+
+    hubConn.on('PRO_ACCOUNT_FLAGGED', (participantId, deskId, name, email, tier, timestamp) => {
+      logMessage(`🚨 [COMPLIANCE] Google AI Pro detected: Desk ${deskId} (${name}, ${email})`);
+      pendingArbiterAlerts.set(`pro_${participantId}`, {
+        type: 'pro_flag',
+        participantId,
+        deskId,
+        name,
+        email,
+        tier,
+        timestamp
+      });
+      renderArbiterAlerts();
+      refreshKiosks();
     });
 
     hubConn.start().then(() => {
@@ -393,10 +605,13 @@ async function refreshKiosks() {
             ${aiStatus} <small class="muted font-mono">(${k.openCodePrompts} OC)</small>
             ${gitHtml}
           </td>
-          <td>
+          <td class="actions-cell">
             <button class="btn sm primary" onclick="promptFireOnKiosk('${escapeHtml(k.id)}', '${escapeHtml(k.name || deskTag)}')">
               ⚡ Fire
             </button>
+            ${k.status === 'disqualified'
+              ? `<button class="btn sm success" onclick="reinstateParticipant('${escapeHtml(k.id)}', '${escapeHtml(k.name || deskTag)}')">🕊️ Reinstate</button>`
+              : `<button class="btn sm danger" onclick="disqualifyParticipant('${escapeHtml(k.id)}', '${escapeHtml(k.name || deskTag)}')">⛔ Disqualify</button>`}
           </td>
         </tr>`;
     }).join('');
@@ -499,6 +714,33 @@ async function toggleFreeze() {
   } catch (err) {
     alert(`Failed to toggle freeze: ${err.message}`);
     logMessage(`[ERROR] Toggle freeze: ${err.message}`);
+  }
+}
+
+async function resetAllBaseline() {
+  if (!confirm('⚠️ WARNING: You are about to RESET ALL DESKS to the pristine AEGIS baseline!\n\nThis will wipe all active attack files, restore original code, and restart participant applications nominal at DEFCON-4.\n\nProceed?')) return;
+  try {
+    const res = await api('/api/admin/reset-baseline', { method: 'POST' });
+    if (res.success) {
+      logMessage('↺ [RESET] Successfully reset all participant workspaces to baseline.');
+      await loadKiosks();
+    }
+  } catch (err) {
+    alert(`Failed to reset desks: ${err.message}`);
+    logMessage(`[ERROR] Reset baseline: ${err.message}`);
+  }
+}
+
+async function resetParticipantBaseline(pid) {
+  if (!confirm(`Reset desk for participant "${pid}" to clean baseline?`)) return;
+  try {
+    const res = await api(`/api/admin/reset-baseline?target=${encodeURIComponent(pid)}`, { method: 'POST' });
+    if (res.success) {
+      logMessage(`↺ [RESET] Desk "${pid}" reset to clean baseline.`);
+      await loadKiosks();
+    }
+  } catch (err) {
+    alert(`Failed to reset desk: ${err.message}`);
   }
 }
 
@@ -620,12 +862,14 @@ async function init() {
   refreshEvaluations();
   refreshKiosks();
   refreshCohorts();
+  refreshComplianceAlerts();
   setInterval(() => {
     checkEventStatus();
     refreshAttacks();
     refreshEvaluations();
     refreshKiosks();
     refreshCohorts();
+    refreshComplianceAlerts();
   }, 3000);
 }
 

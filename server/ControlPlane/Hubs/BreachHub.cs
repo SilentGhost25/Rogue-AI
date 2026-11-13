@@ -79,6 +79,60 @@ public sealed class BreachHub(IConfiguration config, Database db) : Hub
         }
         return Task.CompletedTask;
     }
+
+    /// <summary>Participant requests organizer authorization to switch their linked Google account.</summary>
+    public async Task<string> RequestAccountSwitch(string currentEmail, string reason = "")
+    {
+        if (Context.Items.TryGetValue("participantId", out var pidObj) && pidObj is string pid)
+        {
+            var deskId = db.QueryScalar<string>("SELECT desk_id FROM desk_tokens WHERE participant_id = @p", ("@p", pid)) ?? pid;
+            var participantName = db.QueryScalar<string>("SELECT name FROM participants WHERE id = @p", ("@p", pid)) ?? pid;
+            var requestId = Guid.NewGuid().ToString("N")[..8];
+            var timestamp = DateTime.UtcNow.ToString("o");
+
+            db.RecordComplianceAlert($"switch_{requestId}", pid, deskId, participantName, currentEmail, reason, "switch");
+
+            db.Log("ACCOUNT_SWITCH_REQUESTED", pid, payloadJson: System.Text.Json.JsonSerializer.Serialize(new
+            {
+                requestId,
+                participantId = pid,
+                deskId,
+                name = participantName,
+                email = currentEmail,
+                reason,
+                timestamp
+            }));
+
+            await Clients.Group("admins").SendAsync(HubEvents.AccountSwitchRequest, requestId, pid, deskId, participantName, currentEmail, reason, timestamp);
+            return requestId;
+        }
+        return string.Empty;
+    }
+
+    /// <summary>Participant kiosk flags unauthorized Google AI Pro tier subscription detected in terminal stream.</summary>
+    public async Task ReportProAccount(string currentEmail, string tierDetails)
+    {
+        if (Context.Items.TryGetValue("participantId", out var pidObj) && pidObj is string pid)
+        {
+            var deskId = db.QueryScalar<string>("SELECT desk_id FROM desk_tokens WHERE participant_id = @p", ("@p", pid)) ?? pid;
+            var participantName = db.QueryScalar<string>("SELECT name FROM participants WHERE id = @p", ("@p", pid)) ?? pid;
+            var timestamp = DateTime.UtcNow.ToString("o");
+
+            db.RecordComplianceAlert($"pro_{pid}", pid, deskId, participantName, currentEmail, tierDetails, "pro");
+
+            db.Log("PRO_ACCOUNT_FLAGGED", pid, payloadJson: System.Text.Json.JsonSerializer.Serialize(new
+            {
+                participantId = pid,
+                deskId,
+                name = participantName,
+                email = currentEmail,
+                tier = tierDetails,
+                timestamp
+            }));
+
+            await Clients.Group("admins").SendAsync(HubEvents.ProAccountFlagged, pid, deskId, participantName, currentEmail, tierDetails, timestamp);
+        }
+    }
 }
 
 public static class HubEvents
@@ -95,4 +149,12 @@ public static class HubEvents
     public const string EventFrozen = "EVENT_FROZEN";
     public const string EventUnfrozen = "EVENT_UNFROZEN";
     public const string KioskUpdated = "KIOSK_UPDATED";
+    public const string AccountSwitchRequest = "ACCOUNT_SWITCH_REQUEST";
+    public const string AccountSwitchApproved = "ACCOUNT_SWITCH_APPROVED";
+    public const string AccountSwitchDenied = "ACCOUNT_SWITCH_DENIED";
+    public const string ProAccountFlagged = "PRO_ACCOUNT_FLAGGED";
+    public const string PardonGranted = "PARDON_GRANTED";
+    public const string ProAccountAllowed = "PRO_ACCOUNT_ALLOWED";
+    public const string Disqualified = "DISQUALIFIED";
+    public const string ResetBaseline = "RESET_BASELINE";
 }

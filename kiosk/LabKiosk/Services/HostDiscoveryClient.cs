@@ -13,12 +13,29 @@ namespace LabKiosk.Services;
 public static class HostDiscoveryClient
 {
     private const int DiscoveryPort = 5082;
-    private static readonly HttpClient ProbeHttp = new() { Timeout = TimeSpan.FromMilliseconds(1200) };
-    private static readonly HttpClient FastProbeHttp = new() { Timeout = TimeSpan.FromMilliseconds(400) };
+    private static readonly HttpClient ProbeHttp = new() { Timeout = TimeSpan.FromMilliseconds(800) };
+    private static readonly HttpClient FastProbeHttp = new() { Timeout = TimeSpan.FromMilliseconds(200) };
+
+    public static async Task<bool> IsFastHealthyAsync(string serverUrl)
+    {
+        if (string.IsNullOrWhiteSpace(serverUrl)) return false;
+        try
+        {
+            var clean = serverUrl.TrimEnd('/');
+            using var cts = new CancellationTokenSource(150);
+            using var res = await FastProbeHttp.GetAsync(clean + "/api/discovery", cts.Token);
+            return res.IsSuccessStatusCode;
+        }
+        catch
+        {
+            return false;
+        }
+    }
 
     public static async Task<bool> IsHealthyAsync(string serverUrl)
     {
         if (string.IsNullOrWhiteSpace(serverUrl)) return false;
+        if (await IsFastHealthyAsync(serverUrl)) return true;
         try
         {
             var clean = serverUrl.TrimEnd('/');
@@ -97,9 +114,9 @@ public static class HostDiscoveryClient
         return endpoints;
     }
 
-    public static async Task<string?> DiscoverAsync(int timeoutMs = 1800, CancellationToken ct = default)
+    public static async Task<string?> DiscoverAsync(int timeoutMs = 600, CancellationToken ct = default)
     {
-        if (await IsHealthyAsync("http://127.0.0.1:5080"))
+        if (await IsFastHealthyAsync("http://127.0.0.1:5080"))
             return "http://127.0.0.1:5080";
 
         try
@@ -125,7 +142,7 @@ public static class HostDiscoveryClient
                     if (int.TryParse(port, out var p))
                     {
                         var candidate = $"http://{res.RemoteEndPoint.Address}:{p}";
-                        if (await IsHealthyAsync(candidate))
+                        if (await IsFastHealthyAsync(candidate))
                             return candidate;
                     }
                 }
@@ -141,7 +158,7 @@ public static class HostDiscoveryClient
             listener.Client.Bind(new IPEndPoint(IPAddress.Any, DiscoveryPort));
 
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            cts.CancelAfter(Math.Min(timeoutMs, 2200));
+            cts.CancelAfter(Math.Min(timeoutMs, 600));
 
             while (!cts.IsCancellationRequested)
             {

@@ -30,6 +30,8 @@ public partial class OnboardingWindow : Window
 
     private readonly KioskSettings _settings;
 
+    private readonly HubClient? _hub;
+
     private readonly DispatcherTimer _pollTimer;
 
     private bool _googleConnected;
@@ -38,13 +40,15 @@ public partial class OnboardingWindow : Window
 
 
 
-    public OnboardingWindow(KioskSettings settings)
+    public OnboardingWindow(KioskSettings settings, HubClient? hub = null)
 
     {
 
         InitializeComponent();
 
         _settings = settings;
+
+        _hub = hub;
 
 
 
@@ -193,43 +197,42 @@ public partial class OnboardingWindow : Window
         {
 
             if (_googleConnected)
-
             {
+                if (_hub is not null)
+                {
+                    var res = MessageBox.Show(
+                        "Antigravity is currently authenticated with Google:\n" + TxtGoogleEmail.Text +
+                        "\n\nSwitching Google accounts during the competition requires Organizer Authorization.\n\nDo you want to send an authorization request to the organizer?",
+                        "Request Account Switch",
+                        MessageBoxButton.YesNo,
+                        MessageBoxImage.Question);
 
-                var res = MessageBox.Show(
+                    if (res != MessageBoxResult.Yes) return;
 
-                    "Antigravity is currently authenticated with Google:\n" + TxtGoogleEmail.Text +
+                    var reqDlg = new AccountSwitchRequestDialog(_hub, TxtGoogleEmail.Text, _settings.DeskId ?? "");
+                    reqDlg.Owner = this;
+                    if (reqDlg.ShowDialog() != true) return;
+                }
+                else
+                {
+                    var res = MessageBox.Show(
+                        "Antigravity is currently authenticated with Google:\n" + TxtGoogleEmail.Text +
+                        "\n\nDo you want to switch accounts? This will clear the current session so you can log in with a different Google account.",
+                        "Switch Google Account",
+                        MessageBoxButton.YesNo,
+                        MessageBoxImage.Question);
 
-                    "\n\nDo you want to switch accounts? This will clear the current session so you can log in with a different Google account.",
-
-                    "Switch Google Account",
-
-                    MessageBoxButton.YesNo,
-
-                    MessageBoxImage.Question);
-
-
-
-                if (res != MessageBoxResult.Yes) return;
-
-
+                    if (res != MessageBoxResult.Yes) return;
+                }
 
                 CredentialManager.ClearAntigravityGoogleCredential();
-
                 _googleConnected = false;
-
                 TxtGoogleEmail.Text = "";
-
                 TxtGoogleStatus.Text = "⏳ Awaiting sign-in...";
-
                 TxtGoogleStatus.Foreground = (Brush)FindResource("Mute");
-
                 BadgeGoogle.BorderBrush = (Brush)FindResource("Mute");
-
                 BadgeGoogle.Background = new SolidColorBrush(Color.FromArgb(20, 27, 42, 31));
-
                 BtnGoogleLogin.Content = "🌐 Sign In with Google";
-
             }
 
 
@@ -761,6 +764,7 @@ public partial class OnboardingWindow : Window
         _settings.Onboarded = true;
 
         SaveSettings();
+        try { WorkspaceBackup.ForceResetToPristine(_settings.WorkspacePath, _settings.SiteTemplatePath, _settings.DataPath); } catch { }
 
         DialogResult = true;
         Close();

@@ -10,5 +10,6 @@ public sealed class BudgetState
     public bool BothSpent => AgyExhausted && OpenCodeCapReached;
 
     public void MarkAgyExhausted() => AgyExhausted = true;
+    public void ResetAgy() => AgyExhausted = false;
     public void SetOpenCodePrompts(int total) => OpenCodePrompts = total;
 }

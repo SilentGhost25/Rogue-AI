@@ -55,7 +55,7 @@ public partial class Database
         var c = new SqliteConnection(_connectionString);
         c.Open();
         using var pragma = c.CreateCommand();
-        pragma.CommandText = "PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;";
+        pragma.CommandText = "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000; PRAGMA cache_size=-20000;";
         pragma.ExecuteNonQuery();
         return c;
     }
@@ -117,6 +117,17 @@ public partial class Database
               participant_id TEXT PRIMARY KEY,
               column_index INTEGER NOT NULL,
               assigned_at TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS compliance_alerts (
+              id TEXT PRIMARY KEY,
+              participant_id TEXT NOT NULL,
+              desk_id TEXT NOT NULL,
+              name TEXT NOT NULL,
+              email TEXT,
+              tier TEXT NOT NULL,
+              alert_type TEXT NOT NULL,
+              status TEXT NOT NULL DEFAULT 'pending',
+              created_at TEXT NOT NULL,
+              resolved_at TEXT);
             CREATE UNIQUE INDEX IF NOT EXISTS ux_attack_deliveries_attack_participant
               ON attack_deliveries (attack_id, participant_id);
             CREATE TABLE IF NOT EXISTS event_log (
@@ -427,5 +438,70 @@ public partial class Database
             ins.Parameters.AddWithValue("$t", now);
             ins.ExecuteNonQuery();
         }
+    }
+
+    public void RecordComplianceAlert(string id, string participantId, string deskId, string name, string email, string tier, string alertType)
+    {
+        using var c = Open();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = """
+            INSERT INTO compliance_alerts (id, participant_id, desk_id, name, email, tier, alert_type, status, created_at)
+            VALUES ($id, $pid, $desk, $name, $email, $tier, $type, 'pending', $created)
+            ON CONFLICT(id) DO UPDATE SET status = 'pending', created_at = $created;
+            """;
+        cmd.Parameters.AddWithValue("$id", id);
+        cmd.Parameters.AddWithValue("$pid", participantId);
+        cmd.Parameters.AddWithValue("$desk", deskId);
+        cmd.Parameters.AddWithValue("$name", name);
+        cmd.Parameters.AddWithValue("$email", email ?? "");
+        cmd.Parameters.AddWithValue("$tier", tier);
+        cmd.Parameters.AddWithValue("$type", alertType);
+        cmd.Parameters.AddWithValue("$created", DateTime.UtcNow.ToString("O"));
+        cmd.ExecuteNonQuery();
+    }
+
+    public void ResolveComplianceAlert(string participantId, string alertType, string newStatus)
+    {
+        using var c = Open();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = """
+            UPDATE compliance_alerts
+            SET status = $status, resolved_at = $resolved
+            WHERE participant_id = $pid AND alert_type = $type AND status = 'pending';
+            """;
+        cmd.Parameters.AddWithValue("$status", newStatus);
+        cmd.Parameters.AddWithValue("$resolved", DateTime.UtcNow.ToString("O"));
+        cmd.Parameters.AddWithValue("$pid", participantId);
+        cmd.Parameters.AddWithValue("$type", alertType);
+        cmd.ExecuteNonQuery();
+    }
+
+    public List<dynamic> GetPendingComplianceAlerts()
+    {
+        var list = new List<dynamic>();
+        using var c = Open();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = """
+            SELECT id, participant_id, desk_id, name, email, tier, alert_type, created_at
+            FROM compliance_alerts
+            WHERE status = 'pending'
+            ORDER BY created_at ASC;
+            """;
+        using var rd = cmd.ExecuteReader();
+        while (rd.Read())
+        {
+            list.Add(new
+            {
+                id = rd.GetString(0),
+                participantId = rd.GetString(1),
+                deskId = rd.GetString(2),
+                name = rd.GetString(3),
+                email = rd.IsDBNull(4) ? "" : rd.GetString(4),
+                tier = rd.GetString(5),
+                type = rd.GetString(6),
+                createdAt = rd.GetString(7)
+            });
+        }
+        return list;
     }
 }

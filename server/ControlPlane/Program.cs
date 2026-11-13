@@ -1345,8 +1345,12 @@ app.MapPost("/admin/kiosks/{id}/disqualify", async (string id, HttpRequest r, Da
     cmd.CommandText = "UPDATE participants SET status = 'disqualified' WHERE id = $p";
     cmd.Parameters.AddWithValue("$p", id);
     cmd.ExecuteNonQuery();
+    db.ResolveComplianceAlert(id, "pro", "disqualified");
+    db.ResolveComplianceAlert(id, "switch", "disqualified");
     db.Log("DISQUALIFIED", id);
     await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, id);
+    await hub.Clients.Group($"p:{id}").SendAsync("ELIMINATED", "Disqualified by organizer");
+    await hub.Clients.Group($"p:{id}").SendAsync(HubEvents.Disqualified, id, "Disqualified by organizer");
     return Results.Ok();
 });
 
@@ -1361,7 +1365,134 @@ app.MapPost("/admin/kiosks/{id}/reinstate", async (string id, HttpRequest r, Dat
     cmd.ExecuteNonQuery();
     db.Log("REINSTATED", id);
     await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, id);
+    await hub.Clients.Group($"p:{id}").SendAsync(HubEvents.Resumed);
     return Results.Ok();
+});
+
+app.MapPost("/admin/kiosks/{id}/account-switch/approve", async (string id, HttpRequest r, Database db, IHubContext<BreachHub> hub) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+    var reqId = r.Query["requestId"].ToString();
+    db.ResolveComplianceAlert(id, "switch", "approved");
+    db.Log("ACCOUNT_SWITCH_APPROVED", id, payloadJson: System.Text.Json.JsonSerializer.Serialize(new { participantId = id, requestId = reqId }));
+    await hub.Clients.Group($"p:{id}").SendAsync(HubEvents.AccountSwitchApproved, id, reqId);
+    await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, id);
+    return Results.Ok(new { success = true, participantId = id });
+});
+
+app.MapPost("/api/admin/participant/{id}/account-switch/approve", async (string id, HttpRequest r, Database db, IHubContext<BreachHub> hub) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+    var reqId = r.Query["requestId"].ToString();
+    db.ResolveComplianceAlert(id, "switch", "approved");
+    db.Log("ACCOUNT_SWITCH_APPROVED", id, payloadJson: System.Text.Json.JsonSerializer.Serialize(new { participantId = id, requestId = reqId }));
+    await hub.Clients.Group($"p:{id}").SendAsync(HubEvents.AccountSwitchApproved, id, reqId);
+    await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, id);
+    return Results.Ok(new { success = true, participantId = id });
+});
+
+app.MapPost("/admin/kiosks/{id}/account-switch/deny", async (string id, HttpRequest r, Database db, IHubContext<BreachHub> hub) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+    string reason = "Switch request denied by event organizer.";
+    try
+    {
+        if (r.HasJsonContentType())
+        {
+            using var doc = await System.Text.Json.JsonDocument.ParseAsync(r.Body);
+            if (doc.RootElement.TryGetProperty("reason", out var re) && !string.IsNullOrWhiteSpace(re.GetString()))
+                reason = re.GetString()!;
+        }
+    }
+    catch { }
+    if (r.Query.ContainsKey("reason")) reason = r.Query["reason"].ToString();
+    db.ResolveComplianceAlert(id, "switch", "denied");
+    db.Log("ACCOUNT_SWITCH_DENIED", id, payloadJson: System.Text.Json.JsonSerializer.Serialize(new { participantId = id, reason }));
+    await hub.Clients.Group($"p:{id}").SendAsync(HubEvents.AccountSwitchDenied, id, reason);
+    return Results.Ok(new { success = true, participantId = id, reason });
+});
+
+app.MapPost("/api/admin/participant/{id}/account-switch/deny", async (string id, HttpRequest r, Database db, IHubContext<BreachHub> hub) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+    string reason = "Switch request denied by event organizer.";
+    try
+    {
+        if (r.HasJsonContentType())
+        {
+            using var doc = await System.Text.Json.JsonDocument.ParseAsync(r.Body);
+            if (doc.RootElement.TryGetProperty("reason", out var re) && !string.IsNullOrWhiteSpace(re.GetString()))
+                reason = re.GetString()!;
+        }
+    }
+    catch { }
+    if (r.Query.ContainsKey("reason")) reason = r.Query["reason"].ToString();
+    db.ResolveComplianceAlert(id, "switch", "denied");
+    db.Log("ACCOUNT_SWITCH_DENIED", id, payloadJson: System.Text.Json.JsonSerializer.Serialize(new { participantId = id, reason }));
+    await hub.Clients.Group($"p:{id}").SendAsync(HubEvents.AccountSwitchDenied, id, reason);
+    return Results.Ok(new { success = true, participantId = id, reason });
+});
+
+app.MapPost("/admin/kiosks/{id}/pardon-pro-account", async (string id, HttpRequest r, Database db, IHubContext<BreachHub> hub) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+    db.ResolveComplianceAlert(id, "pro", "pardoned");
+    db.Log("PARTICIPANT_PARDONED", id, payloadJson: System.Text.Json.JsonSerializer.Serialize(new { participantId = id, timestamp = DateTime.UtcNow.ToString("o") }));
+    await hub.Clients.Group($"p:{id}").SendAsync(HubEvents.PardonGranted, id);
+    await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, id);
+    return Results.Ok(new { success = true, participantId = id });
+});
+
+app.MapPost("/api/admin/participant/{id}/pardon-pro-account", async (string id, HttpRequest r, Database db, IHubContext<BreachHub> hub) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+    db.ResolveComplianceAlert(id, "pro", "pardoned");
+    db.Log("PARTICIPANT_PARDONED", id, payloadJson: System.Text.Json.JsonSerializer.Serialize(new { participantId = id, timestamp = DateTime.UtcNow.ToString("o") }));
+    await hub.Clients.Group($"p:{id}").SendAsync(HubEvents.PardonGranted, id);
+    await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, id);
+    return Results.Ok(new { success = true, participantId = id });
+});
+
+app.MapPost("/admin/kiosks/{id}/allow-pro-account", async (string id, HttpRequest r, Database db, IHubContext<BreachHub> hub) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+    db.ResolveComplianceAlert(id, "pro", "allowed");
+    db.Log("PRO_ACCOUNT_ALLOWED", id, payloadJson: System.Text.Json.JsonSerializer.Serialize(new { participantId = id, timestamp = DateTime.UtcNow.ToString("o") }));
+    await hub.Clients.Group($"p:{id}").SendAsync(HubEvents.ProAccountAllowed, id);
+    await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, id);
+    return Results.Ok(new { success = true, participantId = id });
+});
+
+app.MapPost("/api/admin/participant/{id}/allow-pro-account", async (string id, HttpRequest r, Database db, IHubContext<BreachHub> hub) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+    db.ResolveComplianceAlert(id, "pro", "allowed");
+    db.Log("PRO_ACCOUNT_ALLOWED", id, payloadJson: System.Text.Json.JsonSerializer.Serialize(new { participantId = id, timestamp = DateTime.UtcNow.ToString("o") }));
+    await hub.Clients.Group($"p:{id}").SendAsync(HubEvents.ProAccountAllowed, id);
+    await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, id);
+    return Results.Ok(new { success = true, participantId = id });
+});
+
+app.MapGet("/admin/compliance/alerts", (HttpRequest r, Database db) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+    return Results.Ok(db.GetPendingComplianceAlerts());
+});
+
+app.MapGet("/api/admin/compliance/alerts", (HttpRequest r, Database db) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+    return Results.Ok(db.GetPendingComplianceAlerts());
 });
 
 app.MapGet("/admin/events", (HttpRequest r, Database db) =>
@@ -1672,6 +1803,67 @@ app.MapPost("/api/admin/attacks/reset-all", async (HttpRequest r, Database db, A
     var target = r.Query["target"].ToString();
     var count = await dispatcher.ResetAllAsync(string.IsNullOrEmpty(target) ? null : target, store);
     return Results.Ok(new { success = true, resetCount = count });
+});
+
+app.MapPost("/api/admin/reset-baseline", async (HttpRequest r, Database db, WorkspaceStore store, AttackDispatcher dispatcher, IHubContext<BreachHub> hub) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+    var target = r.Query["target"].ToString();
+    if (!string.IsNullOrEmpty(target))
+    {
+        using (var c = db.Open())
+        using (var cmd = c.CreateCommand())
+        {
+            cmd.CommandText = "DELETE FROM attack_deliveries WHERE participant_id = $p;";
+            cmd.Parameters.AddWithValue("$p", target);
+            cmd.ExecuteNonQuery();
+        }
+        store.ResetParticipantWorkspace(target);
+        db.Log("WORKSPACE_RESET_BASELINE", target);
+        await hub.Clients.Group($"p:{target}").SendAsync(HubEvents.ResetBaseline);
+        await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, target);
+        return Results.Ok(new { success = true, target });
+    }
+    else
+    {
+        using (var c = db.Open())
+        using (var cmd = c.CreateCommand())
+        {
+            cmd.CommandText = """
+                DELETE FROM attack_deliveries;
+                UPDATE attacks SET state = 'scheduled';
+                UPDATE attack_dispatch SET state = 'Pending', dispatched_at = NULL, canary_fired_at = NULL, arena_landed_at = NULL;
+                """;
+            cmd.ExecuteNonQuery();
+        }
+        store.ResetAllParticipantWorkspaces();
+        db.Log("WORKSPACE_RESET_BASELINE_ALL");
+        await hub.Clients.All.SendAsync(HubEvents.ResetBaseline);
+        await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, "all");
+        return Results.Ok(new { success = true, resetAll = true });
+    }
+});
+
+app.MapPost("/admin/reset-baseline-all", async (HttpRequest r, Database db, WorkspaceStore store, AttackDispatcher dispatcher, IHubContext<BreachHub> hub) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+    using (var c = db.Open())
+    using (var cmd = c.CreateCommand())
+    {
+        cmd.CommandText = """
+            DELETE FROM attack_deliveries;
+            UPDATE attacks SET state = 'scheduled';
+            UPDATE attack_dispatch SET state = 'Pending', dispatched_at = NULL, canary_fired_at = NULL, arena_landed_at = NULL;
+            """;
+        cmd.ExecuteNonQuery();
+    }
+    store.ResetAllParticipantWorkspaces();
+    db.Log("WORKSPACE_RESET_BASELINE_ALL");
+    await hub.Clients.All.SendAsync(HubEvents.ResetBaseline);
+    await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, "all");
+    return Results.Ok(new { success = true, resetAll = true });
 });
 
 app.MapPost("/api/admin/attacks/fire-random", async (HttpRequest r, Database db, AttackDispatcher dispatcher) =>

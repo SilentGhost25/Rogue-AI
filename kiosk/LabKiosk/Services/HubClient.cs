@@ -14,7 +14,9 @@ public sealed class HubClient : IAsyncDisposable
     public event Func<int, Task>? Reset;
     public event Action<string>? Message;
     public event Action<int, string, string, double>? VerdictDetailed;
-    public event Action? Paused, Resumed, Eliminated;
+    public event Action? Paused, Resumed, Eliminated, PardonGranted, ProAccountAllowed, ResetBaseline;
+    public event Action<string>? AccountSwitchApproved, AccountSwitchDenied, Disqualified;
+    public event Action<string, bool, string?>? AccountSwitchResult;
     public event Func<Task>? Reconnected;
 
     public HubClient(string serverUrl, string participantId, string token = "")
@@ -45,7 +47,22 @@ public sealed class HubClient : IAsyncDisposable
 
         _conn.On("PAUSED", () => Paused?.Invoke());
         _conn.On("RESUMED", () => Resumed?.Invoke());
-        _conn.On<string>("ELIMINATED", _ => Eliminated?.Invoke());
+        _conn.On<string>("ELIMINATED", reason => { Eliminated?.Invoke(); Disqualified?.Invoke(reason); });
+
+        _conn.On<string, string?>("ACCOUNT_SWITCH_APPROVED", (_, reqId) => AccountSwitchApproved?.Invoke(reqId ?? ""));
+        _conn.On<string>("ACCOUNT_SWITCH_APPROVED", _ => AccountSwitchApproved?.Invoke(""));
+        _conn.On<string, string>("ACCOUNT_SWITCH_DENIED", (_, reason) => AccountSwitchDenied?.Invoke(reason));
+        _conn.On<string, bool, string?>("ACCOUNT_SWITCH_RESULT", (reqId, approved, reason) => AccountSwitchResult?.Invoke(reqId, approved, reason));
+
+        _conn.On<string>("PARDON_GRANTED", _ => PardonGranted?.Invoke());
+        _conn.On("PARDON_GRANTED", () => PardonGranted?.Invoke());
+
+        _conn.On<string>("PRO_ACCOUNT_ALLOWED", _ => ProAccountAllowed?.Invoke());
+        _conn.On("PRO_ACCOUNT_ALLOWED", () => ProAccountAllowed?.Invoke());
+
+        _conn.On<string, string>("DISQUALIFIED", (_, reason) => { Eliminated?.Invoke(); Disqualified?.Invoke(reason); });
+        _conn.On<string>("DISQUALIFIED", reason => { Eliminated?.Invoke(); Disqualified?.Invoke(reason); });
+        _conn.On("RESET_BASELINE", () => ResetBaseline?.Invoke());
 
         _conn.Reconnected += async _ =>
         {
@@ -61,6 +78,28 @@ public sealed class HubClient : IAsyncDisposable
     }
 
     public Task AckImminentAsync(int attackId) => _conn.InvokeAsync("AckImminent", attackId);
+
+    public async Task<string> RequestAccountSwitchAsync(string currentEmail, string reason = "")
+    {
+        try
+        {
+            return await _conn.InvokeAsync<string>("RequestAccountSwitch", currentEmail, reason);
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
+    public async Task ReportProAccountAsync(string currentEmail, string tierDetails)
+    {
+        try
+        {
+            await _conn.InvokeAsync("ReportProAccount", currentEmail, tierDetails);
+        }
+        catch { }
+    }
+
     public ValueTask DisposeAsync() => _conn.DisposeAsync();
 }
 
