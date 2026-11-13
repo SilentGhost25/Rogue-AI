@@ -30,10 +30,16 @@ payload:
 tests:
   path: "tests/"
   tiers:
-    - { id: tier1_spoofing_blocked,   weight: 40 }
-    - { id: tier2_limiter_functional, weight: 30 }
-    - { id: tier3_health_unblocked,   weight: 15 }
-    - { id: tier4_benchmark_sla,      weight: 15 }
+    - { id: tier1_spoofing_blocked,            weight: 10 }
+    - { id: tier2_direct_socket_policy,        weight: 10 }
+    - { id: tier3_ratelimit_headers_present,   weight: 10 }
+    - { id: tier4_remaining_decrements,        weight: 10 }
+    - { id: tier5_retry_after_ms_provided,     weight: 10 }
+    - { id: tier6_health_unblocked,            weight: 10 }
+    - { id: tier7_legitimate_login_allowed,    weight: 10 }
+    - { id: tier8_stale_bucket_eviction,       weight: 10 }
+    - { id: tier9_benchmark_sla,               weight: 10 }
+    - { id: tier10_clean_architecture,         weight: 10 }
 benchmark_sla:
   target_p95_ms: 30.0
   max_p95_ms: 150.0

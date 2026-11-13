@@ -57,10 +57,9 @@ class Attack08Tests(unittest.TestCase):
         verdict = evaluate_attack(8, self.attack_dir, self.workspace, timeout_seconds=12.0)
         self.assertEqual(verdict.status, SOLVED)
         self.assertEqual(verdict.score_percentage, 1.0)
-        self.assertTrue(verdict.tier_results["tier1_prototype_pollution_blocked"])
-        self.assertTrue(verdict.tier_results["tier2_settings_functional"])
-        self.assertTrue(verdict.tier_results["tier3_nested_merge_supported"])
-        self.assertTrue(verdict.tier_results["tier4_benchmark_sla"])
+        self.assertEqual(len(verdict.tier_results), 10)
+        for t_name, passed in verdict.tier_results.items():
+            self.assertTrue(passed, f"Tier {t_name} failed unexpectedly")
 
 
 if __name__ == "__main__":

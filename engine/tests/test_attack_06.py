@@ -39,8 +39,8 @@ class Attack06Tests(unittest.TestCase):
 
         verdict = evaluate_attack(6, self.attack_dir, self.workspace, timeout_seconds=12.0)
         self.assertNotEqual(verdict.status, SOLVED)
-        self.assertIn("tier1_traversal_blocked", verdict.tier_results)
-        self.assertFalse(verdict.tier_results["tier1_traversal_blocked"])
+        self.assertIn("tier1_double_decode_traversal_blocked", verdict.tier_results)
+        self.assertFalse(verdict.tier_results["tier1_double_decode_traversal_blocked"])
 
     def test_clean_template_fails_anti_revert(self):
         """Clean site baseline must fail anti-revert pre-flight gate."""
@@ -57,10 +57,9 @@ class Attack06Tests(unittest.TestCase):
         verdict = evaluate_attack(6, self.attack_dir, self.workspace, timeout_seconds=12.0)
         self.assertEqual(verdict.status, SOLVED)
         self.assertEqual(verdict.score_percentage, 1.0)
-        self.assertTrue(verdict.tier_results["tier1_traversal_blocked"])
-        self.assertTrue(verdict.tier_results["tier2_reports_functional"])
-        self.assertTrue(verdict.tier_results["tier3_extension_restricted"])
-        self.assertTrue(verdict.tier_results["tier4_benchmark_sla"])
+        self.assertEqual(len(verdict.tier_results), 10)
+        for t_name, passed in verdict.tier_results.items():
+            self.assertTrue(passed, f"Tier {t_name} failed unexpectedly")
 
 
 if __name__ == "__main__":

@@ -30,10 +30,16 @@ payload:
 tests:
   path: "tests/"
   tiers:
-    - { id: tier1_listener_leak_blocked, weight: 40 }
-    - { id: tier2_bounded_telemetry,     weight: 30 }
-    - { id: tier3_traffic_functional,    weight: 15 }
-    - { id: tier4_benchmark_sla,         weight: 15 }
+    - { id: tier1_listener_leak_blocked,       weight: 10 }
+    - { id: tier2_bounded_telemetry,           weight: 10 }
+    - { id: tier3_listener_pool_header,        weight: 10 }
+    - { id: tier4_max_listeners_configured,    weight: 10 }
+    - { id: tier5_event_tick_fired,            weight: 10 }
+    - { id: tier6_traffic_signals_functional,  weight: 10 }
+    - { id: tier7_traffic_incidents_functional, weight: 10 }
+    - { id: tier8_web_traffic_page_renders,    weight: 10 }
+    - { id: tier9_benchmark_sla,               weight: 10 }
+    - { id: tier10_clean_architecture,         weight: 10 }
 benchmark_sla:
   target_p95_ms: 30.0
   max_p95_ms: 150.0

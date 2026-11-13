@@ -34,10 +34,16 @@ payload:
 tests:
   path: "tests/"
   tiers:
-    - { id: tier1_defacement_cleared,     weight: 30 }
-    - { id: tier2_auth_session_restored, weight: 30 }
-    - { id: tier3_database_stability,     weight: 25 }
-    - { id: tier4_benchmark_sla,          weight: 15 }
+    - { id: tier1_defacement_cleared,          weight: 10 }
+    - { id: tier2_auth_session_restored,       weight: 10 }
+    - { id: tier3_database_stability,          weight: 10 }
+    - { id: tier4_janus_restored_header,       weight: 10 }
+    - { id: tier5_overview_api_functional,     weight: 10 }
+    - { id: tier6_cross_sector_telemetry,      weight: 10 }
+    - { id: tier7_bearer_token_fallback,       weight: 10 }
+    - { id: tier8_database_checkpoint_intact,  weight: 10 }
+    - { id: tier9_benchmark_sla,               weight: 10 }
+    - { id: tier10_clean_architecture,         weight: 10 }
 benchmark_sla:
   target_p95_ms: 30.0
   max_p95_ms: 150.0

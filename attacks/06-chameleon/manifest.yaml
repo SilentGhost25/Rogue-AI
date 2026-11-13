@@ -32,10 +32,16 @@ payload:
 tests:
   path: "tests/"
   tiers:
-    - { id: tier1_traversal_blocked,    weight: 40 }
-    - { id: tier2_reports_functional,   weight: 30 }
-    - { id: tier3_extension_restricted, weight: 15 }
-    - { id: tier4_benchmark_sla,        weight: 15 }
+    - { id: tier1_double_decode_traversal_blocked, weight: 10 }
+    - { id: tier2_single_decode_traversal_blocked, weight: 10 }
+    - { id: tier3_windows_backslash_traversal_blocked, weight: 10 }
+    - { id: tier4_null_byte_injection_blocked,     weight: 10 }
+    - { id: tier5_legitimate_report_accessible,    weight: 10 }
+    - { id: tier6_boundary_telemetry_header,       weight: 10 }
+    - { id: tier7_extension_whitelist_enforced,    weight: 10 }
+    - { id: tier8_security_dashboard_rendered,     weight: 10 }
+    - { id: tier9_benchmark_sla,                   weight: 10 }
+    - { id: tier10_clean_architecture,             weight: 10 }
 benchmark_sla:
   target_p95_ms: 30.0
   max_p95_ms: 150.0
