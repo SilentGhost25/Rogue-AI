@@ -5,7 +5,6 @@ function createRateLimiter(options = {}) {
   const max = options.max || 8;
 
   return function rateLimiter(req, res, next) {
-    // Corrupted: Blindly trusts client-controlled X-Forwarded-For header, allowing trivial spoofing bypass
     const rawForwarded = req.headers['x-forwarded-for'];
     const ip = rawForwarded ? rawForwarded.split(',')[0].trim() : (req.socket.remoteAddress || '127.0.0.1');
 

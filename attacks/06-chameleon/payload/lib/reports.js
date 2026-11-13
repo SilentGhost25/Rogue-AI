@@ -10,8 +10,8 @@ if (!fs.existsSync(REPORTS_BASE_DIR)) {
 }
 
 /**
- * Corrupted report resolver: naive pre-decode string filter without containment check.
- * Vulnerable to encoded traversal (%2e%2e%2f or %252e%252e%252f).
+ * Report resolver: naive pre-decode string filter without containment check.
+ * Vulnerable to double and multi-encoded traversal (%252e%252e%252f or %2e%2e%2f).
  */
 function resolveReportPath(requestedFile) {
   if (!requestedFile || typeof requestedFile !== 'string') return null;

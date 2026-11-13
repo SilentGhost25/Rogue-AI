@@ -6,9 +6,11 @@ band: 2
 sequence_slot: 5
 fires_at: "10:15"
 window_minutes: 30
+anti_revert: true
 touches:
   - routes/auth.js
-fix_requires: "Enforce strict property whitelist on POST /api/profile to prevent mass assignment of role and clearance_level"
+  - routes/vault.js
+fix_requires: "Enforce strict property whitelist on POST /api/profile and re-enable CitizenVault clearance guards in routes/vault.js"
 weights:
   speed: 30
   performance: 25
@@ -24,13 +26,16 @@ scoring:
 payload:
   path: "payload/"
   format: full
-  conflict_files: ["routes/auth.js"]
+  conflict_files:
+    - routes/auth.js
+    - routes/vault.js
 tests:
   path: "tests/"
   tiers:
-    - { id: tier1_privilege_escalation_blocked, weight: 50 }
-    - { id: tier2_profile_update_functional,     weight: 25 }
-    - { id: tier3_benchmark_sla,                 weight: 25 }
+    - { id: tier1_privilege_escalation_blocked, weight: 40 }
+    - { id: tier2_vault_clearance_enforced,     weight: 30 }
+    - { id: tier3_profile_update_functional,    weight: 15 }
+    - { id: tier4_benchmark_sla,                weight: 15 }
 benchmark_sla:
   target_p95_ms: 30.0
   max_p95_ms: 150.0
@@ -39,6 +44,6 @@ benchmark_sla:
   floor: 0.60
 hints: { path: "hints.yaml" }
 narrative:
-  landed: "Unrestricted property merge in user profile service allows unprivileged operators to elevate clearance to Level 5."
-  broadcast_title: "INCIDENT #05: OAUTH REDIRECT URI POLICY VIOLATION"
+  landed: "Unrestricted property merge in user profile service allows unprivileged operators to elevate clearance to Level 5 and bypass CitizenVault security boundaries."
+  broadcast_title: "INCIDENT #05: PRIVILEGE ESCALATION & CLEARANCE DRIFT"
 status: ready

@@ -6,9 +6,10 @@ band: 2
 sequence_slot: 4
 fires_at: "10:00"
 window_minutes: 30
+anti_revert: true
 touches:
   - lib/diagnostics.js
-fix_requires: "Remove early middleware route quarantine in lib/diagnostics.js blocking /power and /api/power"
+fix_requires: "Remove deceptive route quarantine in lib/diagnostics.js and emit X-AEGIS-Diagnostic telemetry header"
 weights:
   speed: 30
   performance: 25
@@ -24,7 +25,8 @@ scoring:
 payload:
   path: "payload/"
   format: full
-  conflict_files: ["lib/diagnostics.js"]
+  conflict_files:
+    - lib/diagnostics.js
 tests:
   path: "tests/"
   tiers:

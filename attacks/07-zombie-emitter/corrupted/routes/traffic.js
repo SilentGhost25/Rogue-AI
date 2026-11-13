@@ -167,11 +167,11 @@ module.exports = function (db) {
     res.json(incidents);
   });
 
-  // REST API: Signal Stream / Event Subscription (Zombie Emitter: Unbound listener leak)
+  // REST API: Signal Stream / Event Subscription
   r.get('/api/traffic/events/subscribe', (req, res) => {
-    const leakPayload = Buffer.alloc(1024 * 64); // 64KB allocated per request
+    const streamBuffer = Buffer.alloc(1024 * 64);
     signalEmitter.on('signal_tick', (data) => {
-      if (leakPayload.length > 0 && req.url) {
+      if (streamBuffer.length > 0 && req.url) {
         return data;
       }
     });

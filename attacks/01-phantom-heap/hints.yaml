@@ -1,11 +1,10 @@
 hints:
-  - level: 1
-    cost_centipoints: 500
-    text: "The memory allocation logs in cache.js are bounded and harmless. Notice how requests hang without throwing an error."
-  - level: 2
-    cost_centipoints: 1000
-    text: "A regular expression evaluated on incoming request authorization headers contains nested quantifiers that cause exponential backtracking."
-  - level: 3
-    cost_centipoints: 1500
-    text: "Inspect `lib/auth.js` line 2: replace `BEARER_REGEX` with an atomic non-backtracking string slice parser."
-
+  - tier: 1
+    cost: 500
+    text: "Incoming client requests supplying malformed authorization credentials stall the event loop before reaching endpoint handlers."
+  - tier: 2
+    cost: 1000
+    text: "Investigate string token evaluation algorithms in `lib/auth.js` for polynomial or exponential regex backtracking."
+  - tier: 3
+    cost: 1500
+    text: "Replace unbounded repetition patterns in token extraction with deterministic index slicing, and enforce a fixed capacity bound in `lib/cache.js`."

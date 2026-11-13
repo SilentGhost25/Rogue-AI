@@ -1,9 +1,0 @@
---- a/routes/search.js
-+++ b/routes/search.js
-@@ -10,3 +10,3 @@
-     const body = `
-       <h1>Search results</h1>
--      <p class="muted">${q ? `${rows.length} result(s) for ${esc(q)}` : 'Type a word in the search box above.'}</p>
-+      <p class="muted">${q ? `${rows.length} result(s) for ${q}` : 'Type a word in the search box above.'}</p>
-       <ul class="stories">${rows.map((p) => `<li><a href="/posts/${esc(p.slug)}">${esc(p.title)}</a><span>${esc(p.summary)}</span></li>`).join('')}</ul>`;
-

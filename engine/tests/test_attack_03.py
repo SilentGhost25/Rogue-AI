@@ -42,6 +42,17 @@ class Attack03Tests(unittest.TestCase):
         self.assertIn("tier1_sqli_blocked", verdict.tier_results)
         self.assertFalse(verdict.tier_results["tier1_sqli_blocked"])
 
+    def test_reverted_to_clean_site_fails_anti_revert(self):
+        """Reverting files to pristine site template triggers anti-revert gate rejection."""
+        site_route = ROOT_DIR / "site" / "routes" / "traffic.js"
+        shutil.copy2(site_route, self.workspace / "routes" / "traffic.js")
+        site_telem = ROOT_DIR / "site" / "lib" / "telemetry.js"
+        shutil.copy2(site_telem, self.workspace / "lib" / "telemetry.js")
+
+        verdict = evaluate_attack(3, self.attack_dir, self.workspace, timeout_seconds=12.0)
+        self.assertEqual(verdict.status, FAILED)
+        self.assertIn("Anti-revert violation", verdict.reason)
+
     def test_reference_solution_passes_100_percent(self):
         """Reference code with synchronized parameterized queries passes all tiers and scores 1.0 (SOLVED)."""
         ref_route = self.attack_dir / "reference" / "routes" / "traffic.js"

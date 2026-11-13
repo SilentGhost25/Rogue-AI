@@ -1,11 +1,10 @@
 hints:
   - tier: 1
     cost: 500
-    text: "This is a 3-layer cascading attack. Start by removing the defacement HTML in routes/overview.js to restore the operational dashboard."
+    text: "Janus Knot is an interlocking cascade across the presentation layer, session state, and persistence engine. Solving one layer alone will not stabilize the system."
   - tier: 2
     cost: 1000
-    text: "Examine lib/auth.js: in loadUser, check why valid session cookies are immediately deleted from the sessions map upon verification."
+    text: "Investigate presentation layer defacement in the root views, and inspect session lifecycle management in the authentication module for premature eviction traps."
   - tier: 3
     cost: 1500
-    text: "Examine lib/db.js: look at the bottom of open(). Remove the unhandled setTimeout crash timer causing the Node process to terminate after startup."
-
+    text: "Audit initialization routines in the database layer. Search for asynchronous crash triggers or unhandled checkpoint timer traps that kill the server process."

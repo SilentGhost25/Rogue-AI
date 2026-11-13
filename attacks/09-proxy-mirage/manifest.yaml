@@ -6,9 +6,10 @@ band: 3
 sequence_slot: 9
 fires_at: "11:15"
 window_minutes: 30
+anti_revert: true
 touches:
   - lib/rate-limiter.js
-fix_requires: "Prevent client-controlled X-Forwarded-For IP spoofing from bypassing rate limiter in lib/rate-limiter.js"
+fix_requires: "Prevent client-controlled X-Forwarded-For IP spoofing from bypassing rate limiter in lib/rate-limiter.js and enforce direct-socket policy headers"
 weights:
   speed: 30
   performance: 25
@@ -24,21 +25,23 @@ scoring:
 payload:
   path: "payload/"
   format: full
-  conflict_files: ["lib/rate-limiter.js"]
+  conflict_files:
+    - lib/rate-limiter.js
 tests:
   path: "tests/"
   tiers:
-    - { id: tier1_spoofing_blocked,   weight: 50 }
-    - { id: tier2_limiter_functional, weight: 25 }
-    - { id: tier3_benchmark_sla,      weight: 25 }
+    - { id: tier1_spoofing_blocked,   weight: 40 }
+    - { id: tier2_limiter_functional, weight: 30 }
+    - { id: tier3_health_unblocked,   weight: 15 }
+    - { id: tier4_benchmark_sla,      weight: 15 }
 benchmark_sla:
-  target_p95_ms: 40.0
+  target_p95_ms: 30.0
   max_p95_ms: 150.0
   probe_route: "/api/health"
   probe_count: 20
   floor: 0.60
 hints: { path: "hints.yaml" }
 narrative:
-  landed: "Border gateway rate limit enforcement is vulnerable to forged header spoofing, enabling brute-force password spraying."
+  landed: "Border gateway rate limit enforcement is vulnerable to forged header spoofing, enabling brute-force password spraying and credential credential stuffing."
   broadcast_title: "INCIDENT #09: SYN FLOOD & L4 RATE LIMIT EXHAUSTION"
 status: ready

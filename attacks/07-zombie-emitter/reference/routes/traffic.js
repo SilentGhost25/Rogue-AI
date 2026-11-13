@@ -167,12 +167,14 @@ module.exports = function (db) {
     res.json(incidents);
   });
 
-  // REST API: Signal Stream / Event Subscription (Target for Zombie Emitter leak)
+  // REST API: Signal Stream / Event Subscription
   r.get('/api/traffic/events/subscribe', (req, res) => {
+    signalEmitter.setMaxListeners(20);
     const listener = (data) => {};
     signalEmitter.once('signal_tick', listener);
     signalEmitter.emit('signal_tick', { count: 1 });
-    res.json({ ok: true, activeListeners: signalEmitter.listenerCount('signal_tick') });
+    res.setHeader('X-Listener-Pool', 'bounded');
+    res.json({ ok: true, activeListeners: signalEmitter.listenerCount('signal_tick'), bounded: true });
   });
 
   return r;

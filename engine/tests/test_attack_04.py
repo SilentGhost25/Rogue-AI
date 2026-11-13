@@ -40,6 +40,15 @@ class Attack04Tests(unittest.TestCase):
         self.assertIn("tier1_power_routes_accessible", verdict.tier_results)
         self.assertFalse(verdict.tier_results["tier1_power_routes_accessible"])
 
+    def test_reverted_to_clean_site_fails_anti_revert(self):
+        """Reverting lib/diagnostics.js to pristine site template triggers anti-revert gate rejection."""
+        site_diag = ROOT_DIR / "site" / "lib" / "diagnostics.js"
+        shutil.copy2(site_diag, self.workspace / "lib" / "diagnostics.js")
+
+        verdict = evaluate_attack(4, self.attack_dir, self.workspace, timeout_seconds=12.0)
+        self.assertEqual(verdict.status, FAILED)
+        self.assertIn("Anti-revert violation", verdict.reason)
+
     def test_reference_solution_passes_100_percent(self):
         """Reference code with clean diagnostic passthrough passes all tiers and scores 1.0 (SOLVED)."""
         ref_diag = self.attack_dir / "reference" / "lib" / "diagnostics.js"

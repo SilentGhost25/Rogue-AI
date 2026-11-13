@@ -42,6 +42,17 @@ class Attack01Tests(unittest.TestCase):
         self.assertIn("tier1_redos_blocked", verdict.tier_results)
         self.assertFalse(verdict.tier_results["tier1_redos_blocked"])
 
+    def test_reverted_to_clean_site_fails_anti_revert(self):
+        """Reverting files to pristine site template triggers anti-revert gate rejection."""
+        site_auth = ROOT_DIR / "site" / "lib" / "auth.js"
+        shutil.copy2(site_auth, self.workspace / "lib" / "auth.js")
+        site_cache = ROOT_DIR / "site" / "lib" / "cache.js"
+        shutil.copy2(site_cache, self.workspace / "lib" / "cache.js")
+
+        verdict = evaluate_attack(1, self.attack_dir, self.workspace, timeout_seconds=12.0)
+        self.assertEqual(verdict.status, FAILED)
+        self.assertIn("Anti-revert violation", verdict.reason)
+
     def test_reference_solution_passes_100_percent(self):
         """Reference code with atomic token parser passes all tiers and scores 1.0 (SOLVED)."""
         ref_auth = self.attack_dir / "reference" / "lib" / "auth.js"
@@ -54,7 +65,8 @@ class Attack01Tests(unittest.TestCase):
         self.assertEqual(verdict.score_percentage, 1.0)
         self.assertTrue(verdict.tier_results["tier1_redos_blocked"])
         self.assertTrue(verdict.tier_results["tier2_tokens_functional"])
-        self.assertTrue(verdict.tier_results["tier3_latency_sla"])
+        self.assertTrue(verdict.tier_results["tier3_cache_capacity"])
+        self.assertTrue(verdict.tier_results["tier4_latency_sla"])
 
 
 if __name__ == "__main__":

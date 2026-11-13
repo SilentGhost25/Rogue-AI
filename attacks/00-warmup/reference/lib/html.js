@@ -12,6 +12,7 @@ function layout({ title = 'Command', user = null, active = 'overview', threat = 
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self';">
 <title>${esc(title)} | AEGIS Municipal Defense</title>
 <link rel="stylesheet" href="/aegis.css">
 </head>
@@ -61,4 +62,4 @@ function layout({ title = 'Command', user = null, active = 'overview', threat = 
 </html>`;
 }
 
-module.exports = { esc, layout };
+module.exports = { layout, esc };

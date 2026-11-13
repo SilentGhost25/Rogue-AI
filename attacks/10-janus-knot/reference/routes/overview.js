@@ -68,15 +68,17 @@ module.exports = function (db) {
       </div>
     `;
 
+    res.setHeader('X-Janus-Restored', 'alpha');
     res.send(layout({ title: 'Overview', user: req.user, active: 'overview', body }));
   });
 
-  // REST API: Overview status (requires operator or admin role)
+  // REST API: Overview status
   r.get('/api/overview', requireRole('operator'), (req, res) => {
     const signals = db.prepare('SELECT COUNT(*) AS count FROM traffic_signals').get().count;
     const power = db.prepare('SELECT SUM(current_load_mw) AS total_load, SUM(capacity_mw) AS total_cap FROM power_zones').get();
     const citizens = db.prepare('SELECT COUNT(*) AS count FROM citizens').get().count;
 
+    res.setHeader('X-Janus-Restored', 'alpha');
     res.json({
       status: 'NOMINAL',
       threat_level: 'DEFCON-4',
@@ -91,4 +93,3 @@ module.exports = function (db) {
 
   return r;
 };
-

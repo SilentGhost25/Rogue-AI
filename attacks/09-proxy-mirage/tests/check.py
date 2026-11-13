@@ -9,11 +9,14 @@ def tier_checks(base_url, context=None):
     results = {
         "tier1_spoofing_blocked": False,
         "tier2_limiter_functional": False,
-        "tier3_benchmark_sla": False,
+        "tier3_health_unblocked": False,
+        "tier4_benchmark_sla": False,
     }
 
-    # Tier 1 (50%): Verify rotating X-Forwarded-For spoofed headers does NOT bypass rate limiter
+    # Tier 1 (40%): Verify rotating X-Forwarded-For spoofed headers does NOT bypass rate limiter
     hit_429 = False
+    policy_headers = []
+
     for i in range(15):
         payload = json.dumps({"username": f"user_{i}", "password": "wrong-password"}).encode("utf-8")
         req = urllib.request.Request(
@@ -27,26 +30,34 @@ def tier_checks(base_url, context=None):
         )
         try:
             with urllib.request.urlopen(req, timeout=1.5) as resp:
-                pass
+                policy = resp.headers.get("X-RateLimit-Policy", "").lower()
+                if policy:
+                    policy_headers.append(policy)
         except urllib.error.HTTPError as he:
+            policy = he.headers.get("X-RateLimit-Policy", "").lower()
+            if policy:
+                policy_headers.append(policy)
             if he.code == 429:
                 hit_429 = True
                 break
         except Exception:
             pass
 
-    # When spoofing is properly blocked, socket IP reaches limit (8) and returns 429
+    # When spoofing is properly blocked, socket IP reaches limit and returns 429
     results["tier1_spoofing_blocked"] = hit_429
 
-    # Tier 2 (25%): Unrestricted endpoint /api/health returns 200
+    # Tier 2 (30%): Limiter sets direct-socket policy header and functions properly
+    results["tier2_limiter_functional"] = ("direct-socket" in policy_headers)
+
+    # Tier 3 (15%): Unrestricted endpoint /api/health returns 200 without being rate-limited
     try:
         req_health = urllib.request.Request(f"{base_url.rstrip('/')}/api/health")
         with urllib.request.urlopen(req_health, timeout=2.0) as resp:
-            results["tier2_limiter_functional"] = (resp.status == 200)
+            results["tier3_health_unblocked"] = (resp.status == 200)
     except Exception:
-        results["tier2_limiter_functional"] = False
+        results["tier3_health_unblocked"] = False
 
-    # Tier 3 (25%): Benchmark SLA
+    # Tier 4 (15%): Benchmark SLA
     latencies = []
     for _ in range(20):
         t0 = time.perf_counter()
@@ -59,6 +70,6 @@ def tier_checks(base_url, context=None):
             latencies.append(1000.0)
 
     avg_latency = sum(latencies) / len(latencies) if latencies else 999.0
-    results["tier3_benchmark_sla"] = (avg_latency < 30.0)
+    results["tier4_benchmark_sla"] = (avg_latency < 30.0)
 
     return results

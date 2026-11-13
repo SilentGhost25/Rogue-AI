@@ -6,9 +6,11 @@ band: 2
 sequence_slot: 6
 fires_at: "10:30"
 window_minutes: 30
+anti_revert: true
 touches:
   - lib/reports.js
-fix_requires: "Enforce strict directory boundary containment in lib/reports.js against double-encoded path traversal attacks"
+  - routes/security.js
+fix_requires: "Enforce strict directory boundary containment and extension validation in lib/reports.js against double-encoded path traversal attacks, and enable X-Report-Boundary header in routes/security.js"
 weights:
   speed: 30
   performance: 25
@@ -24,13 +26,16 @@ scoring:
 payload:
   path: "payload/"
   format: full
-  conflict_files: ["lib/reports.js"]
+  conflict_files:
+    - lib/reports.js
+    - routes/security.js
 tests:
   path: "tests/"
   tiers:
-    - { id: tier1_traversal_blocked, weight: 50 }
-    - { id: tier2_reports_functional, weight: 25 }
-    - { id: tier3_benchmark_sla,      weight: 25 }
+    - { id: tier1_traversal_blocked,    weight: 40 }
+    - { id: tier2_reports_functional,   weight: 30 }
+    - { id: tier3_extension_restricted, weight: 15 }
+    - { id: tier4_benchmark_sla,        weight: 15 }
 benchmark_sla:
   target_p95_ms: 30.0
   max_p95_ms: 150.0
@@ -39,6 +44,6 @@ benchmark_sla:
   floor: 0.60
 hints: { path: "hints.yaml" }
 narrative:
-  landed: "Report extraction gateway is vulnerable to nested URL-encoding escapes, allowing unauthorized file system reads."
+  landed: "Report extraction gateway is vulnerable to nested URL-encoding escapes, allowing unauthorized file system reads across system boundaries."
   broadcast_title: "INCIDENT #06: WEBPACK CHUNK INTEGRITY HASH FAILURE"
 status: ready

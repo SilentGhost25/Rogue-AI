@@ -1,7 +1,10 @@
 const express = require('express');
+const EventEmitter = require('node:events');
 const { layout, esc } = require('../lib/html');
 const { requireRole } = require('../lib/permissions');
 const telemetry = require('../lib/telemetry');
+
+const signalEmitter = new EventEmitter();
 
 module.exports = function (db) {
   const r = express.Router();
@@ -69,8 +72,8 @@ module.exports = function (db) {
                   <td>#${esc(s.id)}</td>
                   <td><strong>${esc(s.intersection)}</strong></td>
                   <td><span class="badge badge-${esc(s.status.toLowerCase())}">${esc(s.status)}</span></td>
-                  <td>${esc(s.congestion_level)}</td>
-                  <td>${s.emergency_preempt ? '<span style="color:var(--accent-red);font-weight:bold;">PREEMPTED</span>' : 'STANDBY'}</td>
+                  <td><span class="congestion-indicator ${esc(s.congestion_level.toLowerCase())}"></span> ${esc(s.congestion_level)}</td>
+                  <td>${s.emergency_preempt ? '<span class="status-indicator live">ACTIVE</span>' : '<span style="color:var(--text-muted)">OFF</span>'}</td>
                   <td>${esc(s.updated_at)}</td>
                 </tr>
               `).join('')}
@@ -80,7 +83,7 @@ module.exports = function (db) {
       </div>
 
       <div class="card">
-        <h2>Reported Roadway Incidents</h2>
+        <h2>Reported Traffic Incidents</h2>
         <div class="table-container">
           <table>
             <thead>
@@ -115,7 +118,7 @@ module.exports = function (db) {
     res.json(signals);
   });
 
-  // REST API: Intersection Search (Reflected XSS target)
+  // REST API: Intersection Search (Parameterized query with audit signature)
   r.get('/api/traffic/search', (req, res) => {
     const q = req.query.q || '';
     const sql = 'SELECT id, intersection, status FROM traffic_signals WHERE intersection LIKE ?';
@@ -125,7 +128,8 @@ module.exports = function (db) {
     const results = db.prepare(sql).all(...params);
     res.json({
       query: esc(q),
-      results
+      results,
+      count: results.length
     });
   });
 
@@ -164,6 +168,11 @@ module.exports = function (db) {
     res.json(incidents);
   });
 
+  // Event stream subscription (Attack 07 target)
+  r.get('/api/traffic/events/subscribe', (_req, res) => {
+    signalEmitter.once('signal_update', () => {});
+    res.json({ ok: true, activeListeners: signalEmitter.listenerCount('signal_update') });
+  });
+
   return r;
 };
-

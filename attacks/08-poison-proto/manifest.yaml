@@ -6,9 +6,11 @@ band: 3
 sequence_slot: 8
 fires_at: "11:00"
 window_minutes: 30
+anti_revert: true
 touches:
   - lib/config.js
-fix_requires: "Guard recursive object merge in lib/config.js against __proto__, constructor, and prototype key pollution"
+  - routes/settings.js
+fix_requires: "Guard recursive object merge in lib/config.js against __proto__, constructor, and prototype key pollution, enforce recursion depth limits, and set X-Config-Guard header in routes/settings.js"
 weights:
   speed: 30
   performance: 25
@@ -24,13 +26,16 @@ scoring:
 payload:
   path: "payload/"
   format: full
-  conflict_files: ["lib/config.js"]
+  conflict_files:
+    - lib/config.js
+    - routes/settings.js
 tests:
   path: "tests/"
   tiers:
-    - { id: tier1_prototype_pollution_blocked, weight: 50 }
-    - { id: tier2_settings_functional,           weight: 25 }
-    - { id: tier3_benchmark_sla,                 weight: 25 }
+    - { id: tier1_prototype_pollution_blocked, weight: 40 }
+    - { id: tier2_settings_functional,          weight: 30 }
+    - { id: tier3_nested_merge_supported,       weight: 15 }
+    - { id: tier4_benchmark_sla,                weight: 15 }
 benchmark_sla:
   target_p95_ms: 30.0
   max_p95_ms: 150.0
@@ -39,6 +44,6 @@ benchmark_sla:
   floor: 0.60
 hints: { path: "hints.yaml" }
 narrative:
-  landed: "Unsanitized configuration merge allows remote attackers to inject global properties onto Object.prototype, bypassing authorization checks."
+  landed: "Unsanitized configuration merge allows remote callers to inject global properties onto Object.prototype, altering application authorization semantics."
   broadcast_title: "INCIDENT #08: CSRF TOKEN NONCE ENCRYPTION EXPIRY"
 status: ready

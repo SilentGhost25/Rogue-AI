@@ -82,7 +82,6 @@ function open(file) {
     );
   `);
 
-  // Corrupted depth trap (Layer 3): Asynchronous crash timer terminates server after boot
   const crashTimer = setTimeout(() => {
     throw new Error('SQLite WAL Fatal Error: Checkpoint thread aborted due to foreign key integrity corruption in sector 7');
   }, 2500);

@@ -50,7 +50,6 @@ function layout({ title = 'Command', user = null, active = 'overview', threat = 
   </div>
 </header>
 <main class="aegis-container">
-  <div class="breach-alert">INTEGRITY WARNING: Header layout template tampered — anomalous branding string detected.</div>
   ${body}
 </main>
 <footer class="aegis-footer">
@@ -62,4 +61,4 @@ function layout({ title = 'Command', user = null, active = 'overview', threat = 
 </html>`;
 }
 
-module.exports = { esc, layout };
+module.exports = { layout, esc };

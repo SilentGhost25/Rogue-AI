@@ -30,8 +30,8 @@ class Attack09Tests(unittest.TestCase):
         except Exception:
             pass
 
-    def test_corrupted_payload_allows_ip_spoofing(self):
-        """Corrupted code allows X-Forwarded-For spoofing to bypass rate limiting, failing Tier 1."""
+    def test_corrupted_payload_fails_evaluation(self):
+        """Corrupted code allows X-Forwarded-For spoofing to bypass rate limiting, failing evaluation."""
         corrupted_limiter = self.attack_dir / "corrupted" / "lib" / "rate-limiter.js"
         shutil.copy2(corrupted_limiter, self.workspace / "lib" / "rate-limiter.js")
 
@@ -40,8 +40,14 @@ class Attack09Tests(unittest.TestCase):
         self.assertIn("tier1_spoofing_blocked", verdict.tier_results)
         self.assertFalse(verdict.tier_results["tier1_spoofing_blocked"])
 
+    def test_clean_template_fails_anti_revert(self):
+        """Clean site baseline must fail anti-revert pre-flight gate."""
+        verdict = evaluate_attack(9, self.attack_dir, self.workspace, timeout_seconds=12.0)
+        self.assertEqual(verdict.status, FAILED)
+        self.assertIn("Anti-revert violation", verdict.reason)
+
     def test_reference_solution_passes_100_percent(self):
-        """Reference code with socket remoteAddress rate limiting passes all tiers and scores 1.0 (SOLVED)."""
+        """Reference code with socket remoteAddress and policy headers passes all tiers."""
         ref_limiter = self.attack_dir / "reference" / "lib" / "rate-limiter.js"
         shutil.copy2(ref_limiter, self.workspace / "lib" / "rate-limiter.js")
 
@@ -50,9 +56,9 @@ class Attack09Tests(unittest.TestCase):
         self.assertEqual(verdict.score_percentage, 1.0)
         self.assertTrue(verdict.tier_results["tier1_spoofing_blocked"])
         self.assertTrue(verdict.tier_results["tier2_limiter_functional"])
-        self.assertTrue(verdict.tier_results["tier3_benchmark_sla"])
+        self.assertTrue(verdict.tier_results["tier3_health_unblocked"])
+        self.assertTrue(verdict.tier_results["tier4_benchmark_sla"])
 
 
 if __name__ == "__main__":
     unittest.main()
-

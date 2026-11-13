@@ -1,10 +1,10 @@
 hints:
   - tier: 1
     cost: 500
-    text: "Ignore the decoy alert regarding threadpool starvation and scrypt workers. The issue is an EventEmitter memory leak in routes/traffic.js."
+    text: "The advisory indicates event loop task skew and worker starvation. Do not chase crypto threadpool bottlenecks—investigate asynchronous event listeners."
   - tier: 2
     cost: 1000
-    text: "Check /api/traffic/events/subscribe in routes/traffic.js. Notice how signalEmitter.on adds a listener on every single request."
+    text: "Inspect the event subscription pipelines in the traffic subsystem. Check whether recurring HTTP invocations register unbounded listeners on long-lived event emitters."
   - tier: 3
     cost: 1500
-    text: "Change signalEmitter.on to signalEmitter.once, or explicitly remove the listener after emitting the event. Do NOT merely call setMaxListeners."
+    text: "Ensure event subscriptions are strictly transient or deregistered immediately upon dispatch. Enforce bounded listener telemetry and appropriate headers."

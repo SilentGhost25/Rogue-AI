@@ -1,11 +1,10 @@
 hints:
   - tier: 1
     cost: 500
-    text: "Ignore the decoy alert regarding SYN packet drops and BGP flow rate. The issue is in lib/rate-limiter.js."
+    text: "The threat broadcast cites SYN flood and L4 exhaustion, but edge network interfaces are healthy. Focus on application-layer throttling."
   - tier: 2
     cost: 1000
-    text: "Check how rateLimiter extracts the client IP address. Notice that it blindly reads req.headers['x-forwarded-for']."
+    text: "Review the client identification mechanisms in the request rate limiter. Untrusted reverse proxy headers may be spoofed by callers."
   - tier: 3
     cost: 1500
-    text: "Do not trust arbitrary X-Forwarded-For headers from untrusted clients. Extract client identity from req.socket.remoteAddress or configure strict proxy trust."
-
+    text: "Anchor rate limiting exclusively to verified transport connections. Enforce direct-socket rate policy headers and cache cleanup."

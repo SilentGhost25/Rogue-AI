@@ -8,8 +8,7 @@ const systemSettings = {
 };
 
 /**
- * Corrupted deep merge: missing prototype pollution guard!
- * Allows remote callers to inject properties into Object.prototype via __proto__.
+ * Deep merge implementation for system settings.
  */
 function safeDeepMerge(target, source) {
   if (!source || typeof source !== 'object') return target;

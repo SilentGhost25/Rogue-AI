@@ -4,6 +4,9 @@ const path = require('node:path');
 
 function open(file) {
   const db = new DatabaseSync(file || path.join(__dirname, '..', 'data.db'));
+  db.exec('PRAGMA foreign_keys = ON;');
+  db.exec('PRAGMA journal_mode = WAL;');
+  db.exec('PRAGMA synchronous = NORMAL;');
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY,

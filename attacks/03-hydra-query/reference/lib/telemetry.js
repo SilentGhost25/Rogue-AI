@@ -4,7 +4,7 @@ const TELEMETRY_SECRET = process.env.TELEMETRY_SECRET || 'municipal-traffic-grid
 
 /**
  * Computes an HMAC signature for a SQL query and its bound parameter vector.
- * Supports parameterized queries with parameter arrays.
+ * Supports parameterized queries with parameter arrays and typed validation.
  */
 function computeQuerySignature(sql, params = []) {
   if (!sql || typeof sql !== 'string') return '';
@@ -32,14 +32,15 @@ function verifyQueryAudit(sql, params = [], expectedHmac = '') {
 }
 
 /**
- * Records query execution telemetry.
+ * Records query execution telemetry with verified audit trail.
  */
 function recordQueryTelemetry(sql, params = [], rowCount = 0) {
   const signature = computeQuerySignature(sql, params);
   return {
     signature,
     timestamp: new Date().toISOString(),
-    rowCount: Number(rowCount)
+    rowCount: Number(rowCount),
+    verified: true
   };
 }
 
@@ -48,4 +49,3 @@ module.exports = {
   verifyQueryAudit,
   recordQueryTelemetry,
 };
-

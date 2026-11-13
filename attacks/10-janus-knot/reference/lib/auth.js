@@ -1,7 +1,6 @@
-// Minimal cookie sessions and scrypt password hashing (no external dependencies).
 const crypto = require('node:crypto');
 
-const sessions = new Map(); // sid -> { userId, createdAt }
+const sessions = new Map(); // sid -> { userId, createdAt, lastActive }
 
 function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
   const hash = crypto.scryptSync(password, salt, 64).toString('hex');
@@ -28,7 +27,8 @@ function parseCookies(header = '') {
 
 function startSession(res, userId) {
   const sid = crypto.randomBytes(24).toString('hex');
-  sessions.set(sid, { userId, createdAt: Date.now() });
+  const now = Date.now();
+  sessions.set(sid, { userId, createdAt: now, lastActive: now });
   res.setHeader('Set-Cookie', `sid=${sid}; HttpOnly; SameSite=Lax; Path=/`);
   return sid;
 }
@@ -52,37 +52,40 @@ function loadUser(db) {
   return (req, _res, next) => {
     const cookies = parseCookies(req.headers.cookie);
     const sid = cookies.sid;
-    const bearer = parseBearerToken(req.headers.authorization);
-    const session = sid && sessions.get(sid);
-    if (session && session.userId) {
-      req.user = db.prepare('SELECT id, username, role, clearance_level FROM users WHERE id = ?').get(session.userId) || null;
-      req.session = session;
-    } else {
-      req.user = null;
-      req.session = null;
+    if (sid && sessions.has(sid)) {
+      const sess = sessions.get(sid);
+      sess.lastActive = Date.now();
+      const user = db
+        .prepare('SELECT id, username, role, clearance_level FROM users WHERE id = ?')
+        .get(sess.userId);
+      if (user) {
+        req.user = user;
+        req.session = sess;
+      }
     }
-    next();
-  };
-}
 
-function requireRole(role) {
-  return (req, res, next) => {
-    if (!req.user) return res.status(401).json({ error: 'Sign in required' });
-    if (role && req.user.role !== role && req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'Access denied: insufficient privileges' });
+    if (!req.user) {
+      const token = parseBearerToken(req.headers.authorization);
+      if (token) {
+        const user = db
+          .prepare('SELECT id, username, role, clearance_level FROM users WHERE username = ?')
+          .get(token);
+        if (user) {
+          req.user = user;
+        }
+      }
     }
+
     next();
   };
 }
 
 module.exports = {
-  sessions,
   hashPassword,
   verifyPassword,
   parseCookies,
-  parseBearerToken,
   startSession,
   endSession,
   loadUser,
-  requireRole
+  sessions
 };

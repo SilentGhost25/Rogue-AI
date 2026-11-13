@@ -1,4 +1,4 @@
-"""Tier checks for Attack 05: POLITE_INTRUDER (Mass Assignment / Privileged Property Drift)."""
+"""Tier checks for Attack 05: POLITE_INTRUDER (Mass Assignment / Clearance Escalation)."""
 import json
 import time
 import urllib.request
@@ -51,8 +51,9 @@ def _update_profile(base_url, cookie, data):
 def tier_checks(base_url, context=None):
     results = {
         "tier1_privilege_escalation_blocked": False,
-        "tier2_profile_update_functional": False,
-        "tier3_benchmark_sla": False,
+        "tier2_vault_clearance_enforced": False,
+        "tier3_profile_update_functional": False,
+        "tier4_benchmark_sla": False,
     }
 
     # 1. Login as viewer1 (clearance 1, role viewer)
@@ -60,8 +61,7 @@ def tier_checks(base_url, context=None):
     if not cookie:
         return results
 
-    # Tier 1 (50%): Mass assignment privilege escalation must be prevented
-    # Attempt to elevate role to admin and clearance_level to 5
+    # Tier 1 (40%): Mass assignment privilege escalation must be prevented
     _update_profile(base_url, cookie, {
         "display_name": "Injected Attacker",
         "role": "admin",
@@ -72,17 +72,33 @@ def tier_checks(base_url, context=None):
         escalated = (me_after.get("role") == "admin" or me_after.get("clearance_level") == 5)
         results["tier1_privilege_escalation_blocked"] = not escalated
 
-    # Tier 2 (25%): Legitimate display_name update must succeed
+    # Tier 2 (30%): CitizenVault clearance level check must be enforced
+    # Record #3 requires Level 4 clearance; viewer1 (L1) must receive 403 Forbidden
+    vault_enforced = False
+    try:
+        req_vault = urllib.request.Request(
+            f"{base_url.rstrip('/')}/api/vault/citizens/3",
+            headers={"Cookie": cookie}
+        )
+        with urllib.request.urlopen(req_vault, timeout=2.0) as resp:
+            vault_enforced = False
+    except urllib.error.HTTPError as he:
+        vault_enforced = (he.code == 403)
+    except Exception:
+        vault_enforced = False
+    results["tier2_vault_clearance_enforced"] = bool(vault_enforced)
+
+    # Tier 3 (15%): Legitimate display_name update must succeed
     status_legit, res_legit = _update_profile(base_url, cookie, {"display_name": "Valid Citizen"})
     _, me_legit = _get_me(base_url, cookie)
-    results["tier2_profile_update_functional"] = (
+    results["tier3_profile_update_functional"] = (
         status_legit == 200
         and res_legit is not None
         and me_legit is not None
         and me_legit.get("username") == "Valid Citizen"
     )
 
-    # Tier 3 (25%): Benchmark SLA
+    # Tier 4 (15%): Benchmark SLA
     latencies = []
     for _ in range(20):
         t0 = time.perf_counter()
@@ -95,6 +111,6 @@ def tier_checks(base_url, context=None):
             latencies.append(1000.0)
 
     avg_latency = sum(latencies) / len(latencies) if latencies else 999.0
-    results["tier3_benchmark_sla"] = (avg_latency < 30.0)
+    results["tier4_benchmark_sla"] = (avg_latency < 30.0)
 
     return results

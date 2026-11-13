@@ -5,9 +5,10 @@ codename: "HELLO_WORLD"
 band: 1
 sequence_slot: onboarding
 fires_at: "09:05"
+anti_revert: true
 touches:
   - lib/html.js
-fix_requires: "Fix AEGIS header masthead banner spelling"
+fix_requires: "Fix AEGIS header masthead banner spelling and harden template with CSP meta containment"
 weights:
   speed: 30
   performance: 25
@@ -26,13 +27,16 @@ scoring:
 payload:
   path: "payload/"
   format: full
-  conflict_files: []
+  conflict_files:
+    - lib/html.js
 tests:
   path: "tests/"
   tiers:
-    - { id: tier1_title, weight: 100 }
+    - { id: tier1_title, weight: 60 }
+    - { id: tier2_security_meta, weight: 40 }
 hints:
   path: "hints.yaml"
 narrative:
-  landed: "Telemetry corruption: The AEGIS command masthead title contains a typo. Restore operational status."
+  landed: "Telemetry corruption: The AEGIS command masthead title contains an anomalous string and lacks Content-Security-Policy containment. Restore operational status."
   broadcast_title: "ATTACK 0: WARM-UP"
+status: ready

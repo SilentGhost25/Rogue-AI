@@ -1,11 +1,10 @@
 hints:
   - tier: 1
     cost: 500
-    text: "Ignore the decoy alert regarding CSRF token nonces. The application does not use CSRF token encryption."
+    text: "The CSRF token advisory is a decoy. No cryptographic nonce validation is failing on the transport layer."
   - tier: 2
     cost: 1000
-    text: "Check POST /api/settings and lib/config.js. How does safeDeepMerge handle incoming JSON keys?"
+    text: "Investigate dynamic JSON property assignment within administrative settings and configuration deserializers."
   - tier: 3
     cost: 1500
-    text: "Guard safeDeepMerge against keys like __proto__, constructor, and prototype so remote users cannot pollute global object prototypes."
-
+    text: "Ensure recursive object merges strictly discard prototype mutating properties and enforce security headers on the configuration interface."

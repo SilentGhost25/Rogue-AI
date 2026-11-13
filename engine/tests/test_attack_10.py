@@ -31,7 +31,7 @@ class Attack10Tests(unittest.TestCase):
             pass
 
     def test_corrupted_payload_triggers_cascade(self):
-        """Corrupted code fails all 3 tiers of the cascade."""
+        """Corrupted code fails tiers of the cascade."""
         for item in ["routes/overview.js", "lib/auth.js", "lib/db.js"]:
             src = self.attack_dir / "corrupted" / item
             dst = self.workspace / item
@@ -45,8 +45,14 @@ class Attack10Tests(unittest.TestCase):
         else:
             self.assertEqual(verdict.status, FAILED)
 
+    def test_clean_template_fails_anti_revert(self):
+        """Clean site baseline must fail anti-revert pre-flight gate."""
+        verdict = evaluate_attack(10, self.attack_dir, self.workspace, timeout_seconds=12.0)
+        self.assertEqual(verdict.status, FAILED)
+        self.assertIn("Anti-revert violation", verdict.reason)
+
     def test_reference_solution_passes_100_percent(self):
-        """Reference code resolving all 3 tiers passes and scores 1.0 (SOLVED)."""
+        """Reference code resolving cascade passes all tiers and scores 1.0 (SOLVED)."""
         for item in ["routes/overview.js", "lib/auth.js", "lib/db.js"]:
             src = self.attack_dir / "reference" / item
             dst = self.workspace / item
@@ -59,8 +65,8 @@ class Attack10Tests(unittest.TestCase):
         self.assertTrue(verdict.tier_results["tier1_defacement_cleared"])
         self.assertTrue(verdict.tier_results["tier2_auth_session_restored"])
         self.assertTrue(verdict.tier_results["tier3_database_stability"])
+        self.assertTrue(verdict.tier_results["tier4_benchmark_sla"])
 
 
 if __name__ == "__main__":
     unittest.main()
-

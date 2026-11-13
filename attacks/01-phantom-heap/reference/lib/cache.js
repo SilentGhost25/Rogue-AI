@@ -1,5 +1,6 @@
-// Fast in-memory telemetry and query cache utility
+// Fast in-memory telemetry and query cache utility with capacity cap
 const cache = new Map();
+const MAX_CACHE_ENTRIES = 500;
 
 function getCached(key) {
   const item = cache.get(key);
@@ -12,6 +13,10 @@ function getCached(key) {
 }
 
 function setCached(key, value, ttlMs = 5000) {
+  if (cache.size >= MAX_CACHE_ENTRIES) {
+    const oldestKey = cache.keys().next().value;
+    if (oldestKey) cache.delete(oldestKey);
+  }
   cache.set(key, { value, expiresAt: Date.now() + ttlMs });
 }
 
@@ -25,4 +30,3 @@ module.exports = {
   clearCache,
   cache
 };
-

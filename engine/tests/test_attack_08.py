@@ -30,29 +30,38 @@ class Attack08Tests(unittest.TestCase):
         except Exception:
             pass
 
-    def test_corrupted_payload_allows_prototype_pollution(self):
-        """Corrupted code allows prototype pollution, bypassing auth and failing Tier 1."""
-        corrupted_config = self.attack_dir / "corrupted" / "lib" / "config.js"
-        shutil.copy2(corrupted_config, self.workspace / "lib" / "config.js")
+    def test_corrupted_payload_fails_evaluation(self):
+        """Corrupted code allows prototype pollution, bypassing auth and failing evaluation."""
+        for rel in ["lib/config.js", "routes/settings.js"]:
+            src = self.attack_dir / "corrupted" / rel
+            if src.exists():
+                shutil.copy2(src, self.workspace / rel)
 
         verdict = evaluate_attack(8, self.attack_dir, self.workspace, timeout_seconds=12.0)
         self.assertNotEqual(verdict.status, SOLVED)
         self.assertIn("tier1_prototype_pollution_blocked", verdict.tier_results)
         self.assertFalse(verdict.tier_results["tier1_prototype_pollution_blocked"])
 
+    def test_clean_template_fails_anti_revert(self):
+        """Clean site baseline must fail anti-revert pre-flight gate."""
+        verdict = evaluate_attack(8, self.attack_dir, self.workspace, timeout_seconds=12.0)
+        self.assertEqual(verdict.status, FAILED)
+        self.assertIn("Anti-revert violation", verdict.reason)
+
     def test_reference_solution_passes_100_percent(self):
-        """Reference code with __proto__ guard passes all tiers and scores 1.0 (SOLVED)."""
-        ref_config = self.attack_dir / "reference" / "lib" / "config.js"
-        shutil.copy2(ref_config, self.workspace / "lib" / "config.js")
+        """Reference code with prototype pollution guards passes all tiers."""
+        for rel in ["lib/config.js", "routes/settings.js"]:
+            src = self.attack_dir / "reference" / rel
+            shutil.copy2(src, self.workspace / rel)
 
         verdict = evaluate_attack(8, self.attack_dir, self.workspace, timeout_seconds=12.0)
         self.assertEqual(verdict.status, SOLVED)
         self.assertEqual(verdict.score_percentage, 1.0)
         self.assertTrue(verdict.tier_results["tier1_prototype_pollution_blocked"])
         self.assertTrue(verdict.tier_results["tier2_settings_functional"])
-        self.assertTrue(verdict.tier_results["tier3_benchmark_sla"])
+        self.assertTrue(verdict.tier_results["tier3_nested_merge_supported"])
+        self.assertTrue(verdict.tier_results["tier4_benchmark_sla"])
 
 
 if __name__ == "__main__":
     unittest.main()
-

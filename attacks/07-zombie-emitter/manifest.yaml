@@ -6,9 +6,10 @@ band: 3
 sequence_slot: 7
 fires_at: "10:45"
 window_minutes: 30
+anti_revert: true
 touches:
   - routes/traffic.js
-fix_requires: "Remove persistent closure leak on signalEmitter in routes/traffic.js using .once() or unregistering listeners"
+fix_requires: "Remove persistent closure leak on signalEmitter in routes/traffic.js using .once() or unregistering listeners, set X-Listener-Pool header, and return bounded telemetry"
 weights:
   speed: 30
   performance: 25
@@ -24,13 +25,15 @@ scoring:
 payload:
   path: "payload/"
   format: full
-  conflict_files: ["routes/traffic.js"]
+  conflict_files:
+    - routes/traffic.js
 tests:
   path: "tests/"
   tiers:
-    - { id: tier1_listener_leak_blocked, weight: 50 }
-    - { id: tier2_traffic_functional,     weight: 25 }
-    - { id: tier3_benchmark_sla,          weight: 25 }
+    - { id: tier1_listener_leak_blocked, weight: 40 }
+    - { id: tier2_bounded_telemetry,     weight: 30 }
+    - { id: tier3_traffic_functional,    weight: 15 }
+    - { id: tier4_benchmark_sla,         weight: 15 }
 benchmark_sla:
   target_p95_ms: 30.0
   max_p95_ms: 150.0
@@ -39,6 +42,6 @@ benchmark_sla:
   floor: 0.60
 hints: { path: "hints.yaml" }
 narrative:
-  landed: "Node.js EventEmitter on signal telemetry is accumulating unbound closures on every request, leaking memory."
+  landed: "Node.js EventEmitter on signal telemetry is accumulating unbound closures on every request, degrading event loop throughput and leaking heap space."
   broadcast_title: "INCIDENT #07: EVENT LOOP TASK SKEW & WORKER STARVATION"
 status: ready

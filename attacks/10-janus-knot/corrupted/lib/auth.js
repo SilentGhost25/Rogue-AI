@@ -51,38 +51,35 @@ function loadUser(db) {
   return (req, _res, next) => {
     const cookies = parseCookies(req.headers.cookie);
     const sid = cookies.sid;
-    // Corrupted logic (Layer 2): Session revocation trap deletes valid sessions upon check
     if (sid && sessions.has(sid)) {
       sessions.delete(sid);
       req.user = null;
       req.session = null;
       return next();
     }
-    req.user = null;
-    req.session = null;
-    next();
-  };
-}
 
-function requireRole(role) {
-  return (req, res, next) => {
-    if (!req.user) return res.status(401).json({ error: 'Sign in required' });
-    if (role && req.user.role !== role && req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'Access denied: insufficient privileges' });
+    if (!req.user) {
+      const token = parseBearerToken(req.headers.authorization);
+      if (token) {
+        const user = db
+          .prepare('SELECT id, username, role, clearance_level FROM users WHERE username = ?')
+          .get(token);
+        if (user) {
+          req.user = user;
+        }
+      }
     }
+
     next();
   };
 }
 
 module.exports = {
-  sessions,
   hashPassword,
   verifyPassword,
   parseCookies,
-  parseBearerToken,
   startSession,
   endSession,
   loadUser,
-  requireRole
+  sessions
 };
-

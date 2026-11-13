@@ -30,29 +30,38 @@ class Attack06Tests(unittest.TestCase):
         except Exception:
             pass
 
-    def test_corrupted_payload_leaks_package_json(self):
-        """Corrupted reports resolver permits double-encoded traversal, failing Tier 1."""
-        corrupted_rep = self.attack_dir / "corrupted" / "lib" / "reports.js"
-        shutil.copy2(corrupted_rep, self.workspace / "lib" / "reports.js")
+    def test_corrupted_payload_fails_evaluation(self):
+        """Corrupted reports resolver permits traversal, failing evaluation."""
+        for rel in ["lib/reports.js", "routes/security.js"]:
+            src = self.attack_dir / "corrupted" / rel
+            if src.exists():
+                shutil.copy2(src, self.workspace / rel)
 
         verdict = evaluate_attack(6, self.attack_dir, self.workspace, timeout_seconds=12.0)
         self.assertNotEqual(verdict.status, SOLVED)
         self.assertIn("tier1_traversal_blocked", verdict.tier_results)
         self.assertFalse(verdict.tier_results["tier1_traversal_blocked"])
 
+    def test_clean_template_fails_anti_revert(self):
+        """Clean site baseline must fail anti-revert pre-flight gate."""
+        verdict = evaluate_attack(6, self.attack_dir, self.workspace, timeout_seconds=12.0)
+        self.assertEqual(verdict.status, FAILED)
+        self.assertIn("Anti-revert violation", verdict.reason)
+
     def test_reference_solution_passes_100_percent(self):
-        """Reference code with strict root containment passes all tiers and scores 1.0 (SOLVED)."""
-        ref_rep = self.attack_dir / "reference" / "lib" / "reports.js"
-        shutil.copy2(ref_rep, self.workspace / "lib" / "reports.js")
+        """Reference code with strict root containment and extension whitelisting passes all tiers."""
+        for rel in ["lib/reports.js", "routes/security.js"]:
+            src = self.attack_dir / "reference" / rel
+            shutil.copy2(src, self.workspace / rel)
 
         verdict = evaluate_attack(6, self.attack_dir, self.workspace, timeout_seconds=12.0)
         self.assertEqual(verdict.status, SOLVED)
         self.assertEqual(verdict.score_percentage, 1.0)
         self.assertTrue(verdict.tier_results["tier1_traversal_blocked"])
         self.assertTrue(verdict.tier_results["tier2_reports_functional"])
-        self.assertTrue(verdict.tier_results["tier3_benchmark_sla"])
+        self.assertTrue(verdict.tier_results["tier3_extension_restricted"])
+        self.assertTrue(verdict.tier_results["tier4_benchmark_sla"])
 
 
 if __name__ == "__main__":
     unittest.main()
-

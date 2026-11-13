@@ -73,6 +73,11 @@ module.exports = function (db) {
 
   // REST API: Overview status (requires operator or admin role)
   r.get('/api/overview', requireRole('operator'), (req, res) => {
+    const sessionInfo = {
+      username: req.user ? req.user.username : 'system',
+      clearance: req.user ? req.user.clearance_level : 0
+    };
+
     const signals = db.prepare('SELECT COUNT(*) AS count FROM traffic_signals').get().count;
     const power = db.prepare('SELECT SUM(current_load_mw) AS total_load, SUM(capacity_mw) AS total_cap FROM power_zones').get();
     const citizens = db.prepare('SELECT COUNT(*) AS count FROM citizens').get().count;
@@ -85,10 +90,10 @@ module.exports = function (db) {
         power: { status: 'ONLINE', total_load_mw: power.total_load, capacity_mw: power.total_cap },
         vault: { status: 'SECURE', classified_records: citizens }
       },
-      operator: req.user ? req.user.username : 'system'
+      operator: sessionInfo.username,
+      clearance_level: sessionInfo.clearance
     });
   });
 
   return r;
 };
-

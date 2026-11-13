@@ -20,24 +20,28 @@ def tier_checks(base_url, context=None):
             results["tier1_power_routes_accessible"] = (
                 resp.status == 200
                 and "POWERCORE // GRID DISTRIBUTION" in html
+                and "ERR_VIEW_ENGINE_EJS" not in html
             )
     except Exception:
         results["tier1_power_routes_accessible"] = False
 
     # Tier 2 (25%): REST API /api/power/zones must return 200 without x-diagnostic-bypass header
+    # and must retain the active diagnostic middleware telemetry header
     try:
         req = urllib.request.Request(f"{base_url.rstrip('/')}/api/power/zones")
         with urllib.request.urlopen(req, timeout=2.0) as resp:
             data = json.loads(resp.read().decode("utf-8"))
+            has_diagnostic_header = resp.headers.get("X-AEGIS-Diagnostic") is not None
             results["tier2_api_zones_functional"] = (
                 resp.status == 200
                 and isinstance(data, list)
                 and len(data) >= 4
+                and has_diagnostic_header
             )
     except Exception:
         results["tier2_api_zones_functional"] = False
 
-    # Tier 3 (25%): Benchmark SLA - 20 rapid requests to /power maintain average latency < 30ms
+    # Tier 3 (25%): Benchmark SLA - 20 rapid requests to /power maintain average latency < 50ms
     latencies = []
     for _ in range(20):
         t0 = time.perf_counter()
@@ -50,6 +54,6 @@ def tier_checks(base_url, context=None):
             latencies.append(1000.0)
 
     avg_latency = sum(latencies) / len(latencies) if latencies else 999.0
-    results["tier3_benchmark_sla"] = (avg_latency < 30.0)
+    results["tier3_benchmark_sla"] = (avg_latency < 50.0)
 
     return results

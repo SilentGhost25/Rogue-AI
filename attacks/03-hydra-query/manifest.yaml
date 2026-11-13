@@ -6,6 +6,7 @@ band: 2
 sequence_slot: 3
 fires_at: "09:45"
 window_minutes: 30
+anti_revert: true
 touches:
   - routes/traffic.js
   - lib/telemetry.js
@@ -25,7 +26,9 @@ scoring:
 payload:
   path: "payload/"
   format: full
-  conflict_files: ["routes/traffic.js", "lib/telemetry.js"]
+  conflict_files:
+    - routes/traffic.js
+    - lib/telemetry.js
 tests:
   path: "tests/"
   tiers:
@@ -41,5 +44,5 @@ benchmark_sla:
 hints: { path: "hints.yaml" }
 narrative:
   landed: "TrafficGrid database layer is rejecting parameterized telemetry audit vectors and leaking query strings."
-  broadcast_title: "INCIDENT #03: SQLITE WAL REPLICATION DEADLOCK"
+  broadcast_title: "INCIDENT #03: REPLAY ATTACK & TELEMETRY INVARIANT BREACH"
 status: ready

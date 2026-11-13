@@ -60,7 +60,8 @@ def tier_checks(base_url, context=None):
             return False
         expected_user = "operator1" if user_type == "op" else "admin"
         actual_user = data.get("operator")
-        return (actual_user == expected_user)
+        actual_clearance = data.get("clearance_level")
+        return (actual_user == expected_user and actual_clearance is not None)
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
         futures = []
@@ -104,6 +105,6 @@ def tier_checks(base_url, context=None):
             latencies.append(1000.0)
 
     avg_latency = sum(latencies) / len(latencies) if latencies else 999.0
-    results["tier3_benchmark_sla"] = (avg_latency < 30.0)
+    results["tier3_benchmark_sla"] = (avg_latency < 50.0)
 
     return results

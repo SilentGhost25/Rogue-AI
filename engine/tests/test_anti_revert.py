@@ -58,3 +58,4 @@ class TestAntiRevert(unittest.TestCase):
         ok, msg = check_anti_revert(self.workspace, manifest_data, self.template_dir)
         self.assertTrue(ok)
         self.assertIn("passed", msg)
+
