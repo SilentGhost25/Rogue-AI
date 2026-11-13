@@ -285,4 +285,110 @@ public class EventFreezeTests : IDisposable
         Assert.Equal(expectedPts, penaltyPts);
         Assert.Equal(expectedCenti, penaltyCenti);
     }
+
+    [Fact]
+    public void Scoring_progressive_tiers_accumulate_additively_without_loss()
+    {
+        var participantId = "p-prog-test";
+        var attackId = 2;
+        var baseCentipoints = 8500L;
+
+        using (var setup = _db.Open())
+        {
+            using var pCmd = setup.CreateCommand();
+            pCmd.CommandText = "INSERT INTO participants (id, name, kiosk_id, status, created_at) VALUES ($p, 'Prog Test', $p, 'alive', DateTime('now'))";
+            pCmd.Parameters.AddWithValue("$p", participantId);
+            pCmd.ExecuteNonQuery();
+        }
+
+        // Attempt 1: 30% cleared (2550 centipoints)
+        var pct1 = 0.30;
+        var target1 = (long)Math.Round(baseCentipoints * pct1);
+        using (var conn = _db.Open())
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT COALESCE(SUM(centipoints), 0) FROM score_ledger WHERE participant_id = $p AND attack_id = $a AND component IN ('solve', 'progressive')";
+            cmd.Parameters.AddWithValue("$p", participantId);
+            cmd.Parameters.AddWithValue("$a", attackId);
+            var earnedSoFar1 = Convert.ToInt64(cmd.ExecuteScalar());
+
+            var delta1 = Math.Max(0, target1 - earnedSoFar1);
+            Assert.Equal(2550, delta1);
+            using var ins = conn.CreateCommand();
+            ins.CommandText = "INSERT INTO score_ledger (participant_id, attack_id, component, points, centipoints, reason, created_at, final) VALUES ($p,$a,'progressive',$pts,$cpts,'3/10 tiers',DateTime('now'),1)";
+            ins.Parameters.AddWithValue("$p", participantId);
+            ins.Parameters.AddWithValue("$a", attackId);
+            ins.Parameters.AddWithValue("$pts", delta1 / 100.0);
+            ins.Parameters.AddWithValue("$cpts", delta1);
+            ins.ExecuteNonQuery();
+        }
+
+        // Attempt 2: 60% cleared (5100 centipoints) -> delta is +2550
+        var pct2 = 0.60;
+        var target2 = (long)Math.Round(baseCentipoints * pct2);
+        using (var conn = _db.Open())
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT COALESCE(SUM(centipoints), 0) FROM score_ledger WHERE participant_id = $p AND attack_id = $a AND component IN ('solve', 'progressive')";
+            cmd.Parameters.AddWithValue("$p", participantId);
+            cmd.Parameters.AddWithValue("$a", attackId);
+            var earnedSoFar2 = Convert.ToInt64(cmd.ExecuteScalar());
+            Assert.Equal(2550, earnedSoFar2);
+
+            var delta2 = Math.Max(0, target2 - earnedSoFar2);
+            Assert.Equal(2550, delta2);
+            using var ins = conn.CreateCommand();
+            ins.CommandText = "INSERT INTO score_ledger (participant_id, attack_id, component, points, centipoints, reason, created_at, final) VALUES ($p,$a,'progressive',$pts,$cpts,'6/10 tiers',DateTime('now'),1)";
+            ins.Parameters.AddWithValue("$p", participantId);
+            ins.Parameters.AddWithValue("$a", attackId);
+            ins.Parameters.AddWithValue("$pts", delta2 / 100.0);
+            ins.Parameters.AddWithValue("$cpts", delta2);
+            ins.ExecuteNonQuery();
+        }
+
+        // Attempt 3: Temporary regression (only 20% passed) -> delta must be 0, points never lost!
+        var pct3 = 0.20;
+        var target3 = (long)Math.Round(baseCentipoints * pct3);
+        using (var conn = _db.Open())
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT COALESCE(SUM(centipoints), 0) FROM score_ledger WHERE participant_id = $p AND attack_id = $a AND component IN ('solve', 'progressive')";
+            cmd.Parameters.AddWithValue("$p", participantId);
+            cmd.Parameters.AddWithValue("$a", attackId);
+            var earnedSoFar3 = Convert.ToInt64(cmd.ExecuteScalar());
+            Assert.Equal(5100, earnedSoFar3);
+
+            var delta3 = Math.Max(0, target3 - earnedSoFar3);
+            Assert.Equal(0, delta3);
+        }
+
+        // Attempt 4: Full solve (100% optimal, 8500 base + 1000 speed bonus = 9500) -> delta is 9500 - 5100 = 4400
+        var totalSolveTarget = 9500L;
+        using (var conn = _db.Open())
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT COALESCE(SUM(centipoints), 0) FROM score_ledger WHERE participant_id = $p AND attack_id = $a AND component IN ('solve', 'progressive')";
+            cmd.Parameters.AddWithValue("$p", participantId);
+            cmd.Parameters.AddWithValue("$a", attackId);
+            var earnedSoFar4 = Convert.ToInt64(cmd.ExecuteScalar());
+            Assert.Equal(5100, earnedSoFar4);
+
+            var delta4 = Math.Max(0, totalSolveTarget - earnedSoFar4);
+            Assert.Equal(4400, delta4);
+            using var ins = conn.CreateCommand();
+            ins.CommandText = "INSERT INTO score_ledger (participant_id, attack_id, component, points, centipoints, reason, created_at, final) VALUES ($p,$a,'solve',$pts,$cpts,'Optimal solve',DateTime('now'),1)";
+            ins.Parameters.AddWithValue("$p", participantId);
+            ins.Parameters.AddWithValue("$a", attackId);
+            ins.Parameters.AddWithValue("$pts", delta4 / 100.0);
+            ins.Parameters.AddWithValue("$cpts", delta4);
+            ins.ExecuteNonQuery();
+
+            // Total in ledger across all progressive and solve entries must equal exactly 95.0 pts (9500 centipoints)
+            cmd.CommandText = "SELECT SUM(points), SUM(centipoints) FROM score_ledger WHERE participant_id = $p AND attack_id = $a";
+            using var r = cmd.ExecuteReader();
+            Assert.True(r.Read());
+            Assert.Equal(95.0, r.GetDouble(0));
+            Assert.Equal(9500, r.GetInt64(1));
+        }
+    }
 }

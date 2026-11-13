@@ -11,7 +11,7 @@ module.exports = function (db) {
     const q = req.query.q || '';
     let signals;
     if (q) {
-      // Corrupted: direct string interpolation enables SQL injection
+      // Signal query filter
       const sql = `
         SELECT id, intersection, status, congestion_level, emergency_preempt, updated_at
         FROM traffic_signals

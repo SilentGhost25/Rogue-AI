@@ -36,6 +36,7 @@ public partial class VerdictWindow : Window
                         (string.Equals(status, "SOLVED", StringComparison.OrdinalIgnoreCase) && points >= 80);
         var isBase = string.Equals(status, "BASE", StringComparison.OrdinalIgnoreCase) ||
                      (string.Equals(status, "SOLVED", StringComparison.OrdinalIgnoreCase) && points < 80);
+        var isProgressive = string.Equals(status, "PROGRESSIVE", StringComparison.OrdinalIgnoreCase);
 
         if (isOptimal)
         {
@@ -61,6 +62,19 @@ public partial class VerdictWindow : Window
                 subheadline: "Your fix neutralized the breach and passed all functional tests! Note: Solution is functional, but suboptimal (performance or ad-hoc architecture).",
                 diagnostics: reason,
                 actionText: "✓ Continue Defense"
+            );
+        }
+        else if (isProgressive)
+        {
+            ApplyTheme(
+                primaryColor: (Color)ColorConverter.ConvertFromString("#FFB300"),
+                icon: "⚡ ",
+                heading: "PROGRESSIVE DEFENSE VERIFIED",
+                scoreText: points > 0 ? $"+{points:0.#} PTS AWARDED" : "+0 PTS (TIERS ALREADY CREDITED)",
+                tierLabel: "INTERMEDIARY DEFENSE · PROGRESSIVE POINTS AWARDED",
+                subheadline: "Progress confirmed! Intermediary security tiers cleared and permanent points credited. Continue hardening to reach full BASE or OPTIMAL resolution.",
+                diagnostics: reason,
+                actionText: "✓ Keep Hardening"
             );
         }
         else

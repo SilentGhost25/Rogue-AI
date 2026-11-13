@@ -81,6 +81,46 @@ function open(file) {
       ip_address TEXT,
       created_at TEXT NOT NULL
     );
+
+    CREATE TRIGGER IF NOT EXISTS trg_audit_actor_nonempty
+    BEFORE INSERT ON audit_log
+    FOR EACH ROW
+    WHEN trim(NEW.actor) = ''
+    BEGIN
+      SELECT RAISE(ABORT, 'Audit log actor cannot be empty');
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS trg_power_load_nonnegative
+    BEFORE INSERT ON power_zones
+    FOR EACH ROW
+    WHEN NEW.current_load_mw < 0
+    BEGIN
+      SELECT RAISE(ABORT, 'Power load cannot be negative');
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS trg_power_load_update_nonnegative
+    BEFORE UPDATE ON power_zones
+    FOR EACH ROW
+    WHEN NEW.current_load_mw < 0
+    BEGIN
+      SELECT RAISE(ABORT, 'Power load cannot be negative');
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS trg_users_clearance_bound
+    BEFORE INSERT ON users
+    FOR EACH ROW
+    WHEN NEW.clearance_level < 1 OR NEW.clearance_level > 5
+    BEGIN
+      SELECT RAISE(ABORT, 'Clearance level must be between 1 and 5');
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS trg_users_clearance_bound_update
+    BEFORE UPDATE ON users
+    FOR EACH ROW
+    WHEN NEW.clearance_level < 1 OR NEW.clearance_level > 5
+    BEGIN
+      SELECT RAISE(ABORT, 'Clearance level must be between 1 and 5');
+    END;
   `);
   return db;
 }

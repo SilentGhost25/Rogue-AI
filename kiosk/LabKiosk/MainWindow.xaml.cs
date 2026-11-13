@@ -30,86 +30,86 @@ public partial class MainWindow : Window
     private static readonly Dictionary<int, AttackMeta> AttackMetadata = new()
     {
         [0] = new(
-            "Incident #0: Baseline Calibration Telemetry",
-            "LOW SEVERITY · ENVIRONMENT DIAGNOSTIC",
-            "Initial node environment startup check detected a configuration drift in the baseline asset manifest.",
-            "SOC telemetry confirms nominal cluster status. Verify workspace file health and test runners to complete calibration."
+            "Incident #0: Node Baseline Heartbeat Telemetry (SIG-0010)",
+            "DEFCON-4 · ENVIRONMENT SYNC",
+            "Central supervisory telemetry detected asynchronous state nonces across node initialization registers.",
+            "SIG-0010: Baseline handshake timed out during environmental register calibration. Check diagnostic logs and system descriptors."
         ),
         [1] = new(
-            "Incident #1: V8 Heap Allocation & GC Overflow",
-            "CRITICAL SEVERITY · MEMORY CONTENTION",
-            "Application request latency spiked sharply across active endpoints. Request processing freezes under load.",
-            "Telemetry daemon reports V8 heap at 97.4% allocation with severe GC thrashing and socket dropouts observed under malformed Bearer token ingress."
+            "Incident #1: Substation Sensor Pipeline Degradation (SIG-1104)",
+            "DEFCON-2 · PIPELINE LATENCY",
+            "Core transit telemetry pipeline latency spiked sharply. Microtask loop execution delays exceeding nominal operating envelope.",
+            "SIG-1104: Ingress sensor dispatch queue unresponsive under burst stream conditions. Socket event loop lag reported in telemetry daemon."
         ),
         [2] = new(
-            "Incident #2: Cryptographic Entropy & Key Derivation Drift",
-            "HIGH SEVERITY · CIPHER INTEGRITY",
-            "Dashboard state occasionally flashes disparate user identity records during concurrent page queries.",
-            "Session cryptographic HMAC verification failing intermittently. Key derivation entropy dropped below safety baseline; invalid token signatures observed."
+            "Incident #2: District Identity Nonce Drift (SIG-2218)",
+            "DEFCON-2 · TELEMETRY INVARIANT",
+            "Supervisory monitors report state reconciliation discrepancies during concurrent terminal queries.",
+            "SIG-2218: Multi-node identity token reconciliation failure. Cryptographic entropy variance exceeds acceptable threshold."
         ),
         [3] = new(
-            "Incident #3: SQLite WAL Replication Deadlock",
-            "CRITICAL SEVERITY · DATA STORE CONTENTION",
-            "Municipal traffic lookups are returning raw unhandled database errors and corrupting dashboard tables.",
-            "Data storage journal lock contention detected on traffic subsystem queries. Database lock timeout thrown during bulk analytical filtering."
+            "Incident #3: Metropolitan Ledger Synchronization Fault (SIG-3391)",
+            "DEFCON-2 · LEDGER ANOMALY",
+            "TrafficGrid supervisory matrix reports unexpected storage ledger rejects and analytical query rollbacks.",
+            "SIG-3391: Storage subsystem rejected query batch accumulator. Telemetry state digest mismatch detected across transit sectors."
         ),
         [4] = new(
-            "Incident #4: View Engine Resolution Exception",
-            "HIGH SEVERITY · VIEW RESOLUTION ERROR",
-            "Citizen registry navigation returns an unhandled view error: Template Not Resolved across citizen profiles.",
-            "View engine resolver threw an unhandled file lookup exception while rendering dossier layouts; view resolution pipeline stalled."
+            "Incident #4: Dynamic Subsystem Dispatch Malfunction (SIG-4402)",
+            "DEFCON-2 · ROUTING DESYNC",
+            "Municipal registry portal failing dynamic endpoint evaluation across administrative interface nodes.",
+            "SIG-4402: Subsystem route compilation error. Object property hierarchy mismatch encountered during dispatch resolution."
         ),
         [5] = new(
-            "Incident #5: RBAC Emergency Override Boundary Violation",
-            "CRITICAL SEVERITY · ACCESS CONTROL BYPASS",
-            "Standard guest callers are triggering restricted grid override switches on the power distribution matrix.",
-            "Privilege escalation alert tripped on grid override endpoints. Audit logs show unauthorized state change without administrative clearance."
+            "Incident #5: Municipal Biometric Ledger Anomaly (SIG-5582)",
+            "DEFCON-2 · ACCESS CLEARANCE DELTA",
+            "CitizenVault supervisory service reports unpartitioned record clearance nonces across regional sector registers.",
+            "SIG-5582: Supervisory audit ledger detected unauthorized clearance state transition. State digest not sealed in security register."
         ),
         [6] = new(
-            "Incident #6: Asset Directory Boundary Leak",
-            "HIGH SEVERITY · RESOURCE CONTAINMENT",
-            "Static map tiles, visual layout assets, and system icons on the overview page fail to load.",
-            "Directory traversal sequence detected by perimeter edge filter in static asset router. Boundary containment failed on municipal maps repository."
+            "Incident #6: Perimeter Telemetry Channel Disruption (SIG-6617)",
+            "DEFCON-3 · RESOURCE RESOLUTION",
+            "Overview dashboard map data feeds and municipal infrastructure icons failing asset resolution.",
+            "SIG-6617: Static boundary resolver returned irregular path descriptor for visual stream components."
         ),
         [7] = new(
-            "Incident #7: Kernel Worker Thread Pool Deadlock",
-            "CRITICAL SEVERITY · PROCESS LIFECYCLE",
-            "The portal becomes progressively slower with every click until requests stall indefinitely.",
-            "Background telemetry queue deadlocked. Async worker pool reporting non-responsive workers on municipal sensor streams; scheduling latency critical."
+            "Incident #7: Async Worker Loop Deadlock (SIG-7731)",
+            "DEFCON-2 · ASYNC RUNTIME CONTENTION",
+            "Municipal sensor processing stream unresponsive; sequential client actions incur accumulating scheduling delays.",
+            "SIG-7731: Background batch worker pool stalled in unresolved state promise. System worker task queue backlog rising."
         ),
         [8] = new(
-            "Incident #8: Operator Credential Signature Forgery",
-            "CRITICAL SEVERITY · CRYPTO TOKEN INTEGRITY",
-            "Unauthenticated browser sessions are acquiring system-wide administrative access without entering credentials.",
-            "Cryptographic signature mismatch on operator session cookies. Forged security token detected at vault administration gateway."
+            "Incident #8: Global Configuration Store Desync (SIG-8819)",
+            "DEFCON-2 · CONFIG INTEGRITY FAULT",
+            "Core application runtime properties resetting to blank state; serialization exception thrown in settings registry.",
+            "SIG-8819: Deep object hierarchy anomaly in system configuration store. Recursive attribute descriptor mismatch detected."
         ),
         [9] = new(
-            "Incident #9: Rate Limiter Threshold Exhaustion",
-            "HIGH SEVERITY · TRAFFIC MITIGATION FAILURE",
-            "Legitimate kiosk terminals are locked out with HTTP 429 Too Many Requests during standard operations.",
-            "Denial-of-Service mitigation engine tripped. Sliding window rate limiter failed under burst traffic; reverse proxy traffic distribution desynced."
+            "Incident #9: Transit Gateway Flow Throttling Fault (SIG-9903)",
+            "DEFCON-3 · INGRESS FLOW COLLAPSE",
+            "Supervisory dispatch nodes encountering gateway rejection responses during normal operational traffic.",
+            "SIG-9903: Traffic bucket calculation drift in ingress proxy layer. Upstream hop verification failed."
         ),
         [10] = new(
-            "Incident #10: Core Architecture Decoupling (Boss Breach)",
-            "CRITICAL SEVERITY · MULTI-SYSTEM CASCADE",
-            "AEGIS defense matrix displays critical DEFCON-1 warnings; system crashes with terminal errors on a periodic 60-second cycle.",
-            "Multi-system telemetry out of sync. Subsystem boundaries fractured across identity, traffic, and grid control; unhandled asynchronous faults cascading."
+            "Incident #10: Core Matrix Decoupling (Janus Knot)",
+            "DEFCON-1 · MULTI-SYSTEM CASCADE",
+            "Complete municipal defensive grid failure; cascading state anomalies propagating across all four operational sectors.",
+            "SIG-9999: Inter-system dependency graph deadlock. Cryptographic, ledger, and routing invariants failing across all operational nodes."
         )
     };
 
     private static readonly Dictionary<int, string> AttackNames = new()
     {
-        [0] = "Calibration Diagnostic",
-        [1] = "Memory Subsystem Anomaly",
-        [2] = "Cipher Drift Alert",
-        [3] = "WAL Contention Notice",
-        [4] = "View Resolution Error",
-        [5] = "Override Boundary Alert",
-        [6] = "Asset Boundary Leak",
-        [7] = "Worker Lifecycle Anomaly",
-        [8] = "Token Integrity Alert",
-        [9] = "Traffic Mitigation Failure",
-        [10] = "Core Matrix Decoupling"
+        [0] = "Heartbeat Anomaly (SIG-0010)",
+        [1] = "Pipeline Degradation (SIG-1104)",
+        [2] = "Identity Drift (SIG-2218)",
+        [3] = "Ledger Fault (SIG-3391)",
+        [4] = "Dispatch Malfunction (SIG-4402)",
+        [5] = "Clearance Delta (SIG-5582)",
+        [6] = "Channel Disruption (SIG-6617)",
+        [7] = "Runtime Contention (SIG-7731)",
+        [8] = "Config Desync (SIG-8819)",
+        [9] = "Flow Collapse (SIG-9903)",
+        [10] = "Janus Knot Cascade (SIG-9999)"
     };
 
     private IncidentWindow? _activeIncidentWindow;
@@ -126,6 +126,7 @@ public partial class MainWindow : Window
     private DispatcherTimer? _statusTimer;
     private CancellationTokenSource? _submitTimeoutCts;
     private bool _cleanedOnClose;
+    private bool _isSiteDownViewShowing;
 
     public MainWindow(KioskSettings? settings = null)
     {
@@ -211,10 +212,16 @@ public partial class MainWindow : Window
             _site = new SiteHost(_s.NodePath, _s.WorkspacePath, _s.SiteUrl, _s.DataPath);
             _site.ReloadRequested += () => Dispatcher.InvokeAsync(() =>
             {
-                if (Site.CoreWebView2?.Source?.StartsWith("http", StringComparison.OrdinalIgnoreCase) == true)
-                    Site.Reload();
+                if (_isSiteDownViewShowing || Site.CoreWebView2?.Source?.StartsWith("http", StringComparison.OrdinalIgnoreCase) != true)
+                {
+                    _isSiteDownViewShowing = false;
+                    var targetRoute = _activeAttacks.Count > 0 ? RouteForAttack(_activeAttacks.First()) : "/";
+                    NavigateSiteToRoute(targetRoute);
+                }
                 else
-                    NavigateSiteToRoute("/");
+                {
+                    Site.Reload();
+                }
                 Code.RefreshAll();
             });
             _site.SiteDown += (err) => Dispatcher.InvokeAsync(() =>
@@ -231,6 +238,12 @@ public partial class MainWindow : Window
             });
             _site.SiteRestored += () => Dispatcher.InvokeAsync(() =>
             {
+                if (_isSiteDownViewShowing || Site.CoreWebView2?.Source?.StartsWith("http", StringComparison.OrdinalIgnoreCase) != true)
+                {
+                    _isSiteDownViewShowing = false;
+                    var targetRoute = _activeAttacks.Count > 0 ? RouteForAttack(_activeAttacks.First()) : "/";
+                    NavigateSiteToRoute(targetRoute);
+                }
                 if (StatusText.Text.Contains("not running"))
                     Status(_activeAttacks.Count > 0 ? $"Active breach detected: #{string.Join(", #", _activeAttacks)}. Fix the code, then submit." : "Site online. All systems nominal.");
             });
@@ -550,6 +563,7 @@ public partial class MainWindow : Window
 
     private void ShowSiteDownInWebView(string? error = null)
     {
+        _isSiteDownViewShowing = true;
         if (Site.CoreWebView2 is null) return;
         var errHtml = string.IsNullOrWhiteSpace(error)
             ? "Connection refused: The municipal application process exited unexpectedly or failed health checks."
@@ -816,6 +830,7 @@ public partial class MainWindow : Window
             SubmitButton.IsEnabled = !_eliminated;
             var attackName = AttackNames.TryGetValue(id, out var nm) ? nm : $"Attack #{id}";
             var isSolved = st is "SOLVED" or "OPTIMAL" or "BASE";
+            var isProgressive = st is "PROGRESSIVE";
             if (isSolved)
             {
                 _activeAttacks.Remove(id);
@@ -824,6 +839,10 @@ public partial class MainWindow : Window
                 _pull?.ClearBaseline();
                 Status($"🎉 #{id} {st} (+{pts:0.#} pts) | {reason}");
                 CelebrateSolve();
+            }
+            else if (isProgressive)
+            {
+                Status($"⚡ #{id} PROGRESSIVE (+{pts:0.#} pts) | {reason}");
             }
             else
             {
@@ -857,6 +876,7 @@ public partial class MainWindow : Window
             var reason = v.TryGetProperty("reason", out var rProp) ? (rProp.GetString() ?? "") : "";
             var pts = v.TryGetProperty("points", out var pProp) ? pProp.GetDouble() : 0.0;
             var isSolved = st is "SOLVED" or "OPTIMAL" or "BASE";
+            var isProgressive = st is "PROGRESSIVE";
 
             if (isSolved)
             {
@@ -866,6 +886,10 @@ public partial class MainWindow : Window
                 WorkspaceBackup.WipeLocalGitRepo(_s.WorkspacePath);
                 parts.Add($"#{id} {st} +{pts:0.#} pts");
                 _pull?.ClearBaseline(); // penalty window closed — attack is done
+            }
+            else if (isProgressive)
+            {
+                parts.Add($"#{id} PROGRESSIVE +{pts:0.#} pts");
             }
             else
             {
@@ -888,7 +912,12 @@ public partial class MainWindow : Window
         {
             SubmitButton.IsEnabled = !_eliminated;
             UpdateAttackBadges();
-            if (anySolved) CelebrateSolve();
+            if (anySolved)
+            {
+                CelebrateSolve();
+                _isSiteDownViewShowing = false;
+                NavigateSiteToRoute("/");
+            }
             _site?.RequestReload();
         });
     }

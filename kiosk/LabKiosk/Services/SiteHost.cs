@@ -15,8 +15,11 @@ public sealed class SiteHost : IDisposable
     private Process? _proc;
     private FileSystemWatcher? _watcher;
     private System.Threading.Timer? _debounce;
+    private System.Threading.Timer? _healthSentinel;
     private int _reloading;
     private int _reloadPending;
+    private int _sentinelRunning;
+    private bool _isCurrentlyHealthy;
     private readonly System.Text.StringBuilder _stderrLog = new();
     private readonly object _stderrLock = new();
 
@@ -44,6 +47,29 @@ public sealed class SiteHost : IDisposable
 
     public void Start()
     {
+        StartProcessInternal();
+
+        _watcher = new FileSystemWatcher(_dir) { IncludeSubdirectories = true, NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size };
+        FileSystemEventHandler h = (_, e) => OnFileEvent(e.FullPath);
+        _watcher.Changed += h; _watcher.Created += h; _watcher.Deleted += h;
+        _watcher.Renamed += (_, e) => OnFileEvent(e.FullPath);
+        _watcher.EnableRaisingEvents = true;
+
+        // Background Health Sentinel: polls every 1000ms to auto-detect when Node boots/recovers
+        _healthSentinel = new System.Threading.Timer(_ => _ = CheckHealthSentinelAsync(), null, 1000, 1000);
+    }
+
+    private void StartProcessInternal()
+    {
+        try
+        {
+            if (_proc is not null && !_proc.HasExited)
+            {
+                return;
+            }
+        }
+        catch { }
+
         var fallbackNode = Path.Combine(AppContext.BaseDirectory, "node", "node.exe");
         var fallbackNodeJs = Path.Combine(AppContext.BaseDirectory, "nodejs", "node.exe");
         var node = ExeResolver.Resolve(_node)
@@ -74,31 +100,76 @@ public sealed class SiteHost : IDisposable
                 : $"{nodeModules}{Path.PathSeparator}{existing}";
         }
 
-        _proc = Process.Start(psi);
-        if (_proc is not null)
+        try
         {
-            _proc.ErrorDataReceived += (_, e) =>
+            _proc = Process.Start(psi);
+            if (_proc is not null)
             {
-                if (!string.IsNullOrEmpty(e.Data))
+                _proc.ErrorDataReceived += (_, e) =>
                 {
-                    lock (_stderrLock)
+                    if (!string.IsNullOrEmpty(e.Data))
                     {
-                        _stderrLog.AppendLine(e.Data);
-                        if (_stderrLog.Length > 16384)
+                        lock (_stderrLock)
                         {
-                            _stderrLog.Remove(0, 8192);
+                            _stderrLog.AppendLine(e.Data);
+                            if (_stderrLog.Length > 16384)
+                            {
+                                _stderrLog.Remove(0, 8192);
+                            }
                         }
                     }
-                }
-            };
-            _proc.BeginErrorReadLine();
+                };
+                _proc.BeginErrorReadLine();
+            }
         }
+        catch (Exception ex)
+        {
+            lock (_stderrLock)
+            {
+                _stderrLog.AppendLine($"Failed to start Node process: {ex.Message}");
+            }
+        }
+    }
 
-        _watcher = new FileSystemWatcher(_dir) { IncludeSubdirectories = true, NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size };
-        FileSystemEventHandler h = (_, e) => OnFileEvent(e.FullPath);
-        _watcher.Changed += h; _watcher.Created += h; _watcher.Deleted += h;
-        _watcher.Renamed += (_, e) => OnFileEvent(e.FullPath);
-        _watcher.EnableRaisingEvents = true;
+    private async Task CheckHealthSentinelAsync()
+    {
+        if (Interlocked.Exchange(ref _sentinelRunning, 1) == 1) return;
+        try
+        {
+            if (_proc is null || _proc.HasExited)
+            {
+                StartProcessInternal();
+            }
+
+            bool healthy = false;
+            try
+            {
+                using var res = await Http.GetAsync(_siteUrl + "/api/health");
+                if (res.IsSuccessStatusCode || (int)res.StatusCode == 503)
+                {
+                    healthy = true;
+                }
+            }
+            catch (HttpRequestException) { }
+            catch (TaskCanceledException) { }
+
+            if (healthy && !_isCurrentlyHealthy)
+            {
+                _isCurrentlyHealthy = true;
+                lock (_stderrLock) { _stderrLog.Clear(); }
+                SiteRestored?.Invoke();
+                ReloadRequested?.Invoke();
+            }
+            else if (!healthy)
+            {
+                _isCurrentlyHealthy = false;
+            }
+        }
+        catch { }
+        finally
+        {
+            Interlocked.Exchange(ref _sentinelRunning, 0);
+        }
     }
 
     private string? ResolveNodeModules()
@@ -127,12 +198,24 @@ public sealed class SiteHost : IDisposable
     {
         for (var i = 0; i < seconds * 15; i++)
         {
-            if (_proc is { HasExited: true }) return false;
-            try { using var res = await Http.GetAsync(_siteUrl + "/api/health"); if (res.IsSuccessStatusCode) return true; }
+            if (_proc is null || _proc.HasExited)
+            {
+                StartProcessInternal();
+            }
+            try
+            {
+                using var res = await Http.GetAsync(_siteUrl + "/api/health");
+                if (res.IsSuccessStatusCode || (int)res.StatusCode == 503)
+                {
+                    _isCurrentlyHealthy = true;
+                    return true;
+                }
+            }
             catch (HttpRequestException) { }
             catch (TaskCanceledException) { }
             await Task.Delay(65);
         }
+        _isCurrentlyHealthy = false;
         return false;
     }
 
@@ -153,17 +236,25 @@ public sealed class SiteHost : IDisposable
         await Task.Delay(settleMs);
         for (var i = 0; i < 40; i++)
         {
-            if (_proc is { HasExited: true }) return false;
+            if (_proc is null || _proc.HasExited)
+            {
+                StartProcessInternal();
+            }
             try
             {
                 using var res = await Http.GetAsync(_siteUrl + "/api/health");
                 // Accept 2xx or 503 (e.g. compromised entrypoint) so WebView2 renders the current state
-                if (res.IsSuccessStatusCode || (int)res.StatusCode == 503) return true;
+                if (res.IsSuccessStatusCode || (int)res.StatusCode == 503)
+                {
+                    _isCurrentlyHealthy = true;
+                    return true;
+                }
             }
             catch (HttpRequestException) { }
             catch (TaskCanceledException) { }
             await Task.Delay(100);
         }
+        _isCurrentlyHealthy = false;
         return false;
     }
 
@@ -197,6 +288,7 @@ public sealed class SiteHost : IDisposable
 
     public void Dispose()
     {
+        _healthSentinel?.Dispose();
         _watcher?.Dispose();
         _debounce?.Dispose();
         try

@@ -102,7 +102,7 @@ module.exports = function (db) {
     });
   });
 
-  // REST API: Profile Update (Corrupted with Mass Assignment vulnerability)
+  // REST API: Profile Update Handler
   r.post('/api/profile', (req, res) => {
     if (!req.user) {
       return res.status(401).json({ error: 'Unauthenticated' });

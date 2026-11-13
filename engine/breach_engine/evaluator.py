@@ -25,6 +25,7 @@ import yaml
 from .scoring import calculate_benchmark_multiplier
 
 OPTIMAL, BASE, INCORRECT = "OPTIMAL", "BASE", "INCORRECT"
+PROGRESSIVE = "PROGRESSIVE"
 SOLVED, PARTIAL, FAILED = OPTIMAL, BASE, INCORRECT
 ROOT_DIR = Path(__file__).resolve().parents[2]
 
@@ -631,9 +632,12 @@ def evaluate_attack(attack_id: int, attack_dir: Path, workspace: Path, timeout_s
                 elif score_pct >= 0.70:
                     status = BASE
                     reason = f"BASE ({pct_str}): Core defect resolved, but sub-optimal architecture or degraded SLA ({', '.join(failed_ids) if failed_ids else 'SLA degraded'})."
+                elif score_pct > 0.0:
+                    status = "PROGRESSIVE"
+                    reason = f"PROGRESSIVE DEFENSE ({pct_str}): Partial tiers cleared ({len(passed_ids)}/{len(tiers_spec)} passed: {', '.join(passed_ids)})."
                 else:
                     status = FAILED
-                    reason = f"INCORRECT ({pct_str}): Defect not resolved or regressions detected ({', '.join(failed_ids) if failed_ids else '0% passed'})."
+                    reason = f"INCORRECT (0/100%): All validation tiers failed ({', '.join(failed_ids) if failed_ids else '0% passed'})."
 
                 if benchmark_metrics and not sla_passed and sla_spec:
                     reason += f" | SLA degraded (p95: {benchmark_metrics.get('latency_p95_ms')}ms > {sla_spec.get('target_p95_ms')}ms)"
@@ -649,6 +653,9 @@ def evaluate_attack(attack_id: int, attack_dir: Path, workspace: Path, timeout_s
                 elif score_pct >= 0.70:
                     status = BASE
                     reason = f"BASE (75%): Partial pass ({passed_count}/{total_count})"
+                elif score_pct > 0.0:
+                    status = PROGRESSIVE
+                    reason = f"PROGRESSIVE DEFENSE ({int(round(score_pct * 100))}%): Partial pass ({passed_count}/{total_count})"
                 else:
                     status = FAILED
                     reason = f"INCORRECT (0%): Failed checks ({passed_count}/{total_count} passed)"

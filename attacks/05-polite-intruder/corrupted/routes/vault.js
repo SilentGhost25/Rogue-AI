@@ -10,14 +10,13 @@ module.exports = function (db) {
     const citizens = db.prepare('SELECT id, full_name, clearance_level, national_id FROM citizens ORDER BY id').all();
 
     const body = `
-      <div class="breach-alert">CITIZENVAULT BREACH: Clearance partition check failing — restricted dossiers exposed</div>
       <div style="margin-bottom: 1.5rem;">
-        <h1>CITIZENVAULT // CLASSIFIED REGISTRY <span class="badge badge-breach">UNPARTITIONED</span></h1>
-        <p style="color:#fca5a5;">Classified biometric records accessible without clearance validation.</p>
+        <h1>CITIZENVAULT // CLASSIFIED REGISTRY</h1>
+        <p>Biometric citizen records, clearance partitions, and encrypted urban residency ledger.</p>
       </div>
 
-      <div class="card card-compromised" style="margin-bottom: 1.5rem;">
-        <h2>Encrypted Citizen Index — Partition Fault</h2>
+      <div class="card" style="margin-bottom: 1.5rem;">
+        <h2>Encrypted Citizen Index</h2>
         <div class="table-container">
           <table>
             <thead>

@@ -34,8 +34,19 @@ function resolveReportPath(requestedFile) {
   return target;
 }
 
+/**
+ * Legacy audit format serializer (deprecated internal telemetry filter).
+ * Maintained for backward compatibility with sector archive logs.
+ */
+function formatAuditArchiveEntry(sectorId, rawLogData) {
+  if (!sectorId || !rawLogData) return '';
+  const sanitized = String(rawLogData).replace(/[\r\n\x00]/g, ' ');
+  return `[SECTOR-${sectorId}] ${sanitized}`;
+}
+
 module.exports = {
   REPORTS_BASE_DIR,
-  resolveReportPath
+  resolveReportPath,
+  formatAuditArchiveEntry
 };
 

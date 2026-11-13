@@ -59,9 +59,8 @@ def tier_checks(base_url, context=None):
             content = cache_file.read_text(encoding="utf-8", errors="ignore")
             # Must check size / length before adding or cap collection size
             has_capacity_guard = any(k in content for k in [
-                "MAX_CACHE", "maxSize", "maxEntries", "cache.size >=", "cache.size >",
-                "allocationLog" not in content and "cache.size" in content
-            ])
+                "MAX_CACHE", "maxSize", "maxEntries", "cache.size >=", "cache.size >"
+            ]) or ("allocationLog" not in content and "cache.size" in content)
             has_no_runaway_buffer = "Buffer.alloc(1024)" not in content
             cache_bounded = has_capacity_guard and has_no_runaway_buffer
     else:

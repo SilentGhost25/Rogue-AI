@@ -710,7 +710,8 @@ app.MapPost("/api/kiosk/{id}/submit", (string id, HttpRequest httpReq, Database 
                     foreach (var v in body.Verdicts)
                     {
                         var score = 0.0;
-                        var isSuccess = v.Status == "SOLVED" || v.Status == "OPTIMAL" || v.Status == "BASE";
+                        var isProgressive = v.Status == "PROGRESSIVE";
+                        var isSuccess = v.Status == "SOLVED" || v.Status == "OPTIMAL" || v.Status == "BASE" || isProgressive;
                         if (isSuccess)
                         {
                             var attackManifest = orch.Attacks.FirstOrDefault(a => a.Id == v.Attack_Id);
@@ -729,7 +730,7 @@ app.MapPost("/api/kiosk/{id}/submit", (string id, HttpRequest httpReq, Database 
                             }
 
                             long speedBonus = 0;
-                            if (!string.IsNullOrEmpty(landedAtStr) && DateTime.TryParse(landedAtStr, out var landedAt))
+                            if (!isProgressive && !string.IsNullOrEmpty(landedAtStr) && DateTime.TryParse(landedAtStr, out var landedAt))
                             {
                                 var elapsedSec = Math.Max(0, (DateTime.UtcNow - landedAt.ToUniversalTime()).TotalSeconds);
                                 if (elapsedSec <= windowSec)
@@ -749,29 +750,49 @@ app.MapPost("/api/kiosk/{id}/submit", (string id, HttpRequest httpReq, Database 
                             var effectivePct = Math.Clamp(v.Score_Percentage ?? 1.0, 0.0, 1.0);
                             if (v.Status == "BASE" && effectivePct > 0.75) effectivePct = 0.75;
                             if (v.Status == "OPTIMAL") effectivePct = 1.0;
-                            var totalCentipoints = (long)Math.Round((baseCentipoints + speedBonus) * effectivePct);
-                            score = totalCentipoints / 100.0;
+                            var targetCentipoints = (long)Math.Round((baseCentipoints + speedBonus) * effectivePct);
 
-                            using var updateCmd = conn.CreateCommand();
-                            updateCmd.CommandText = "UPDATE attack_deliveries SET solved_at = $t WHERE participant_id = $p AND attack_id = $a";
-                            updateCmd.Parameters.AddWithValue("$t", DateTime.UtcNow.ToString("O"));
-                            updateCmd.Parameters.AddWithValue("$p", id);
-                            updateCmd.Parameters.AddWithValue("$a", v.Attack_Id);
-                            updateCmd.ExecuteNonQuery();
+                            long alreadyEarnedCentipoints = 0;
+                            using (var checkEarnedCmd = conn.CreateCommand())
+                            {
+                                checkEarnedCmd.CommandText = "SELECT COALESCE(SUM(centipoints), 0) FROM score_ledger WHERE participant_id = $p AND attack_id = $a AND component IN ('solve', 'progressive')";
+                                checkEarnedCmd.Parameters.AddWithValue("$p", id);
+                                checkEarnedCmd.Parameters.AddWithValue("$a", v.Attack_Id);
+                                alreadyEarnedCentipoints = Convert.ToInt64(checkEarnedCmd.ExecuteScalar());
+                            }
 
-                            using var ledgerCmd = conn.CreateCommand();
-                            ledgerCmd.CommandText = "INSERT INTO score_ledger (participant_id, attack_id, component, points, centipoints, reason, run_id, created_at, final) VALUES ($p,$a,'solve',$pts,$cpts,$r,$sid,$t,1)";
-                            ledgerCmd.Parameters.AddWithValue("$p", id);
-                            ledgerCmd.Parameters.AddWithValue("$a", v.Attack_Id);
-                            ledgerCmd.Parameters.AddWithValue("$pts", score);
-                            ledgerCmd.Parameters.AddWithValue("$cpts", totalCentipoints);
-                            ledgerCmd.Parameters.AddWithValue("$r", v.Reason);
-                            ledgerCmd.Parameters.AddWithValue("$sid", sid);
-                            ledgerCmd.Parameters.AddWithValue("$t", DateTime.UtcNow.ToString("O"));
-                            ledgerCmd.ExecuteNonQuery();
+                            var deltaCentipoints = Math.Max(0, targetCentipoints - alreadyEarnedCentipoints);
+                            score = deltaCentipoints / 100.0;
 
-                            db.Log("VERDICT", id, v.Attack_Id, JsonSerializer.Serialize(new { status = v.Status, score, centipoints = totalCentipoints, baseCentipoints, speedBonus, score_percentage = effectivePct, v.Reason }));
-                            _ = gitMirror.SyncBranchAsync(id, wsStore.PathFor(id), $"Solve Attack #{v.Attack_Id} (+{score:0.#} pts)");
+                            if (deltaCentipoints > 0)
+                            {
+                                var compName = isProgressive ? "progressive" : "solve";
+                                using var ledgerCmd = conn.CreateCommand();
+                                ledgerCmd.CommandText = "INSERT INTO score_ledger (participant_id, attack_id, component, points, centipoints, reason, run_id, created_at, final) VALUES ($p,$a,$comp,$pts,$cpts,$r,$sid,$t,1)";
+                                ledgerCmd.Parameters.AddWithValue("$p", id);
+                                ledgerCmd.Parameters.AddWithValue("$a", v.Attack_Id);
+                                ledgerCmd.Parameters.AddWithValue("$comp", compName);
+                                ledgerCmd.Parameters.AddWithValue("$pts", score);
+                                ledgerCmd.Parameters.AddWithValue("$cpts", deltaCentipoints);
+                                ledgerCmd.Parameters.AddWithValue("$r", v.Reason);
+                                ledgerCmd.Parameters.AddWithValue("$sid", sid);
+                                ledgerCmd.Parameters.AddWithValue("$t", DateTime.UtcNow.ToString("O"));
+                                ledgerCmd.ExecuteNonQuery();
+                            }
+
+                            if (!isProgressive)
+                            {
+                                using var updateCmd = conn.CreateCommand();
+                                updateCmd.CommandText = "UPDATE attack_deliveries SET solved_at = $t WHERE participant_id = $p AND attack_id = $a";
+                                updateCmd.Parameters.AddWithValue("$t", DateTime.UtcNow.ToString("O"));
+                                updateCmd.Parameters.AddWithValue("$p", id);
+                                updateCmd.Parameters.AddWithValue("$a", v.Attack_Id);
+                                updateCmd.ExecuteNonQuery();
+
+                                _ = gitMirror.SyncBranchAsync(id, wsStore.PathFor(id), $"Solve Attack #{v.Attack_Id} (+{score:0.#} pts)");
+                            }
+
+                            db.Log("VERDICT", id, v.Attack_Id, JsonSerializer.Serialize(new { status = v.Status, score, centipoints = deltaCentipoints, totalEarnedCentipoints = targetCentipoints, baseCentipoints, speedBonus, score_percentage = effectivePct, v.Reason }));
                         }
                         else
                         {
