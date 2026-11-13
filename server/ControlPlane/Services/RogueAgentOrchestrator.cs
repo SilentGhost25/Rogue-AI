@@ -58,6 +58,7 @@ public sealed class RogueAgentOrchestrator : BackgroundService
 
     public IReadOnlyList<AttackManifest> Attacks => _attacks;
     public AttackManifest Get(int id) => _attacks.Single(a => a.Id == id);
+    public void ClearArmedLandings() => _armedLandings.Clear();
 
     private static List<AttackManifest> LoadAndValidateAll(string root)
     {

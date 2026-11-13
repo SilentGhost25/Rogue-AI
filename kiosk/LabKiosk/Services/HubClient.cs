@@ -14,7 +14,7 @@ public sealed class HubClient : IAsyncDisposable
     public event Action<string>? Message;
     public event Action<string, JsonElement, string>? Verdict;
     public event Action<VerdictDetailPayload>? VerdictDetail;
-    public event Action? Paused, Resumed, Eliminated;
+    public event Action? Paused, Resumed, Eliminated, SessionReset;
     public event Func<Task>? Reconnected;
 
     public HubClient(string serverUrl, string participantId)
@@ -30,6 +30,7 @@ public sealed class HubClient : IAsyncDisposable
         _conn.On<AttackLandedPayload>("ATTACK_LANDED", async p => { if (Landed is not null) await Landed(p.AttackId); });
 
         _conn.On<int>("ATTACK_RESET", async id => { if (Reset is not null) await Reset(id); });
+        _conn.On("SESSION_RESET", () => SessionReset?.Invoke());
         _conn.On<string>("BROADCAST", text => Message?.Invoke(text));
 
         _conn.On<string, JsonElement, string>("VERDICT", (sid, verdicts, note) => Verdict?.Invoke(sid, verdicts, note));

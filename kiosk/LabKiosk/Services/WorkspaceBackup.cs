@@ -16,7 +16,7 @@ public static class WorkspaceBackup
     public static void CopyCleanTemplate(string src, string dst) => Copy(src, dst);
 
     /// <summary>
-    /// Ensures the participant workspace is populated with a pristine baseline if missing or empty.
+    /// Ensures the participant workspace is populated with a pristine baseline if missing, empty, or outdated.
     /// Extracts site.zip if bundled next to the executable, otherwise copies the clean site template directory.
     /// </summary>
     public static void EnsurePristineWorkspace(string workspacePath, string? siteTemplatePath)
@@ -24,9 +24,26 @@ public static class WorkspaceBackup
         try
         {
             Directory.CreateDirectory(workspacePath);
+            var hasStaleLegacy = File.Exists(Path.Combine(workspacePath, "routes", "posts.js"))
+                              || File.Exists(Path.Combine(workspacePath, "routes", "comments.js"))
+                              || File.Exists(Path.Combine(workspacePath, "routes", "search.js"))
+                              || File.Exists(Path.Combine(workspacePath, "public", "style.css"))
+                              || !File.Exists(Path.Combine(workspacePath, "public", "aegis.css"))
+                              || !File.Exists(Path.Combine(workspacePath, "routes", "traffic.js"));
+
             var isEmptyOrIncomplete = !Directory.EnumerateFileSystemEntries(workspacePath).Any()
-                                   || !File.Exists(Path.Combine(workspacePath, "server.js"));
+                                   || !File.Exists(Path.Combine(workspacePath, "server.js"))
+                                   || hasStaleLegacy;
             if (!isEmptyOrIncomplete) return;
+
+            if (hasStaleLegacy)
+            {
+                foreach (var staleDir in new[] { "routes", "views", "lib", "public", "test" })
+                {
+                    var p = Path.Combine(workspacePath, staleDir);
+                    if (Directory.Exists(p)) try { Directory.Delete(p, true); } catch { }
+                }
+            }
 
             var zipCandidates = new[]
             {

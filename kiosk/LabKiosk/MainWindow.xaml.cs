@@ -309,7 +309,11 @@ public partial class MainWindow : Window
             // 1. Resolve workspace and initialize clean AEGIS site template if empty or stale Harbour Notes.
             _s.WorkspacePath = WorkspaceBackup.ResolveWorkspace(_s.WorkspacePath);
             var hasLegacyHarbour = File.Exists(Path.Combine(_s.WorkspacePath, "routes", "posts.js"))
-                                && !File.Exists(Path.Combine(_s.WorkspacePath, "routes", "traffic.js"));
+                                || File.Exists(Path.Combine(_s.WorkspacePath, "routes", "comments.js"))
+                                || File.Exists(Path.Combine(_s.WorkspacePath, "routes", "search.js"))
+                                || File.Exists(Path.Combine(_s.WorkspacePath, "public", "style.css"))
+                                || !File.Exists(Path.Combine(_s.WorkspacePath, "public", "aegis.css"))
+                                || !File.Exists(Path.Combine(_s.WorkspacePath, "routes", "traffic.js"));
             var templateIsAegis = Directory.Exists(_s.SiteTemplatePath)
                                 && File.Exists(Path.Combine(_s.SiteTemplatePath, "routes", "traffic.js"));
             if (hasLegacyHarbour && templateIsAegis)
@@ -417,6 +421,7 @@ public partial class MainWindow : Window
             _hub.Imminent += OnImminentAsync;
             _hub.Landed += HandleAttackAsync;
             _hub.Reset += OnAttackResetAsync;
+            _hub.SessionReset += OnSessionReset;
             _hub.Message += Status;
             _hub.Paused += () => Status("Event paused by the organizers.");
             _hub.Resumed += () => Status("Event resumed.");
@@ -1187,6 +1192,35 @@ public partial class MainWindow : Window
         {
             _sync.Release();
         }
+    }
+
+    private void OnSessionReset()
+    {
+        Dispatcher.Invoke(() =>
+        {
+            _activeAttacks.Clear();
+            _solvedAttacks.Clear();
+            _pulled.Clear();
+
+            try
+            {
+                if (Directory.Exists(_s.SiteTemplatePath))
+                {
+                    WorkspaceBackup.CopyCleanTemplate(_s.SiteTemplatePath, _s.WorkspacePath);
+                    NormalizeWorkspaceTimestamps(_s.WorkspacePath);
+                    RemoveGitMetadata(_s.WorkspacePath);
+                }
+            }
+            catch { }
+
+            try { _activeIncidentWindow?.Close(); } catch { }
+            _activeIncidentWindow = null;
+
+            UpdateAttackBadges();
+            Status("🛡️ Session reset by organizer. All breaches cleared and workspace restored.");
+            _site?.RequestReload();
+            Code.RefreshAll();
+        });
     }
 
     private void OnProfileClick(object sender, RoutedEventArgs e)

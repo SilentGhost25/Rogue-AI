@@ -1426,7 +1426,7 @@ app.MapGet("/api/admin/staged-assignments", (HttpRequest r, Database db) =>
     }
 });
 
-app.MapPost("/api/admin/reset-session", async (HttpRequest r, Database db, IHubContext<BreachHub> hub) =>
+app.MapPost("/api/admin/reset-session", async (HttpRequest r, Database db, IHubContext<BreachHub> hub, RogueAgentOrchestrator orch) =>
 {
     var authErr = AuthorizeAdmin(r, db);
     if (authErr != null) return authErr;
@@ -1441,6 +1441,7 @@ app.MapPost("/api/admin/reset-session", async (HttpRequest r, Database db, IHubC
             DELETE FROM attack_deliveries;
             DELETE FROM participants;
             DELETE FROM quota_state;
+            UPDATE desk_tokens SET participant_id = NULL, enrolled_at = NULL;
             CREATE TRIGGER IF NOT EXISTS ledger_no_update BEFORE UPDATE ON score_ledger
               BEGIN SELECT RAISE(ABORT, 'score_ledger is append-only'); END;
             CREATE TRIGGER IF NOT EXISTS ledger_no_delete BEFORE DELETE ON score_ledger
@@ -1449,10 +1450,14 @@ app.MapPost("/api/admin/reset-session", async (HttpRequest r, Database db, IHubC
         cmd.ExecuteNonQuery();
     }
 
+    orch.ClearArmedLandings();
+    lock (_stagedAssignments) { _stagedAssignments.Clear(); }
+
     db.Log("RESET_SESSION", payloadJson: "{\"admin\":\"authorized\"}");
+    await hub.Clients.All.SendAsync("SESSION_RESET");
     await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, "all");
     await hub.Clients.Group("projectors").SendAsync("REFRESH_BOARD");
-    return Results.Ok(new { success = true, message = "Session data reset successfully." });
+    return Results.Ok(new { success = true, message = "Session data and all participant states reset successfully." });
 });
 
 app.MapGet("/admin/attacks/dispatch-status", (HttpRequest r, Database db, RogueAgentOrchestrator orch) =>

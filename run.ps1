@@ -6,7 +6,8 @@ param(
     [Alias("Organizer")]
     [switch]$HostMode,
     [switch]$Both,
-    [switch]$Participant
+    [switch]$Participant,
+    [switch]$Reset
 )
 
 # Auto-detect if first parameter is an IP, hostname, or URL
@@ -183,16 +184,35 @@ if ($detectedIps.Count -gt 1) {
 }
 Write-Host "    Auto-Discovery:   UDP Broadcast on port 5082 (Active)" -ForegroundColor Cyan
 
-# 1. Initialize Breach Workspace (refresh if legacy Harbour Notes files exist)
+# If -Reset is passed, clear previous session database and deliveries
+if ($Reset) {
+    Write-Host "[*] Resetting event database and prior session state..." -ForegroundColor Cyan
+    $dbCandidates = @(
+        "$RogueRoot\server\ControlPlane\Data\breach.db*",
+        "$RogueRoot\server\ControlPlane\data\breach.db*",
+        "$env:LOCALAPPDATA\BreachKiosk\site.db*",
+        "$env:LOCALAPPDATA\BreachKiosk\host\breach.db*"
+    )
+    foreach ($cand in $dbCandidates) {
+        Remove-Item $cand -Force -ErrorAction SilentlyContinue
+    }
+}
+
+# 1. Initialize Breach Workspace (refresh if legacy Harbour Notes files exist or -Reset passed)
 $WorkspaceDir = "C:\BreachWorkspace"
 try {
     if (!(Test-Path $WorkspaceDir)) {
         New-Item -ItemType Directory -Path $WorkspaceDir -Force -ErrorAction Stop | Out-Null
     }
-    $legacyHarbour = (Test-Path "$WorkspaceDir\routes\posts.js") -and !(Test-Path "$WorkspaceDir\routes\traffic.js")
-    if (!(Test-Path "$WorkspaceDir\server.js") -or $legacyHarbour) {
-        if ($legacyHarbour) {
-            Write-Host "[*] Upgrading legacy workspace at $WorkspaceDir to AEGIS..." -ForegroundColor Yellow
+    $legacyHarbour = (Test-Path "$WorkspaceDir\routes\posts.js") -or 
+                     (Test-Path "$WorkspaceDir\routes\comments.js") -or 
+                     (Test-Path "$WorkspaceDir\routes\search.js") -or 
+                     (Test-Path "$WorkspaceDir\public\style.css") -or
+                     !(Test-Path "$WorkspaceDir\public\aegis.css") -or
+                     !(Test-Path "$WorkspaceDir\routes\traffic.js")
+    if (!(Test-Path "$WorkspaceDir\server.js") -or $legacyHarbour -or $Reset) {
+        if ($legacyHarbour -or $Reset) {
+            Write-Host "[*] Upgrading/resetting workspace at $WorkspaceDir to pristine AEGIS..." -ForegroundColor Yellow
             foreach ($d in @("routes", "views", "lib", "public", "test")) {
                 if (Test-Path "$WorkspaceDir\$d") { Remove-Item "$WorkspaceDir\$d" -Recurse -Force -ErrorAction SilentlyContinue }
             }
@@ -208,9 +228,14 @@ try {
     if (!(Test-Path $WorkspaceDir)) {
         New-Item -ItemType Directory -Path $WorkspaceDir -Force | Out-Null
     }
-    $legacyFallback = (Test-Path "$WorkspaceDir\routes\posts.js") -and !(Test-Path "$WorkspaceDir\routes\traffic.js")
-    if (!(Test-Path "$WorkspaceDir\server.js") -or $legacyFallback) {
-        if ($legacyFallback) {
+    $legacyFallback = (Test-Path "$WorkspaceDir\routes\posts.js") -or 
+                      (Test-Path "$WorkspaceDir\routes\comments.js") -or 
+                      (Test-Path "$WorkspaceDir\routes\search.js") -or 
+                      (Test-Path "$WorkspaceDir\public\style.css") -or
+                      !(Test-Path "$WorkspaceDir\public\aegis.css") -or
+                      !(Test-Path "$WorkspaceDir\routes\traffic.js")
+    if (!(Test-Path "$WorkspaceDir\server.js") -or $legacyFallback -or $Reset) {
+        if ($legacyFallback -or $Reset) {
             foreach ($d in @("routes", "views", "lib", "public", "test")) {
                 if (Test-Path "$WorkspaceDir\$d") { Remove-Item "$WorkspaceDir\$d" -Recurse -Force -ErrorAction SilentlyContinue }
             }
@@ -227,6 +252,8 @@ try {
     Copy-Item -Path "$RogueRoot\site\public\*" -Destination "$WorkspaceDir\public" -Recurse -Force -ErrorAction SilentlyContinue
     Copy-Item -Path "$RogueRoot\site\lib\*" -Destination "$WorkspaceDir\lib" -Recurse -Force -ErrorAction SilentlyContinue
     Copy-Item -Path "$RogueRoot\site\routes\*" -Destination "$WorkspaceDir\routes" -Recurse -Force -ErrorAction SilentlyContinue
+    # Purge any stale legacy files from active workspace
+    Remove-Item "$WorkspaceDir\routes\posts.js", "$WorkspaceDir\routes\comments.js", "$WorkspaceDir\routes\search.js", "$WorkspaceDir\public\style.css" -Force -ErrorAction SilentlyContinue
 } catch { }
 
 function Ensure-OpenCodeInstalled {
