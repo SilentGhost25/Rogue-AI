@@ -15,7 +15,7 @@ public partial class TerminalTab : UserControl, IDisposable
 {
     private ConPtySession? _session;
     private LaunchSpec? _spec;
-    private bool _pageReady, _locked, _starting;
+    private bool _pageReady, _locked, _starting, _isFocusing;
     private short _cols = 100, _rows = 30;
     private readonly StringBuilder _pending = new();
     private readonly object _gate = new();
@@ -30,8 +30,6 @@ public partial class TerminalTab : UserControl, IDisposable
         _flush = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
         _flush.Tick += (_, _) => FlushOutput();
         _flush.Start();
-        GotKeyboardFocus += (_, _) => FocusTerminal();
-        PreviewMouseDown += (_, _) => FocusTerminal();
     }
 
     public async Task InitializeAsync(string assetsDir)
@@ -49,12 +47,12 @@ public partial class TerminalTab : UserControl, IDisposable
 
     public void FocusTerminal()
     {
+        if (_isFocusing) return;
+        _isFocusing = true;
         try
         {
-            Focus();
             Web.Focus();
             System.Windows.Input.Keyboard.Focus(Web);
-            Web.MoveFocus(new System.Windows.Input.TraversalRequest(System.Windows.Input.FocusNavigationDirection.First));
             Post(new { type = "focus" });
             if (Web.CoreWebView2 is not null)
             {
@@ -62,11 +60,7 @@ public partial class TerminalTab : UserControl, IDisposable
             }
         }
         catch { }
-    }
-
-    private void Grid_PreviewMouseDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
-    {
-        FocusTerminal();
+        finally { _isFocusing = false; }
     }
 
     public void Launch(LaunchSpec spec)
@@ -98,9 +92,15 @@ public partial class TerminalTab : UserControl, IDisposable
             case "focus_request":
                 Dispatcher.InvokeAsync(() =>
                 {
-                    Focus();
-                    Web.Focus();
-                    System.Windows.Input.Keyboard.Focus(Web);
+                    if (_isFocusing) return;
+                    _isFocusing = true;
+                    try
+                    {
+                        Web.Focus();
+                        System.Windows.Input.Keyboard.Focus(Web);
+                    }
+                    catch { }
+                    finally { _isFocusing = false; }
                 });
                 break;
             case "input":

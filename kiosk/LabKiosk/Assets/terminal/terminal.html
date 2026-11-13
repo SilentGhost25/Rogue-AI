@@ -62,38 +62,37 @@ const post = (m) => window.chrome.webview.postMessage(m);
     else if (m.type === 'status') term.write('\x1b[90m' + m.text + '\x1b[0m\r\n');
     else if (m.type === 'ended') { ended = true; term.write('\r\n\x1b[90m[session ended] Press Enter to start it again.\x1b[0m\r\n'); }
     else if (m.type === 'locked') { locked = true; term.write('\r\n\x1b[31m' + m.text + '\x1b[0m\r\n'); }
-    else if (m.type === 'focus') { ensureFocus(); }
+    else if (m.type === 'focus') { focusDOM(); }
   });
 
   window.term = term;
-  const ensureFocus = () => {
+  const focusDOM = () => {
     try {
       if (term) {
         term.focus();
         if (term.textarea) term.textarea.focus();
       }
-      post({ type: 'focus_request' });
     } catch (e) {}
   };
-  ensureFocus();
-  window.addEventListener('focus', ensureFocus);
-  window.addEventListener('mousedown', ensureFocus);
-  window.addEventListener('pointerdown', ensureFocus);
-  window.addEventListener('click', ensureFocus);
-  document.addEventListener('mousedown', ensureFocus);
-  document.addEventListener('pointerdown', ensureFocus);
-  document.addEventListener('click', ensureFocus);
+  const requestHostFocus = () => {
+    focusDOM();
+    try { post({ type: 'focus_request' }); } catch (e) {}
+  };
+
+  focusDOM();
+  window.addEventListener('focus', focusDOM);
+  window.addEventListener('mousedown', requestHostFocus);
+  window.addEventListener('pointerdown', requestHostFocus);
+  document.addEventListener('mousedown', requestHostFocus);
+  document.addEventListener('pointerdown', requestHostFocus);
   window.addEventListener('keydown', () => {
     if (!locked && term && term.textarea && document.activeElement !== term.textarea) {
-      ensureFocus();
+      focusDOM();
     }
   });
   setInterval(() => {
     if (!locked && term && term.textarea && document.activeElement !== term.textarea) {
-      try {
-        term.focus();
-        if (term.textarea) term.textarea.focus();
-      } catch (e) {}
+      focusDOM();
     }
   }, 200);
   post({ type: 'ready', cols: term.cols, rows: term.rows });
