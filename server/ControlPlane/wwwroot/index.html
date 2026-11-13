@@ -393,8 +393,11 @@ async function fireAttack(id, name) {
   if (res.ok) {
     alert(`Intrusion #${id} dispatched successfully!`);
     refreshAttacks();
+    refreshKiosks();
   } else {
-    alert(`Failed to dispatch attack (HTTP ${res.status}): ${res.statusText}\nPlease verify your Admin Key in the top right header.`);
+    let errMsg = res.statusText;
+    try { const d = await res.json(); if (d?.error) errMsg = d.error; } catch {}
+    alert(`Failed to dispatch attack (HTTP ${res.status}): ${errMsg}`);
   }
 }
 

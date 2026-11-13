@@ -553,6 +553,7 @@
                 <TextBlock Text="⚠ SYSTEM LOCKOUT: UNAUTHORIZED ESCAPE DETECTED" Foreground="#FF4B4B" FontSize="30" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,0,0,16" TextAlignment="Center" TextWrapping="Wrap"/>
                 <TextBlock Text="You attempted to switch applications or leave the kiosk. This violates event rules." Foreground="#FFFFFF" FontSize="17" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"/>
                 <TextBlock x:Name="LockoutReasonText" Text="Your session has been disqualified. Please contact an organizer." Foreground="#FF6B57" FontSize="17" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,24,0,0" TextAlignment="Center" TextWrapping="Wrap"/>
+                <Button Content="🔓 Organizer Unlock (Admin Key)" Click="OnUnlockWithAdminKeyClick" Margin="0,28,0,0" Padding="20,10" FontSize="14" FontWeight="SemiBold" Background="#1B3848" Foreground="#FFFFFF" BorderBrush="#37D6E8" Cursor="Hand" HorizontalAlignment="Center"/>
             </StackPanel>
         </Grid>
 

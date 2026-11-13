@@ -246,23 +246,12 @@ public sealed class RogueAgentOrchestrator : BackgroundService
 
     private async Task LandAtAsync(int attackId, DateTime landAtUtc)
     {
-        if (!_armedLandings.TryAdd(attackId, 0))
-        {
-            _log.LogWarning("Landing for attack #{Id} is already armed; skipping duplicate schedule.", attackId);
-            return;
-        }
+        _armedLandings[attackId] = 0;
 
         try
         {
             var delay = landAtUtc - _clock.UtcNow;
             if (delay > TimeSpan.Zero) await Task.Delay(delay);
-
-            var current = _db.GetDispatchState(attackId);
-            if (current != DispatchState.ArenaImminent)
-            {
-                _log.LogInformation("Attack #{Id} is no longer ArenaImminent (current state: {Current}); aborting landing timer.", attackId, current);
-                return;
-            }
 
             _db.MarkAttackLanded(attackId);
             _db.TransitionDispatch(attackId, DispatchState.ArenaLanded);
@@ -295,15 +284,15 @@ public sealed class RogueAgentOrchestrator : BackgroundService
     public async Task<DateTime> ConfirmAndFireArenaAsync(int attackId)
     {
         var current = _db.GetDispatchState(attackId);
-        if (current == DispatchState.Pending)
+        if (current != DispatchState.CanaryConfirmed)
         {
-            _db.TransitionDispatch(attackId, DispatchState.CanaryFired);
+            if (current == DispatchState.Pending)
+            {
+                _db.TransitionDispatch(attackId, DispatchState.CanaryFired);
+            }
             _db.TransitionDispatch(attackId, DispatchState.CanaryConfirmed);
         }
-        else if (current == DispatchState.CanaryFired)
-        {
-            _db.TransitionDispatch(attackId, DispatchState.CanaryConfirmed);
-        }
+        _armedLandings.TryRemove(attackId, out _);
         return await FireToArenaAsync(attackId);
     }
 

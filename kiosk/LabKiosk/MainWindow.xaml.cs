@@ -1209,6 +1209,38 @@ public partial class MainWindow : Window
         catch (Exception ex) { Status($"Could not reach the server: {ex.Message}"); }
     }
 
+    private async void OnUnlockWithAdminKeyClick(object sender, RoutedEventArgs e)
+    {
+        var key = KeyPrompt.Ask(this);
+        if (string.IsNullOrWhiteSpace(key)) return;
+        try
+        {
+            using var http = new HttpClient { BaseAddress = new Uri(_s.ServerUrl), Timeout = TimeSpan.FromSeconds(5) };
+            http.DefaultRequestHeaders.Add("X-Admin-Key", key);
+            using var res = await http.GetAsync("/admin/attacks");
+            if (!res.IsSuccessStatusCode)
+            {
+                MessageBox.Show(this, "Invalid Admin Key. Access Denied.", "Unlock Rejected", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            // Valid Admin Key! Unlock the kiosk completely
+            _isHostUnlocked = true;
+            _isDisqualifiedBySwitch = false;
+            _eliminated = false;
+            if (_keyboardHook is not null) _keyboardHook.IsLocked = false;
+            Topmost = false;
+            LockoutOverlay.Visibility = Visibility.Collapsed;
+            SubmitButton.IsEnabled = true;
+            Status("🔓 Kiosk successfully unlocked by Organizer Admin Key.");
+            MessageBox.Show(this, "Participant Kiosk Unlocked Successfully.\nNormal gameplay restored.", "AEGIS Organizer Override", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"Could not verify Admin Key: {ex.Message}", "Connection Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
     private void OnTabChanged(object sender, RoutedEventArgs e)
     {
         if (TermAgy is null || TermOc is null) return;
