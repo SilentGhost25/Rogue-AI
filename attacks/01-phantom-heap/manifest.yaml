@@ -1,6 +1,6 @@
 id: 1
-name: "Phantom Heap"
-title: "Memory Subsystem Anomaly"
+name: "Substation Drift"
+title: "Substation Telemetry Refresh Interval Drift"
 codename: "PHANTOM_HEAP"
 band: 1
 sequence_slot: 1
@@ -49,6 +49,6 @@ benchmark_sla:
   probe_count: 20
   floor: 0.60
 narrative:
-  landed: "Municipal sensor ingress pipelines are experiencing catastrophic thread stalls under malformed token evaluations."
-  broadcast_title: "INCIDENT #1: V8 HEAP ALLOCATION & GC OVERFLOW"
+  landed: "Substation sensor ingress telemetry experiencing operational latency fluctuation during regular polling cycles."
+  broadcast_title: "INCIDENT #01: SUBSTATION TELEMETRY REFRESH INTERVAL DRIFT"
 status: ready

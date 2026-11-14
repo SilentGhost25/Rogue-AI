@@ -533,6 +533,18 @@ function initSignalR() {
       refreshKiosks();
     });
 
+    hubConn.on('FOCUS_VIOLATION', (participantId, deskId, name, reason, timestamp) => {
+      logMessage(`🚨 [FOCUS TAMPER] Station ${deskId} (${name}) flagged for focus violation: ${reason}`);
+      refreshCohorts();
+      refreshKiosks();
+    });
+
+    hubConn.on('FOCUS_PARDONED', (participantId) => {
+      logMessage(`🕊️ [PARDON] Station ${participantId} focus violation pardoned.`);
+      refreshCohorts();
+      refreshKiosks();
+    });
+
     hubConn.start().then(() => {
       logMessage('[SIGNALR] Live control plane hub connected.');
     }).catch(err => {
@@ -877,17 +889,17 @@ async function init() {
 let currentCohortsData = null;
 
 const ATTACK_NAMES_SHORT = {
-  0: "0: Warm-up",
-  1: "1: Phantom Heap",
-  2: "2: Schrödinger",
-  3: "3: Hydra Query",
-  4: "4: Mirage Route",
-  5: "5: Polite Intruder",
-  6: "6: Chameleon",
-  7: "7: Zombie Emitter",
-  8: "8: Poison Proto",
-  9: "9: Proxy Mirage",
-  10: "10: Janus Knot (Boss)"
+  0: "0: Grid Clock Sync",
+  1: "1: Substation Drift",
+  2: "2: Directory Variance",
+  3: "3: Routing Reconciliation",
+  4: "4: Registry Cache Revalidation",
+  5: "5: Records Normalization",
+  6: "6: Camera Feed Index Drift",
+  7: "7: Dispatch Task Scheduling",
+  8: "8: Switchboard Verification",
+  9: "9: Pump Telemetry Cycle",
+  10: "10: Central Core Routine"
 };
 
 async function refreshCohorts() {
@@ -918,6 +930,25 @@ function renderCohortMatrix(data) {
     const count = participants.length;
 
     let cardsHtml = participants.map(p => {
+      if (p.focusViolation) {
+        return `
+          <div class="cohort-card cohort-card-tamper">
+            <div class="cohort-card-top">
+              <span class="cohort-desk-tag">${escapeHtml(p.deskId || p.id)}</span>
+              <span class="cohort-tamper-pill">🚨 TAMPER LOCK</span>
+            </div>
+            <div class="cohort-card-sub" style="flex-direction:column; gap:2px;">
+              <span style="color:#ffffff; font-weight:600;">${escapeHtml(p.name || p.id)}</span>
+              <span style="color:#f87171; font-size:10px;">${escapeHtml(p.focusReason || 'App switch / Alt+Tab')}</span>
+            </div>
+            <div style="display:flex; gap:6px; margin-top:6px;">
+              <button class="btn success sm" style="flex:1; padding:3px 6px; font-size:11px;" onclick="pardonParticipantFocus('${escapeHtml(p.id)}')">🕊️ Pardon</button>
+              <button class="btn danger sm" style="flex:1; padding:3px 6px; font-size:11px;" onclick="disqualifyParticipantFocus('${escapeHtml(p.id)}')">⛔ Disqualify</button>
+            </div>
+          </div>
+        `;
+      }
+
       const isOnline = p.status === 'online';
       const statusPill = isOnline 
         ? `<span class="cohort-status-pill cohort-status-online">Online</span>` 
@@ -1058,6 +1089,31 @@ async function messageParticipant(participantId, name) {
     alert(`Message delivered to ${name}.`);
   } catch (err) {
     alert(`Failed to send direct message: ${err.message}`);
+  }
+}
+
+async function pardonParticipantFocus(id) {
+  try {
+    await api(`/api/admin/participant/${encodeURIComponent(id)}/focus/pardon`, { method: 'POST' });
+    logMessage(`🕊️ [PARDON] Station ${id} focus violation pardoned.`);
+    await refreshCohorts();
+    await refreshKiosks();
+  } catch (err) {
+    alert(`Failed to pardon station: ${err.message}`);
+  }
+}
+
+async function disqualifyParticipantFocus(id) {
+  if (!confirm(`Are you sure you want to permanently disqualify participant ${id} for focus tampering?`)) {
+    return;
+  }
+  try {
+    await api(`/api/admin/participant/${encodeURIComponent(id)}/focus/disqualify`, { method: 'POST' });
+    logMessage(`⛔ [DISQUALIFY] Station ${id} disqualified for focus violation.`);
+    await refreshCohorts();
+    await refreshKiosks();
+  } catch (err) {
+    alert(`Failed to disqualify station: ${err.message}`);
   }
 }
 

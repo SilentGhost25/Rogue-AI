@@ -119,6 +119,12 @@ public partial class TerminalTab : UserControl, IDisposable
         Post(new { type = "locked", text });
     }
 
+    public void Unlock()
+    {
+        _locked = false;
+        Post(new { type = "unlocked" });
+    }
+
     public void UnlockAndRestart()
     {
         _locked = false;

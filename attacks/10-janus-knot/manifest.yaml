@@ -1,6 +1,6 @@
 id: 10
-name: "Janus Knot"
-title: "Cascading Grid Failure & Root Key Revocation"
+name: "Central Core Routine"
+title: "Metropolitan Central Core Maintenance Routine"
 codename: "JANUS_KNOT"
 band: 4
 sequence_slot: 10
@@ -51,6 +51,6 @@ benchmark_sla:
   probe_count: 20
   floor: 0.60
 narrative:
-  landed: "Cascading multi-tier compromise across overview UI, session lifecycle, and database checkpoint subsystem."
-  broadcast_title: "INCIDENT #10: CASCADING GRID FAILURE & ROOT KEY REVOCATION"
+  landed: "Integrated municipal operations console encountering maintenance sync delays across interconnected district subsystems."
+  broadcast_title: "INCIDENT #10: METROPOLITAN CENTRAL CORE MAINTENANCE ROUTINE"
 status: ready

@@ -1,6 +1,6 @@
 id: 2
-name: "Schrodinger Closure"
-title: "Session Entropy & Key Derivation Drift"
+name: "Directory Variance"
+title: "District Citizen Directory Formatting Variance"
 codename: "SCHRODINGER"
 band: 1
 sequence_slot: 2
@@ -47,6 +47,6 @@ benchmark_sla:
   probe_count: 20
   floor: 0.60
 narrative:
-  landed: "Module-scoped closure leakage in overview dashboard cross-contaminates concurrent operator identities."
-  broadcast_title: "INCIDENT #02: SESSION ENTROPY & KEY DERIVATION DRIFT"
+  landed: "Supervisory archive monitors report minor record formatting alignment variance across concurrent terminal queries."
+  broadcast_title: "INCIDENT #02: DISTRICT CITIZEN DIRECTORY FORMATTING VARIANCE"
 status: ready

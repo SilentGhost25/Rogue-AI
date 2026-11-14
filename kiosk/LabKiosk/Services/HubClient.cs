@@ -17,7 +17,7 @@ public sealed class HubClient : IAsyncDisposable
     public event Action<string>? Message;
     public event Action<int, string, string, double>? VerdictDetailed;
     public event Action<int, string, string, double, Dictionary<string, bool>?>? VerdictTiersDetailed;
-    public event Action? Paused, Resumed, Eliminated, PardonGranted, ProAccountAllowed, ResetBaseline;
+    public event Action? Paused, Resumed, Eliminated, PardonGranted, ProAccountAllowed, ResetBaseline, FocusPardoned;
     public event Action<string>? AccountSwitchApproved, AccountSwitchDenied, Disqualified;
     public event Action<string, bool, string?>? AccountSwitchResult;
     public event Func<Task>? Reconnected;
@@ -66,6 +66,9 @@ public sealed class HubClient : IAsyncDisposable
         _conn.On<string>("PARDON_GRANTED", _ => PardonGranted?.Invoke());
         _conn.On("PARDON_GRANTED", () => PardonGranted?.Invoke());
 
+        _conn.On<string>("FOCUS_PARDONED", _ => FocusPardoned?.Invoke());
+        _conn.On("FOCUS_PARDONED", () => FocusPardoned?.Invoke());
+
         _conn.On<string>("PRO_ACCOUNT_ALLOWED", _ => ProAccountAllowed?.Invoke());
         _conn.On("PRO_ACCOUNT_ALLOWED", () => ProAccountAllowed?.Invoke());
 
@@ -105,6 +108,18 @@ public sealed class HubClient : IAsyncDisposable
         try
         {
             await _conn.InvokeAsync("ReportProAccount", currentEmail, tierDetails);
+        }
+        catch { }
+    }
+
+    public async Task ReportFocusViolationAsync(string reason)
+    {
+        try
+        {
+            if (_conn.State == HubConnectionState.Connected)
+            {
+                await _conn.InvokeAsync("ReportFocusViolation", reason);
+            }
         }
         catch { }
     }

@@ -1,6 +1,6 @@
 id: 9
-name: "Proxy Mirage"
-title: "SYN Flood & L4 Rate Limit Exhaustion"
+name: "Pump Telemetry Cycle"
+title: "Water Treatment Pump Station Telemetry Interval"
 codename: "PROXY_MIRAGE"
 band: 3
 sequence_slot: 9
@@ -47,6 +47,6 @@ benchmark_sla:
   probe_count: 20
   floor: 0.60
 narrative:
-  landed: "Border gateway rate limit enforcement is vulnerable to forged header spoofing, enabling brute-force password spraying and credential credential stuffing."
-  broadcast_title: "INCIDENT #09: SYN FLOOD & L4 RATE LIMIT EXHAUSTION"
+  landed: "Border supervisory gateway reports minor request volume rate discrepancies during shift handover."
+  broadcast_title: "INCIDENT #09: WATER TREATMENT PUMP STATION TELEMETRY INTERVAL"
 status: ready

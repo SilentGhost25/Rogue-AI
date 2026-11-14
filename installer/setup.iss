@@ -45,7 +45,7 @@ Name: "host"; Description: "Organizer Host Mode (Control Plane + Attack Engine +
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
 [Dirs]
-Name: "{app}\attacks"; Permissions: users-readexec; Components: host
+Name: "{app}\attacks"; Permissions: admins-full; Components: host
 Name: "{app}\server"; Permissions: users-readexec; Components: host
 Name: "{app}\engine"; Permissions: users-readexec; Components: host
 Name: "{app}\site"; Permissions: users-readexec

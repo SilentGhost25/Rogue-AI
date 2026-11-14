@@ -1,6 +1,6 @@
 id: 4
-name: "Mirage Route"
-title: "EJS Template Engine Compilation Corruption"
+name: "Registry Cache Revalidation"
+title: "Municipal Service Registry Cache Invalidation"
 codename: "MIRAGE_ROUTE"
 band: 2
 sequence_slot: 4
@@ -47,6 +47,6 @@ benchmark_sla:
   probe_count: 20
   floor: 0.60
 narrative:
-  landed: "Early diagnostic probe middleware is intercepting and quarantining PowerCore grid subsystem routes."
-  broadcast_title: "INCIDENT #04: EJS TEMPLATE ENGINE COMPILATION CORRUPTION"
+  landed: "Municipal registry query portal encountering routine endpoint routing cache invalidation across district nodes."
+  broadcast_title: "INCIDENT #04: MUNICIPAL SERVICE REGISTRY CACHE INVALIDATION"
 status: ready

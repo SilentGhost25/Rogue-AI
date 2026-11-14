@@ -133,6 +133,29 @@ public sealed class BreachHub(IConfiguration config, Database db) : Hub
             await Clients.Group("admins").SendAsync(HubEvents.ProAccountFlagged, pid, deskId, participantName, currentEmail, tierDetails, timestamp);
         }
     }
+
+    /// <summary>Participant kiosk flags focus switch, alt-tab, or app change tamper attempt.</summary>
+    public async Task ReportFocusViolation(string reason)
+    {
+        if (Context.Items.TryGetValue("participantId", out var pidObj) && pidObj is string pid)
+        {
+            var deskId = db.QueryScalar<string>("SELECT desk_id FROM desk_tokens WHERE participant_id = @p", ("@p", pid)) ?? pid;
+            var participantName = db.QueryScalar<string>("SELECT name FROM participants WHERE id = @p", ("@p", pid)) ?? pid;
+            var timestamp = DateTime.UtcNow.ToString("o");
+
+            db.RecordComplianceAlert($"focus_{pid}", pid, deskId, participantName, reason, "Focus switch / Alt+Tab detected", "focus");
+            db.Log("FOCUS_VIOLATION_FLAGGED", pid, payloadJson: System.Text.Json.JsonSerializer.Serialize(new
+            {
+                participantId = pid,
+                deskId,
+                name = participantName,
+                reason,
+                timestamp
+            }));
+
+            await Clients.Group("admins").SendAsync(HubEvents.FocusViolation, pid, deskId, participantName, reason, timestamp);
+        }
+    }
 }
 
 public static class HubEvents
@@ -157,4 +180,6 @@ public static class HubEvents
     public const string ProAccountAllowed = "PRO_ACCOUNT_ALLOWED";
     public const string Disqualified = "DISQUALIFIED";
     public const string ResetBaseline = "RESET_BASELINE";
+    public const string FocusViolation = "FOCUS_VIOLATION";
+    public const string FocusPardoned = "FOCUS_PARDONED";
 }

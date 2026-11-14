@@ -1,6 +1,6 @@
 id: 6
-name: "Chameleon Traversal"
-title: "Webpack Chunk Integrity Hash Failure"
+name: "Camera Feed Index Drift"
+title: "Traffic Camera Feed Metadata Index Drift"
 codename: "CHAMELEON"
 band: 2
 sequence_slot: 6
@@ -49,6 +49,6 @@ benchmark_sla:
   probe_count: 20
   floor: 0.60
 narrative:
-  landed: "Report extraction gateway is vulnerable to nested URL-encoding escapes, allowing unauthorized file system reads across system boundaries."
-  broadcast_title: "INCIDENT #06: WEBPACK CHUNK INTEGRITY HASH FAILURE"
+  landed: "Overview municipal status feed displays report unresolved asset path descriptors during peripheral sensor indexing."
+  broadcast_title: "INCIDENT #06: TRAFFIC CAMERA FEED METADATA INDEX DRIFT"
 status: ready

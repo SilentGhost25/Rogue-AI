@@ -87,24 +87,14 @@
                         </Border>
 
                         <!-- Symptoms -->
-                        <TextBlock Text="OBSERVED INCIDENT SYMPTOMS:" Foreground="#8AA0AC" FontWeight="SemiBold" FontSize="11" Margin="0,0,0,4"/>
-                        <TextBlock x:Name="TxtSymptoms" Text="Anomalous behavior observed on target endpoints." Foreground="#E6EEF2" FontSize="13" TextWrapping="Wrap" Margin="0,0,0,14" LineHeight="18"/>
-
-                        <!-- SOC / SIEM Telemetry (Decoy & Context) -->
-                        <TextBlock Text="SOC / SIEM TELEMETRY &amp; ADVISORY:" Foreground="#E0B341" FontWeight="SemiBold" FontSize="11" Margin="0,0,0,4"/>
-                        <Border Background="#1C1B12" BorderBrush="#5C4D1D" BorderThickness="1" CornerRadius="4" Padding="10,8">
-                            <TextBlock x:Name="TxtTelemetry" Text="SIEM telemetry reports anomalous payload signatures on active endpoints." Foreground="#E0B341" FontSize="12" TextWrapping="Wrap" LineHeight="17"/>
-                        </Border>
+                        <TextBlock Text="MUNICIPAL OBSERVATION TELEMETRY:" Foreground="#8AA0AC" FontWeight="SemiBold" FontSize="11" Margin="0,0,0,4"/>
+                        <TextBlock x:Name="TxtSymptoms" Text="Anomalous behavior observed on target endpoints." Foreground="#E6EEF2" FontSize="13" TextWrapping="Wrap" Margin="0,0,0,4" LineHeight="18"/>
                     </StackPanel>
                 </Border>
 
                 <!-- Actions -->
-                <DockPanel>
-                    <Button x:Name="BtnInvestigate" Content="🔍 Investigate Workspace" Click="OnInvestigateClick"
-                            Style="{StaticResource DialogPrimaryBtn}" Padding="20,10" FontSize="13" DockPanel.Dock="Left" Cursor="Hand"/>
-                    <Button Content="Investigate on My Own" Click="OnDismissClick"
-                            Style="{StaticResource DialogNeutralBtn}" Padding="16,9" FontSize="12" HorizontalAlignment="Right" Cursor="Hand"/>
-                </DockPanel>
+                <Button Content="Acknowledge Incident (Esc)" Click="OnDismissClick"
+                        Style="{StaticResource DialogNeutralBtn}" Padding="28,10" FontSize="13" HorizontalAlignment="Center" Cursor="Hand"/>
             </StackPanel>
         </Border>
     </Grid>

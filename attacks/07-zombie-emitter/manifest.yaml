@@ -1,6 +1,6 @@
 id: 7
-name: "Zombie Emitter"
-title: "Event Loop Task Skew & Worker Starvation"
+name: "Dispatch Task Scheduling"
+title: "Municipal Dispatch Subsystem Task Scheduling"
 codename: "ZOMBIE_EMITTER"
 band: 3
 sequence_slot: 7
@@ -47,6 +47,6 @@ benchmark_sla:
   probe_count: 20
   floor: 0.60
 narrative:
-  landed: "Node.js EventEmitter on signal telemetry is accumulating unbound closures on every request, degrading event loop throughput and leaking heap space."
-  broadcast_title: "INCIDENT #07: EVENT LOOP TASK SKEW & WORKER STARVATION"
+  landed: "Municipal sensor dispatch streaming stream experiencing accumulating task queue scheduling delays."
+  broadcast_title: "INCIDENT #07: MUNICIPAL DISPATCH SUBSYSTEM TASK SCHEDULING"
 status: ready

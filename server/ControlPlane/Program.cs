@@ -1541,6 +1541,62 @@ app.MapPost("/api/admin/participant/{id}/allow-pro-account", async (string id, H
     return Results.Ok(new { success = true, participantId = id });
 });
 
+app.MapPost("/admin/kiosks/{id}/focus/pardon", async (string id, HttpRequest r, Database db, IHubContext<BreachHub> hub) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+    db.ResolveComplianceAlert(id, "focus", "pardoned");
+    db.Log("FOCUS_VIOLATION_PARDONED", id, payloadJson: System.Text.Json.JsonSerializer.Serialize(new { participantId = id, timestamp = DateTime.UtcNow.ToString("o") }));
+    await hub.Clients.Group($"p:{id}").SendAsync(HubEvents.FocusPardoned, id);
+    await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, id);
+    return Results.Ok(new { success = true, participantId = id });
+});
+
+app.MapPost("/api/admin/participant/{id}/focus/pardon", async (string id, HttpRequest r, Database db, IHubContext<BreachHub> hub) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+    db.ResolveComplianceAlert(id, "focus", "pardoned");
+    db.Log("FOCUS_VIOLATION_PARDONED", id, payloadJson: System.Text.Json.JsonSerializer.Serialize(new { participantId = id, timestamp = DateTime.UtcNow.ToString("o") }));
+    await hub.Clients.Group($"p:{id}").SendAsync(HubEvents.FocusPardoned, id);
+    await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, id);
+    return Results.Ok(new { success = true, participantId = id });
+});
+
+app.MapPost("/admin/kiosks/{id}/focus/disqualify", async (string id, HttpRequest r, Database db, IHubContext<BreachHub> hub) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+    using var c = db.Open();
+    using var cmd = c.CreateCommand();
+    cmd.CommandText = "UPDATE participants SET status = 'disqualified' WHERE id = @id";
+    cmd.Parameters.AddWithValue("@id", id);
+    cmd.ExecuteNonQuery();
+    db.ResolveComplianceAlert(id, "focus", "disqualified");
+    db.Log("FOCUS_VIOLATION_DISQUALIFIED", id, payloadJson: System.Text.Json.JsonSerializer.Serialize(new { participantId = id, timestamp = DateTime.UtcNow.ToString("o") }));
+    await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, id);
+    await hub.Clients.Group($"p:{id}").SendAsync("ELIMINATED", "Disqualified by competition arbiter for focus violation");
+    await hub.Clients.Group($"p:{id}").SendAsync(HubEvents.Disqualified, id, "Disqualified by competition arbiter for focus violation");
+    return Results.Ok(new { success = true, participantId = id });
+});
+
+app.MapPost("/api/admin/participant/{id}/focus/disqualify", async (string id, HttpRequest r, Database db, IHubContext<BreachHub> hub) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+    using var c = db.Open();
+    using var cmd = c.CreateCommand();
+    cmd.CommandText = "UPDATE participants SET status = 'disqualified' WHERE id = @id";
+    cmd.Parameters.AddWithValue("@id", id);
+    cmd.ExecuteNonQuery();
+    db.ResolveComplianceAlert(id, "focus", "disqualified");
+    db.Log("FOCUS_VIOLATION_DISQUALIFIED", id, payloadJson: System.Text.Json.JsonSerializer.Serialize(new { participantId = id, timestamp = DateTime.UtcNow.ToString("o") }));
+    await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, id);
+    await hub.Clients.Group($"p:{id}").SendAsync("ELIMINATED", "Disqualified by competition arbiter for focus violation");
+    await hub.Clients.Group($"p:{id}").SendAsync(HubEvents.Disqualified, id, "Disqualified by competition arbiter for focus violation");
+    return Results.Ok(new { success = true, participantId = id });
+});
+
 app.MapGet("/admin/compliance/alerts", (HttpRequest r, Database db) =>
 {
     var authErr = AuthorizeAdmin(r, db);
@@ -1646,6 +1702,17 @@ app.MapGet("/api/admin/cohorts", (HttpRequest r, Database db) =>
     if (authErr != null) return authErr;
 
     using var c = db.Open();
+    var focusViolations = new Dictionary<string, string>();
+    using (var fCmd = c.CreateCommand())
+    {
+        fCmd.CommandText = "SELECT participant_id, email FROM compliance_alerts WHERE alert_type = 'focus' AND status = 'pending'";
+        using var fr = fCmd.ExecuteReader();
+        while (fr.Read())
+        {
+            focusViolations[fr.GetString(0)] = fr.GetString(1);
+        }
+    }
+
     var participantsMap = new Dictionary<string, dynamic>();
     using (var pCmd = c.CreateCommand())
     {
@@ -1678,7 +1745,9 @@ app.MapGet("/api/admin/cohorts", (HttpRequest r, Database db) =>
                 status = st,
                 score,
                 solvedCount = solved,
-                activeAttack = activeAid
+                activeAttack = activeAid,
+                focusViolation = focusViolations.ContainsKey(pid),
+                focusReason = focusViolations.GetValueOrDefault(pid, "")
             };
         }
     }
@@ -1732,11 +1801,12 @@ app.MapGet("/api/admin/cohorts", (HttpRequest r, Database db) =>
         });
     }
 
+    var maxPerCol = Math.Max(10, (participantsMap.Count + 4) / 5);
     return Results.Ok(new
     {
         columns,
         totalParticipants = participantsMap.Count,
-        maxPerColumn = 10
+        maxPerColumn = maxPerCol
     });
 });
 

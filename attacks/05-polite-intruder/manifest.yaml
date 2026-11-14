@@ -1,6 +1,6 @@
 id: 5
-name: "Polite Intruder"
-title: "OAuth Redirect URI Policy Violation"
+name: "Records Normalization"
+title: "Public Records Search Field Normalization"
 codename: "POLITE_INTRUDER"
 band: 2
 sequence_slot: 5
@@ -49,6 +49,6 @@ benchmark_sla:
   probe_count: 20
   floor: 0.60
 narrative:
-  landed: "Unrestricted property merge in user profile service allows unprivileged operators to elevate clearance to Level 5 and bypass CitizenVault security boundaries."
-  broadcast_title: "INCIDENT #05: PRIVILEGE ESCALATION & CLEARANCE DRIFT"
+  landed: "CitizenVault supervisory service reports unpartitioned records search clearance tags across regional sectors."
+  broadcast_title: "INCIDENT #05: PUBLIC RECORDS SEARCH FIELD NORMALIZATION"
 status: ready

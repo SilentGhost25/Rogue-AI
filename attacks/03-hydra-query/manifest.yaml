@@ -1,6 +1,6 @@
 id: 3
-name: "Hydra Query"
-title: "Database Replay & Telemetry Invariant"
+name: "Routing Reconciliation"
+title: "Transit Routing Schedule Table Reconciliation"
 codename: "HYDRA_QUERY"
 band: 2
 sequence_slot: 3
@@ -49,6 +49,6 @@ benchmark_sla:
   probe_count: 20
   floor: 0.60
 narrative:
-  landed: "TrafficGrid database layer is rejecting parameterized telemetry audit vectors and leaking query strings."
-  broadcast_title: "INCIDENT #03: REPLAY ATTACK & TELEMETRY INVARIANT BREACH"
+  landed: "TrafficGrid supervisory matrix reports unexpected schedule ledger reconciliation rollbacks during routine transit operations."
+  broadcast_title: "INCIDENT #03: TRANSIT ROUTING SCHEDULE TABLE RECONCILIATION"
 status: ready

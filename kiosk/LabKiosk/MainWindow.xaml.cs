@@ -30,86 +30,86 @@ public partial class MainWindow : Window
     private static readonly Dictionary<int, AttackMeta> AttackMetadata = new()
     {
         [0] = new(
-            "Incident #0: Node Baseline Heartbeat Telemetry (SIG-0010)",
-            "DEFCON-4 · ENVIRONMENT SYNC",
-            "Central supervisory telemetry detected asynchronous state nonces across node initialization registers.",
-            "SIG-0010: Baseline handshake timed out during environmental register calibration. Check diagnostic logs and system descriptors."
+            "Incident #0: Routine Municipal Grid Clock Sync",
+            "DEFCON-4 · ROUTINE OPERATIONAL SYNC",
+            "Periodic municipal clock synchronization drift observed during automated environmental sync cycle.",
+            "Baseline telemetry verification sequence initiated. Review operational subsystem metrics."
         ),
         [1] = new(
-            "Incident #1: Substation Sensor Pipeline Degradation (SIG-1104)",
-            "DEFCON-2 · PIPELINE LATENCY",
-            "Core transit telemetry pipeline latency spiked sharply. Microtask loop execution delays exceeding nominal operating envelope.",
-            "SIG-1104: Ingress sensor dispatch queue unresponsive under burst stream conditions. Socket event loop lag reported in telemetry daemon."
+            "Incident #1: Substation Telemetry Refresh Interval Drift",
+            "DEFCON-3 · SENSOR POLLING LATENCY",
+            "Substation telemetry polling intervals experiencing minor variance under continuous transit operations.",
+            "Field telemetry reports intermittent delay in subscriber data feeds. Monitoring nominal parameters."
         ),
         [2] = new(
-            "Incident #2: District Identity Nonce Drift (SIG-2218)",
-            "DEFCON-2 · TELEMETRY INVARIANT",
-            "Supervisory monitors report state reconciliation discrepancies during concurrent terminal queries.",
-            "SIG-2218: Multi-node identity token reconciliation failure. Cryptographic entropy variance exceeds acceptable threshold."
+            "Incident #2: District Citizen Directory Formatting Variance",
+            "DEFCON-3 · DATA FORMAT RECONCILIATION",
+            "Minor record field alignment discrepancy noted during scheduled district archive queries.",
+            "Registry query processing displaying atypical latency under multi-district load."
         ),
         [3] = new(
-            "Incident #3: Metropolitan Ledger Synchronization Fault (SIG-3391)",
-            "DEFCON-2 · LEDGER ANOMALY",
-            "TrafficGrid supervisory matrix reports unexpected storage ledger rejects and analytical query rollbacks.",
-            "SIG-3391: Storage subsystem rejected query batch accumulator. Telemetry state digest mismatch detected across transit sectors."
+            "Incident #3: Transit Routing Schedule Table Reconciliation",
+            "DEFCON-3 · ROUTE MATRIX DRIFT",
+            "Transit routing schedule accumulator reports minor timestamp sorting discrepancy across regional sectors.",
+            "Dispatch accumulator processing indicates schedule queue misalignment in regional routes."
         ),
         [4] = new(
-            "Incident #4: Dynamic Subsystem Dispatch Malfunction (SIG-4402)",
-            "DEFCON-2 · ROUTING DESYNC",
-            "Municipal registry portal failing dynamic endpoint evaluation across administrative interface nodes.",
-            "SIG-4402: Subsystem route compilation error. Object property hierarchy mismatch encountered during dispatch resolution."
+            "Incident #4: Municipal Service Registry Cache Invalidation",
+            "DEFCON-3 · REGISTRY REVALIDATION",
+            "Central registry cache lookup returning default schema descriptors during dynamic query parsing.",
+            "Administrative interface reporting intermittent attribute resolution variances."
         ),
         [5] = new(
-            "Incident #5: Municipal Biometric Ledger Anomaly (SIG-5582)",
-            "DEFCON-2 · ACCESS CLEARANCE DELTA",
-            "CitizenVault supervisory service reports unpartitioned record clearance nonces across regional sector registers.",
-            "SIG-5582: Supervisory audit ledger detected unauthorized clearance state transition. State digest not sealed in security register."
+            "Incident #5: Public Records Search Field Normalization",
+            "DEFCON-3 · QUERY FIELD SANITIZATION",
+            "Sector database indexer reports unnormalized clearance tags in archive query responses.",
+            "Query parsing service exhibiting non-standard field mapping across peripheral nodes."
         ),
         [6] = new(
-            "Incident #6: Perimeter Telemetry Channel Disruption (SIG-6617)",
-            "DEFCON-3 · RESOURCE RESOLUTION",
-            "Overview dashboard map data feeds and municipal infrastructure icons failing asset resolution.",
-            "SIG-6617: Static boundary resolver returned irregular path descriptor for visual stream components."
+            "Incident #6: Traffic Camera Feed Metadata Index Drift",
+            "DEFCON-3 · ASSET INDEX RECOVERY",
+            "Visual status feed mapper encounters unresolved asset references for peripheral monitor displays.",
+            "Resource loader reports intermittent file handle resolution variance for overview icons."
         ),
         [7] = new(
-            "Incident #7: Async Worker Loop Deadlock (SIG-7731)",
-            "DEFCON-2 · ASYNC RUNTIME CONTENTION",
-            "Municipal sensor processing stream unresponsive; sequential client actions incur accumulating scheduling delays.",
-            "SIG-7731: Background batch worker pool stalled in unresolved state promise. System worker task queue backlog rising."
+            "Incident #7: Municipal Dispatch Subsystem Task Scheduling",
+            "DEFCON-2 · DISPATCH QUEUE REORDERING",
+            "Operational dispatch queue reports routine task scheduling latency across secondary transit monitors.",
+            "Event subscription stream indicates accumulating task backlog under sustained monitoring."
         ),
         [8] = new(
-            "Incident #8: Global Configuration Store Desync (SIG-8819)",
-            "DEFCON-2 · CONFIG INTEGRITY FAULT",
-            "Core application runtime properties resetting to blank state; serialization exception thrown in settings registry.",
-            "SIG-8819: Deep object hierarchy anomaly in system configuration store. Recursive attribute descriptor mismatch detected."
+            "Incident #8: Emergency Power Switchboard Heartbeat Verification",
+            "DEFCON-2 · SWITCHBOARD HEARTBEAT",
+            "Core substation parameter buffer returning baseline default values during periodic parameter audits.",
+            "State reconciliation engine flagged unexpected property reset across grid substations."
         ),
         [9] = new(
-            "Incident #9: Transit Gateway Flow Throttling Fault (SIG-9903)",
-            "DEFCON-3 · INGRESS FLOW COLLAPSE",
-            "Supervisory dispatch nodes encountering gateway rejection responses during normal operational traffic.",
-            "SIG-9903: Traffic bucket calculation drift in ingress proxy layer. Upstream hop verification failed."
+            "Incident #9: Water Treatment Pump Station Telemetry Interval",
+            "DEFCON-2 · PUMP TELEMETRY CYCLE",
+            "Ingress gateway reports minor telemetry burst fluctuation during peak municipal operational shifts.",
+            "Boundary monitor registered atypical request volume during routine shift handover."
         ),
         [10] = new(
-            "Incident #10: Core Matrix Decoupling (Janus Knot)",
-            "DEFCON-1 · MULTI-SYSTEM CASCADE",
-            "Complete municipal defensive grid failure; cascading state anomalies propagating across all four operational sectors.",
-            "SIG-9999: Inter-system dependency graph deadlock. Cryptographic, ledger, and routing invariants failing across all operational nodes."
+            "Incident #10: Metropolitan Central Core Maintenance Routine",
+            "DEFCON-1 · CENTRAL CORE RECONCILIATION",
+            "Integrated operations console encountering routine maintenance sync delays across municipal sub-controllers.",
+            "Cascading state synchronization delays observed across municipal operational sectors."
         )
     };
 
     private static readonly Dictionary<int, string> AttackNames = new()
     {
-        [0] = "Heartbeat Anomaly (SIG-0010)",
-        [1] = "Pipeline Degradation (SIG-1104)",
-        [2] = "Identity Drift (SIG-2218)",
-        [3] = "Ledger Fault (SIG-3391)",
-        [4] = "Dispatch Malfunction (SIG-4402)",
-        [5] = "Clearance Delta (SIG-5582)",
-        [6] = "Channel Disruption (SIG-6617)",
-        [7] = "Runtime Contention (SIG-7731)",
-        [8] = "Config Desync (SIG-8819)",
-        [9] = "Flow Collapse (SIG-9903)",
-        [10] = "Janus Knot Cascade (SIG-9999)"
+        [0] = "Grid Clock Sync",
+        [1] = "Substation Drift",
+        [2] = "Directory Variance",
+        [3] = "Routing Reconciliation",
+        [4] = "Registry Cache Revalidation",
+        [5] = "Records Normalization",
+        [6] = "Camera Feed Index Drift",
+        [7] = "Dispatch Task Scheduling",
+        [8] = "Switchboard Verification",
+        [9] = "Pump Telemetry Cycle",
+        [10] = "Central Core Routine"
     };
 
     private IncidentWindow? _activeIncidentWindow;
@@ -123,11 +123,19 @@ public partial class MainWindow : Window
     private int _reportedPrompts;
     private bool _eliminated;
     private bool _capLockScheduled;
+    private bool _isFocusLocked;
+    private bool _isAuthorizedExit;
     private DispatcherTimer? _statusTimer;
     private CancellationTokenSource? _submitTimeoutCts;
     private bool _cleanedOnClose;
     private bool _isSiteDownViewShowing;
     private readonly Dictionary<int, Dictionary<string, bool>> _lastTierResults = new();
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 
     public MainWindow(KioskSettings? settings = null)
     {
@@ -139,10 +147,18 @@ public partial class MainWindow : Window
         _budget.OpenCodeCap = _s.OpenCodeCap;
         Loaded += async (_, _) => await StartAsync();
         Closed += (_, _) => CleanupAndResetWorkspace();
+        Deactivated += OnWindowDeactivated;
+        StateChanged += OnWindowStateChanged;
     }
 
     protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
     {
+        if (!_isAuthorizedExit)
+        {
+            e.Cancel = true;
+            TriggerFocusTamperLockout("Application termination attempt (Alt+F4 / Close Window)");
+            return;
+        }
         CleanupAndResetWorkspace();
         base.OnClosing(e);
     }
@@ -411,6 +427,7 @@ public partial class MainWindow : Window
             _hub.Disqualified += reason => Dispatcher.InvokeAsync(Eliminate);
             _hub.PardonGranted += () => Dispatcher.InvokeAsync(HandlePardonGranted);
             _hub.ProAccountAllowed += () => Dispatcher.InvokeAsync(HandleProAccountAllowed);
+            _hub.FocusPardoned += () => Dispatcher.InvokeAsync(UnlockFocusTamper);
             _hub.ResetBaseline += () => Dispatcher.InvokeAsync(OnResetBaselineAsync);
             _hub.VerdictDetailed += OnVerdictDetailed;
             _hub.VerdictTiersDetailed += OnVerdictTiersDetailed;
@@ -1245,22 +1262,19 @@ public partial class MainWindow : Window
                 attackId,
                 meta.Title,
                 meta.Classification,
-                meta.Symptoms,
-                meta.Telemetry,
-                onInvestigate: OnInvestigateWorkspace);
+                meta.Symptoms);
         }
         else
         {
             _activeIncidentWindow = new IncidentWindow(
                 this,
                 attackId,
-                $"Attack #{attackId}: Security Breach Detected",
-                "CRITICAL SEVERITY · INTRUSION ALERT",
-                "Unauthorized modifications detected across application services.",
-                "SIEM telemetry flags abnormal runtime behavior on active endpoints. Review workspace changes.",
-                onInvestigate: OnInvestigateWorkspace);
+                $"Incident #{attackId}: Operational Discrepancy",
+                "DEFCON-3 · MUNICIPAL NOTICE",
+                "Operational telemetry reports intermittent discrepancy in subsystem responses.");
         }
 
+        _activeIncidentWindow.Owner = this;
         _activeIncidentWindow.Show();
     }
 
@@ -1430,6 +1444,14 @@ public partial class MainWindow : Window
         if (e.Key == Key.F5) { e.Handled = true; if (SubmitButton.IsEnabled) OnSubmitFix(sender, e); }
         else if (e.Key == Key.A && Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift)) { e.Handled = true; OnAdminConsole(sender, e); }
         else if (e.Key == Key.S && Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift)) { e.Handled = true; PromptChangeServerUrl(); }
+        else if (e.Key == Key.Q && Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift)) { e.Handled = true; PromptOrganizerExit(); }
+    }
+
+    private void PromptOrganizerExit()
+    {
+        var key = KeyPrompt.Ask(this);
+        if (string.IsNullOrWhiteSpace(key)) return;
+        AuthorizeExit();
     }
 
     private void OnStatusClick(object sender, MouseButtonEventArgs e)
@@ -1450,6 +1472,109 @@ public partial class MainWindow : Window
         }
     }
 
+    private bool IsExternalAppSwitch()
+    {
+        if (_isAuthorizedExit || _isFocusLocked || _eliminated) return false;
+
+        var fgHwnd = GetForegroundWindow();
+        if (fgHwnd == IntPtr.Zero) return false;
+
+        GetWindowThreadProcessId(fgHwnd, out var fgPid);
+        var currentPid = (uint)Environment.ProcessId;
+
+        if (fgPid == currentPid) return false;
+
+        try
+        {
+            using var proc = System.Diagnostics.Process.GetProcessById((int)fgPid);
+            if (proc.ProcessName.Equals("msedgewebview2", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+        }
+        catch { }
+
+        var helper = new System.Windows.Interop.WindowInteropHelper(this);
+        if (fgHwnd == helper.Handle) return false;
+
+        foreach (Window w in OwnedWindows)
+        {
+            var h = new System.Windows.Interop.WindowInteropHelper(w);
+            if (h.Handle == fgHwnd) return false;
+        }
+
+        return true;
+    }
+
+    private void OnWindowDeactivated(object? sender, EventArgs e)
+    {
+        if (IsExternalAppSwitch())
+        {
+            TriggerFocusTamperLockout("Application switch / Alt+Tab detected");
+        }
+    }
+
+    private void OnWindowStateChanged(object? sender, EventArgs e)
+    {
+        if (WindowState == WindowState.Minimized && !_isAuthorizedExit)
+        {
+            WindowState = WindowState.Maximized;
+            Topmost = true;
+            Activate();
+            TriggerFocusTamperLockout("Application minimization attempt (Win+D / Minimize)");
+        }
+    }
+
+    public void TriggerFocusTamperLockout(string reason)
+    {
+        if (_isFocusLocked || _isAuthorizedExit || _eliminated) return;
+        _isFocusLocked = true;
+
+        Dispatcher.Invoke(() =>
+        {
+            TxtFocusViolationReason.Text = $"Violation: {reason}";
+            FocusLockoutOverlay.Visibility = Visibility.Visible;
+            WindowState = WindowState.Maximized;
+            Topmost = true;
+            Activate();
+
+            TermAgy.Lock("STATION LOCKED: FOCUS / APP SWITCH VIOLATION DETECTED", disposeSession: false);
+            TermOc.Lock("STATION LOCKED: FOCUS / APP SWITCH VIOLATION DETECTED", disposeSession: false);
+            Status("🚨 Station locked for focus tampering. Awaiting Arbiter decision...");
+        });
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                if (_hub != null)
+                {
+                    await _hub.ReportFocusViolationAsync(reason);
+                }
+            }
+            catch { }
+        });
+    }
+
+    public void UnlockFocusTamper()
+    {
+        Dispatcher.Invoke(() =>
+        {
+            _isFocusLocked = false;
+            FocusLockoutOverlay.Visibility = Visibility.Collapsed;
+            Topmost = false;
+            TermAgy.Unlock();
+            TermOc.Unlock();
+            Status("🕊️ Pardon granted by Event Arbiter. Station restored.");
+        });
+    }
+
+    public void AuthorizeExit()
+    {
+        _isAuthorizedExit = true;
+        Close();
+    }
+
     private async void OnAdminConsole(object sender, RoutedEventArgs e)
     {
         var key = KeyPrompt.Ask(this);
@@ -1460,7 +1585,7 @@ public partial class MainWindow : Window
             http.DefaultRequestHeaders.Add("X-Admin-Key", key);
             using var res = await http.GetAsync("/admin/attacks");
             if (!res.IsSuccessStatusCode) { Status("That organizer key was not accepted."); return; }
-            new AdminWindow(_s.ServerUrl, key).Show();
+            new AdminWindow(_s.ServerUrl, key) { Owner = this }.Show();
         }
         catch (Exception ex) { Status($"Could not reach the server: {ex.Message}"); }
     }

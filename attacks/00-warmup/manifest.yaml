@@ -1,6 +1,6 @@
 id: 0
-name: "Warm-up"
-title: "Warm-up"
+name: "Routine Grid Clock Sync"
+title: "Municipal Grid Clock Synchronization"
 codename: "HELLO_WORLD"
 band: 1
 sequence_slot: onboarding
@@ -43,6 +43,6 @@ tests:
     - { id: tier9_benchmark_sla, weight: 10 }
     - { id: tier10_clean_architecture, weight: 10 }
 narrative:
-  landed: "Telemetry corruption: The AEGIS command masthead title contains an anomalous string and lacks Content-Security-Policy containment. Restore operational status."
-  broadcast_title: "ATTACK 0: WARM-UP"
+  landed: "Central municipal clock telemetry indicates scheduled environmental synchronization variance across municipal dashboard displays. Restore operational status."
+  broadcast_title: "INCIDENT #0: MUNICIPAL GRID CLOCK SYNCHRONIZATION"
 status: ready

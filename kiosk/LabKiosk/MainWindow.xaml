@@ -572,6 +572,47 @@
 
         </Grid>
 
+        <!-- Full-Screen Participant Focus Tamper Lockout Overlay -->
+        <Grid x:Name="FocusLockoutOverlay" Grid.Row="0" Grid.RowSpan="2"
+              Panel.ZIndex="9999" Visibility="Collapsed" Background="#F0070E13">
+            <Border Width="680" Background="#0C171F" BorderBrush="#E5533D" BorderThickness="2" CornerRadius="8"
+                    Padding="32" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Border.Effect>
+                    <DropShadowEffect Color="#E5533D" BlurRadius="50" ShadowDepth="0" Opacity="0.9"/>
+                </Border.Effect>
+                <StackPanel>
+                    <DockPanel Margin="0,0,0,18">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="🚨 " FontSize="22" VerticalAlignment="Center"/>
+                            <TextBlock Text="DEFCON-1 COMPLIANCE LOCKOUT: FOCUS VIOLATION" Foreground="#E5533D" FontWeight="Bold" FontSize="17" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </DockPanel>
+
+                    <Border Background="#1C1414" BorderBrush="#8A2626" BorderThickness="1" CornerRadius="6" Padding="18" Margin="0,0,0,20">
+                        <StackPanel>
+                            <TextBlock Text="STATION COMPROMISE: APPLICATION SWITCH OR WINDOW DEACTIVATION DETECTED"
+                                       Foreground="#FF8577" FontWeight="Bold" FontSize="13" Margin="0,0,0,10"/>
+                            <TextBlock Text="In accordance with Breach Protocol competition regulations, switching windows, alt-tabbing, and background application usage are strictly prohibited. Your station has been frozen and terminals locked."
+                                       Foreground="#E6EEF2" FontSize="12" TextWrapping="Wrap" LineHeight="18" Margin="0,0,0,12"/>
+                            <TextBlock x:Name="TxtFocusViolationReason" Text="Violation: App switch / Window focus loss"
+                                       Foreground="#E0B341" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,10"/>
+                            <Border Background="#0E1922" BorderBrush="#1F3647" BorderThickness="1" CornerRadius="4" Padding="12,10">
+                                <TextBlock Text="The Competition Arbiter has received an automated alert. Awaiting Arbiter decision (Pardon or Disqualification). Your station will unlock automatically once authorized."
+                                           Foreground="#8AA0AC" FontSize="11" TextWrapping="Wrap" LineHeight="16"/>
+                            </Border>
+                        </StackPanel>
+                    </Border>
+
+                    <DockPanel LastChildFill="False">
+                        <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
+                            <TextBlock Text="● ARBITER LINK: " Foreground="#8AA0AC" FontSize="11" FontWeight="Bold"/>
+                            <TextBlock x:Name="TxtFocusArbiterStatus" Text="ACTIVE · AWAITING DECISION" Foreground="#E0B341" FontSize="11" FontWeight="Bold"/>
+                        </StackPanel>
+                    </DockPanel>
+                </StackPanel>
+            </Border>
+        </Grid>
+
     </Grid>
 
 </Window>

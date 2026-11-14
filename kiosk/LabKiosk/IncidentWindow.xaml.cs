@@ -5,8 +5,6 @@ namespace LabKiosk;
 
 public partial class IncidentWindow : Window
 {
-    private readonly Action? _onInvestigate;
-
     public int AttackId { get; }
 
     public IncidentWindow(
@@ -15,13 +13,12 @@ public partial class IncidentWindow : Window
         string title,
         string classification,
         string symptoms,
-        string telemetry,
+        string telemetry = "",
         Action? onInvestigate = null)
     {
         InitializeComponent();
 
         AttackId = attackId;
-        _onInvestigate = onInvestigate;
 
         Owner = owner;
         if (owner is not null)
@@ -35,18 +32,11 @@ public partial class IncidentWindow : Window
         TxtTitle.Text = title;
         TxtClassification.Text = classification;
         TxtSymptoms.Text = symptoms;
-        TxtTelemetry.Text = telemetry;
     }
 
     private void OnDismissClick(object sender, RoutedEventArgs e)
     {
         Close();
-    }
-
-    private void OnInvestigateClick(object sender, RoutedEventArgs e)
-    {
-        Close();
-        _onInvestigate?.Invoke();
     }
 
     private void OnBackdropMouseDown(object sender, MouseButtonEventArgs e)

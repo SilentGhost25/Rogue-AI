@@ -427,9 +427,10 @@ public partial class Database
         }
 
         var now = DateTime.UtcNow.ToString("O");
+        var effectiveMax = Math.Max(maxPerColumn, (participants.Count + columnCount - 1) / columnCount);
         for (int i = 0; i < participants.Count; i++)
         {
-            if (i >= columnCount * maxPerColumn) break;
+            if (i >= columnCount * effectiveMax) break;
             var col = i % columnCount;
             using var ins = c.CreateCommand();
             ins.CommandText = "INSERT INTO cohort_assignments (participant_id, column_index, assigned_at) VALUES ($p, $col, $t)";

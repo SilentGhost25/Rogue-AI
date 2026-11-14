@@ -1,6 +1,6 @@
 id: 8
-name: "Poison Proto"
-title: "CSRF Token Nonce Encryption Expiry"
+name: "Switchboard Verification"
+title: "Emergency Power Switchboard Heartbeat Verification"
 codename: "POISON_PROTO"
 band: 3
 sequence_slot: 8
@@ -49,6 +49,6 @@ benchmark_sla:
   probe_count: 20
   floor: 0.60
 narrative:
-  landed: "Unsanitized configuration merge allows remote callers to inject global properties onto Object.prototype, altering application authorization semantics."
-  broadcast_title: "INCIDENT #08: CSRF TOKEN NONCE ENCRYPTION EXPIRY"
+  landed: "Core substation control configuration store returning baseline default values during periodic parameter audits."
+  broadcast_title: "INCIDENT #08: EMERGENCY POWER SWITCHBOARD HEARTBEAT VERIFICATION"
 status: ready
