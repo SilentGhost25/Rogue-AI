@@ -9,6 +9,8 @@ public sealed class HubClient : IAsyncDisposable
     private readonly string _participantId;
     private readonly string _token;
 
+    public bool IsConnected => _conn.State == HubConnectionState.Connected;
+
     public event Func<int, int, Task>? Imminent;
     public event Func<int, Task>? Landed;
     public event Func<int, Task>? Reset;

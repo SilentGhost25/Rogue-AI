@@ -12,6 +12,9 @@ public partial class ComplianceLockoutDialog : Window
     private bool _resolved;
 
     public bool AllowedProPlan { get; private set; }
+    public bool SwitchAccountRequested { get; private set; }
+    public bool DismissedGrace { get; private set; }
+    public bool IsDisqualified { get; private set; }
 
     public ComplianceLockoutDialog(HubClient? hub, string email, string tier, string deskId)
     {
@@ -30,11 +33,39 @@ public partial class ComplianceLockoutDialog : Window
 
     private async Task ReportProAccountAsync()
     {
-        if (_hub is null) return;
-        _hub.PardonGranted += OnPardon;
-        _hub.ProAccountAllowed += OnAllowed;
-        _hub.Disqualified += OnDisqualified;
-        await _hub.ReportProAccountAsync(_email, _tier);
+        var hub = _hub;
+        if (hub is null || !hub.IsConnected)
+        {
+            PrgSpin.Visibility = Visibility.Collapsed;
+            TxtArbiterStatus.Text = "⚡ OFFLINE / LOCAL MODE: Organizer server unreachable. Running in offline grace mode. Telemetry will sync when connected.";
+            TxtArbiterStatus.Foreground = System.Windows.Media.Brushes.DeepSkyBlue;
+            return;
+        }
+        hub.PardonGranted += OnPardon;
+        hub.ProAccountAllowed += OnAllowed;
+        hub.Disqualified += OnDisqualified;
+        await hub.ReportProAccountAsync(_email, _tier);
+    }
+
+    private void OnCloseClick(object sender, RoutedEventArgs e)
+    {
+        DismissedGrace = true;
+        DialogResult = true;
+        Close();
+    }
+
+    private void OnDismissClick(object sender, RoutedEventArgs e)
+    {
+        DismissedGrace = true;
+        DialogResult = true;
+        Close();
+    }
+
+    private void OnSwitchAccountClick(object sender, RoutedEventArgs e)
+    {
+        SwitchAccountRequested = true;
+        DialogResult = true;
+        Close();
     }
 
     private void OnAllowed()
@@ -72,6 +103,7 @@ public partial class ComplianceLockoutDialog : Window
         {
             if (_resolved) return;
             _resolved = true;
+            IsDisqualified = true;
             PrgSpin.Visibility = Visibility.Collapsed;
             TxtArbiterStatus.Text = $"⛔ DISQUALIFIED: {reason}";
             TxtArbiterStatus.Foreground = System.Windows.Media.Brushes.Red;

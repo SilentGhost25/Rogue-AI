@@ -128,11 +128,15 @@ public sealed class HostSupervisor : IDisposable
             {
                 foreach (var p in Process.GetProcessesByName("ControlPlane"))
                 {
-                    if (p.Id != Environment.ProcessId)
+                    try
                     {
-                        p.Kill(entireProcessTree: true);
-                        p.WaitForExit(500);
+                        if (p.Id != Environment.ProcessId)
+                        {
+                            p.Kill(entireProcessTree: true);
+                            p.WaitForExit(500);
+                        }
                     }
+                    catch { }
                 }
             }
             catch { }
@@ -162,7 +166,7 @@ public sealed class HostSupervisor : IDisposable
 
             var psi = File.Exists(exe) ? Hidden(exe, "--urls http://0.0.0.0:5080", workDir)
                     : File.Exists(dll) ? Hidden("dotnet", $"\"{dll}\" --urls http://0.0.0.0:5080", workDir)
-                    : throw new FileNotFoundException("The control plane was not found (expected server\\ControlPlane.exe).");
+                    : throw new FileNotFoundException($"The Control Plane binary was not found (expected '{exe}'). If running from an installed setup, please reinstall with 'Full Suite' (Organizer Host Mode) enabled.");
 
             var localDotnet = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "dotnet");
             if (Directory.Exists(localDotnet))

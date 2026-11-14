@@ -11,6 +11,7 @@ public partial class AdminWindow : Window
     private readonly string _serverUrl, _adminKey, _path;
     private readonly bool _fullscreen;
     private readonly HostSupervisor? _supervisor;
+    private bool _started;
 
     public AdminWindow(string serverUrl, string adminKey, string path = "/admin", bool fullscreen = false, HostSupervisor? supervisor = null)
     {
@@ -25,7 +26,17 @@ public partial class AdminWindow : Window
     {
         try
         {
-            if (_supervisor is not null) await _supervisor.StartAsync(t => Dispatcher.InvokeAsync(() => StatusText.Text = t));
+            if (_supervisor is not null)
+            {
+                await _supervisor.StartAsync(t =>
+                {
+                    Dispatcher.Invoke(() =>
+                    {
+                        if (!_started) StatusText.Text = t;
+                    });
+                });
+            }
+            _started = true;
             await Web.EnsureCoreWebView2Async(await WebViewEnv.GetAsync());
             await Web.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync($"window.__ADMIN_KEY = {JsonSerializer.Serialize(_adminKey)};");
             Web.CoreWebView2.NavigationCompleted += (_, e) =>
@@ -49,12 +60,29 @@ public partial class AdminWindow : Window
         }
         catch (Exception ex)
         {
-            StatusText.Text = $"Could not start: {ex.Message}";
+            _started = true;
+            StatusText.Text = $"⚠️ Control plane startup failed: {ex.Message}";
             try
             {
                 var logDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BreachKiosk", "logs");
                 Directory.CreateDirectory(logDir);
                 File.AppendAllText(Path.Combine(logDir, "admin_crash.log"), $"[{DateTime.UtcNow:O}] {ex}\n\n");
+            }
+            catch { }
+
+            try
+            {
+                await Web.EnsureCoreWebView2Async(await WebViewEnv.GetAsync());
+                var safeMsg = System.Web.HttpUtility.HtmlEncode(ex.Message);
+                Web.NavigateToString($@"<!DOCTYPE html><html><body style='background:#070d14;color:#e2e8f0;font-family:Segoe UI,sans-serif;padding:40px;display:flex;flex-direction:column;align-items:center;justify-content:center;height:80vh'>
+                    <div style='background:#161f2e;border:1px solid #ef4444;border-radius:8px;padding:32px;max-width:680px;box-shadow:0 10px 30px rgba(0,0,0,0.5)'>
+                        <h2 style='color:#ef4444;margin-top:0'>⚠️ Organizer Host Startup Failed</h2>
+                        <p style='color:#94a3b8;line-height:1.6'>{safeMsg}</p>
+                        <hr style='border:0;border-top:1px solid #334155;margin:20px 0'/>
+                        <p style='font-size:13px;color:#64748b'>If running from an installed package, verify 'Full Suite' (Organizer Host Mode) was selected during setup.</p>
+                        <button onclick='window.location.reload()' style='background:#0284c7;color:white;border:0;padding:10px 20px;border-radius:4px;cursor:pointer;font-weight:bold'>Retry Startup</button>
+                    </div>
+                </body></html>");
             }
             catch { }
         }

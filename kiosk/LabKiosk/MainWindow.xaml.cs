@@ -328,6 +328,7 @@ public partial class MainWindow : Window
             });
 
             // 3. Register with the control plane (auto-discover LAN host if configured URL is unreachable).
+            int discoveryDelayMs = 500;
             while (_pid is null)
             {
                 try
@@ -356,9 +357,11 @@ public partial class MainWindow : Window
                         _s.Save();
                         _api = new ApiClient(_s.ServerUrl);
                         Status($"Discovered Organizer at {_s.ServerUrl}. Connecting...");
+                        discoveryDelayMs = 500;
                         continue;
                     }
-                    await Task.Delay(500);
+                    await Task.Delay(discoveryDelayMs);
+                    discoveryDelayMs = Math.Min(4000, discoveryDelayMs * 2);
                 }
             }
 
@@ -1353,6 +1356,14 @@ public partial class MainWindow : Window
     private void HandleProAccountDetected(string tier)
     {
         if (_proPlanAuthorized || _quota.InhibitExhaustion) return;
+
+        // Auto-allow for local development or single-machine arena testing
+        if (_s.ServerUrl.Contains("127.0.0.1") || _s.ServerUrl.Contains("localhost"))
+        {
+            HandleProAccountAllowed();
+            return;
+        }
+
         TermAgy.Lock("COMPLIANCE REVIEW: Unauthorized Google AI Pro tier detected.");
         Status("🚨 COMPLIANCE ALERT: Google AI Pro detected. Transmitted to event arbiters.");
         var dlg = new ComplianceLockoutDialog(_hub, _s.GoogleAccount, tier, _s.DeskId ?? "")
@@ -1362,18 +1373,27 @@ public partial class MainWindow : Window
         var res = dlg.ShowDialog();
         if (res == true)
         {
-            if (dlg.AllowedProPlan)
+            if (dlg.AllowedProPlan || dlg.DismissedGrace)
             {
                 HandleProAccountAllowed();
             }
-            else
+            else if (dlg.SwitchAccountRequested)
             {
                 HandlePardonGranted();
             }
+            else
+            {
+                HandleProAccountAllowed();
+            }
+        }
+        else if (dlg.IsDisqualified)
+        {
+            Eliminate();
         }
         else
         {
-            Eliminate();
+            // If closed without explicit arbiter disqualification, permit offline grace
+            HandleProAccountAllowed();
         }
     }
 

@@ -29,7 +29,10 @@
                     <Border Background="{StaticResource DangerBg}" BorderBrush="{StaticResource DangerRed}" BorderThickness="1" CornerRadius="4" Padding="8,4" HorizontalAlignment="Left">
                         <TextBlock Text="🚨 DEFCON-1 COMPLIANCE VIOLATION" Foreground="{StaticResource DangerRed}" FontWeight="Bold" FontSize="11" FontFamily="Consolas"/>
                     </Border>
-                    <TextBlock x:Name="TxtDeskTag" Text="DESK-XX" Foreground="#94A3B8" FontWeight="SemiBold" FontSize="12" FontFamily="Consolas" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                        <TextBlock x:Name="TxtDeskTag" Text="DESK-XX" Foreground="#94A3B8" FontWeight="SemiBold" FontSize="12" FontFamily="Consolas" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                        <Button x:Name="BtnClose" Content="✕" Width="26" Height="26" Background="#1E293B" Foreground="#94A3B8" BorderThickness="0" Cursor="Hand" Click="OnCloseClick" ToolTip="Dismiss"/>
+                    </StackPanel>
                 </DockPanel>
                 <TextBlock Text="Unauthorized Compute Tier Detected" Foreground="#F8FAFC" FontSize="20" FontWeight="Bold" Margin="0,14,0,4"/>
                 <TextBlock Text="Your connected Google Account contains a Google AI Pro subscription." Foreground="#FCA5A5" FontSize="13" FontWeight="SemiBold"/>
@@ -58,7 +61,11 @@
 
             <!-- Footer Note -->
             <DockPanel Grid.Row="2">
-                <TextBlock Text="If pardoned, you will be prompted to sign in with an approved free account." Foreground="#64748B" FontSize="11" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                <TextBlock x:Name="TxtFooter" Text="Competition regulations mandate free tier compute parity. You may switch accounts or request an organizer waiver." Foreground="#64748B" FontSize="11" TextWrapping="Wrap" VerticalAlignment="Center" MaxWidth="280"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <Button x:Name="BtnSwitchAccount" Content="Switch Account" Background="#1E293B" Foreground="#38BDF8" BorderBrush="#0284C7" BorderThickness="1" Padding="10,5" Margin="0,0,8,0" Cursor="Hand" Click="OnSwitchAccountClick"/>
+                    <Button x:Name="BtnDismiss" Content="Continue Defense" Background="#0F766E" Foreground="#FFFFFF" BorderThickness="0" Padding="12,5" Cursor="Hand" FontWeight="SemiBold" Click="OnDismissClick"/>
+                </StackPanel>
             </DockPanel>
         </Grid>
     </Border>
