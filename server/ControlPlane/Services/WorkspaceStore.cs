@@ -15,18 +15,40 @@ public sealed class WorkspaceStore
     {
         _root = Path.GetFullPath(config["Breach:WorkspacesPath"] ?? "data/workspaces");
         var configuredTemplate = config["Breach:SiteTemplatePath"];
+        string? foundTemplate = null;
         if (!string.IsNullOrEmpty(configuredTemplate) && Directory.Exists(configuredTemplate))
         {
-            _template = Path.GetFullPath(configuredTemplate);
-        }
-        else if (Directory.Exists("site"))
-        {
-            _template = Path.GetFullPath("site");
+            foundTemplate = configuredTemplate;
         }
         else
         {
-            _template = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "site"));
+            var candidates = new[]
+            {
+                "site",
+                "../site",
+                "../../site",
+                "../../../site",
+                Path.Combine(AppContext.BaseDirectory, "site"),
+                Path.Combine(AppContext.BaseDirectory, "..", "site"),
+                Path.Combine(AppContext.BaseDirectory, "..", "..", "site"),
+                Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "site"),
+                Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "site"),
+                @"C:\BreachWorkspace"
+            };
+            foreach (var cand in candidates)
+            {
+                try
+                {
+                    if (Directory.Exists(cand) && File.Exists(Path.Combine(cand, "package.json")) && File.Exists(Path.Combine(cand, "lib", "html.js")))
+                    {
+                        foundTemplate = cand;
+                        break;
+                    }
+                }
+                catch { }
+            }
         }
+        _template = Path.GetFullPath(foundTemplate ?? "site");
         Directory.CreateDirectory(_root);
     }
 

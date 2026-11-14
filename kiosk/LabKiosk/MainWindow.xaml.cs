@@ -1206,6 +1206,76 @@ public partial class MainWindow : Window
         }
     }
 
+    private static readonly Dictionary<int, List<string>> AttackTouchMap = new()
+    {
+        [0] = new() { "lib/html.js" },
+        [1] = new() { "routes/traffic.js" },
+        [2] = new() { "routes/traffic.js", "lib/cache.js" },
+        [3] = new() { "routes/traffic.js" },
+        [4] = new() { "routes/traffic.js", "routes/power.js" },
+        [5] = new() { "routes/vault.js", "routes/overview.js" },
+        [6] = new() { "routes/report.js" },
+        [7] = new() { "server.js" },
+        [8] = new() { "lib/auth.js" },
+        [9] = new() { "routes/auth.js", "public/app.js" },
+        [10] = new() { "routes/security.js" },
+        [11] = new() { "lib/auth.js", "routes/overview.js" },
+        [12] = new() { "lib/permissions.js", "routes/admin.js" },
+        [13] = new() { "server.js" },
+        [14] = new() { "lib/html.js" },
+        [15] = new() { "app.js" },
+        [16] = new() { "routes/security.js" },
+        [17] = new() { "routes/admin.js", "routes/vault.js" },
+        [18] = new() { "lib/html.js" },
+        [19] = new() { "routes/traffic.js" },
+        [20] = new() { "lib/db.js" },
+        [21] = new() { "server.js" },
+        [22] = new() { "lib/html.js" }
+    };
+
+    private void RestoreAttackFilesFromTemplate(int attackId)
+    {
+        try
+        {
+            var files = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (_attackFiles.TryGetValue(attackId, out var tracked) && tracked is not null)
+            {
+                foreach (var f in tracked) files.Add(f);
+            }
+            if (AttackTouchMap.TryGetValue(attackId, out var mapped) && mapped is not null)
+            {
+                foreach (var f in mapped) files.Add(f);
+            }
+
+            var candidates = new[]
+            {
+                _s.SiteTemplatePath,
+                "site",
+                "../site",
+                "../../site",
+                Path.Combine(AppContext.BaseDirectory, "site"),
+                Path.Combine(AppContext.BaseDirectory, "..", "site"),
+                Path.Combine(AppContext.BaseDirectory, "..", "..", "site"),
+                Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "site"),
+                Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "site")
+            };
+            var tDir = candidates.FirstOrDefault(d => !string.IsNullOrEmpty(d) && Directory.Exists(d) && File.Exists(Path.Combine(d, "package.json")));
+            if (tDir is null) return;
+
+            foreach (var rel in files)
+            {
+                var src = Path.Combine(tDir, rel.Replace('/', Path.DirectorySeparatorChar));
+                var dst = Path.Combine(_s.WorkspacePath, rel.Replace('/', Path.DirectorySeparatorChar));
+                if (File.Exists(src))
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(dst)!);
+                    File.Copy(src, dst, overwrite: true);
+                }
+            }
+        }
+        catch { }
+    }
+
     private async Task OnAttackResetAsync(int attackId)
     {
         if (_sync is null || _pull is null) return;
@@ -1217,15 +1287,28 @@ public partial class MainWindow : Window
             _solvedAttacks.Remove(attackId);
 
             // Pull clean state from server
-            await _pull.PullAsync($"reset-{attackId}");
+            try
+            {
+                await _pull.PullAsync($"reset-{attackId}");
+            }
+            catch (Exception ex)
+            {
+                Status($"Server sync notice on reset: {ex.Message}");
+            }
+
+            // Local fallback: ensure touched files are restored from clean template
+            RestoreAttackFilesFromTemplate(attackId);
 
             var name = AttackNames.TryGetValue(attackId, out var nm) ? nm : $"Attack #{attackId}";
             Status($"↺ Attack #{attackId} ({name}) reset by organizer. Workspace restored.");
 
-            _site?.RequestReload();
+            // Hard restart Node sitehost to guarantee fresh require cache
+            await Task.Run(() => CreateAndStartSiteHost());
+            var healthy = _site is not null && await _site.WaitHealthyAsync(15);
+
             Code.RefreshAll();
 
-            Dispatcher.Invoke(() =>
+            await Dispatcher.InvokeAsync(() =>
             {
                 if (_activeIncidentWindow?.AttackId == attackId)
                 {
@@ -1233,6 +1316,10 @@ public partial class MainWindow : Window
                     _activeIncidentWindow = null;
                 }
                 UpdateAttackBadges();
+                if (_site is null || healthy)
+                    NavigateSiteToRoute("/");
+                else
+                    ShowSiteDownInWebView();
             });
         }
         catch (Exception ex)
@@ -1255,9 +1342,22 @@ public partial class MainWindow : Window
 
             try
             {
-                if (Directory.Exists(_s.SiteTemplatePath))
+                var candidates = new[]
                 {
-                    WorkspaceBackup.CopyCleanTemplate(_s.SiteTemplatePath, _s.WorkspacePath);
+                    _s.SiteTemplatePath,
+                    "site",
+                    "../site",
+                    "../../site",
+                    Path.Combine(AppContext.BaseDirectory, "site"),
+                    Path.Combine(AppContext.BaseDirectory, "..", "site"),
+                    Path.Combine(AppContext.BaseDirectory, "..", "..", "site"),
+                    Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "site"),
+                    Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "site")
+                };
+                var tDir = candidates.FirstOrDefault(d => !string.IsNullOrEmpty(d) && Directory.Exists(d) && File.Exists(Path.Combine(d, "package.json")));
+                if (tDir is not null)
+                {
+                    WorkspaceBackup.CopyCleanTemplate(tDir, _s.WorkspacePath);
                     NormalizeWorkspaceTimestamps(_s.WorkspacePath);
                     RemoveGitMetadata(_s.WorkspacePath);
                 }
@@ -1269,8 +1369,20 @@ public partial class MainWindow : Window
 
             UpdateAttackBadges();
             Status("🛡️ Session reset by organizer. All breaches cleared and workspace restored.");
-            _site?.RequestReload();
             Code.RefreshAll();
+        });
+
+        Task.Run(async () =>
+        {
+            await Task.Run(() => CreateAndStartSiteHost());
+            var healthy = _site is not null && await _site.WaitHealthyAsync(15);
+            await Dispatcher.InvokeAsync(() =>
+            {
+                if (_site is null || healthy)
+                    NavigateSiteToRoute("/");
+                else
+                    ShowSiteDownInWebView();
+            });
         });
     }
 
