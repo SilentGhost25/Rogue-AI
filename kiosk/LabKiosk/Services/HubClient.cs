@@ -112,13 +112,13 @@ public sealed class HubClient : IAsyncDisposable
         catch { }
     }
 
-    public async Task ReportFocusViolationAsync(string reason)
+    public async Task ReportFocusViolationAsync(string reason, string? participantId = null)
     {
         try
         {
             if (_conn.State == HubConnectionState.Connected)
             {
-                await _conn.InvokeAsync("ReportFocusViolation", reason);
+                await _conn.InvokeAsync("ReportFocusViolation", reason, participantId ?? _participantId);
             }
         }
         catch { }

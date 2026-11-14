@@ -362,6 +362,29 @@ function renderArbiterAlerts() {
           </div>
         </div>
       `;
+    } else if (a.type === 'focus_violation') {
+      return `
+        <div class="card" style="background:#3b0707; border:2px solid #ef4444; padding:12px; display:flex; justify-content:space-between; align-items:center; box-shadow:0 0 15px rgba(239,68,68,0.25);">
+          <div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span class="badge danger font-mono bold">${escapeHtml(a.deskId)}</span>
+              <strong style="color:#fca5a5;">🚨 DEFCON-1 FOCUS / APP SWITCH VIOLATION DETECTED</strong>
+              <span style="color:#f87171; font-size:12px;">Participant: ${escapeHtml(a.name || a.participantId)}</span>
+            </div>
+            <div style="font-size:13px; color:#fecaca; margin-top:4px;">
+              Violation: ${escapeHtml(a.reason || 'Application switch / Alt+Tab / Deactivation')} &bull; Station terminals frozen.
+            </div>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button class="btn sm warning" onclick="pardonParticipantFocus('${escapeHtml(a.participantId)}')">
+              🕊️ Pardon Station
+            </button>
+            <button class="btn sm danger" onclick="disqualifyParticipantFocus('${escapeHtml(a.participantId)}')">
+              ⛔ Disqualify
+            </button>
+          </div>
+        </div>
+      `;
     }
     return '';
   }).join('');
@@ -461,6 +484,15 @@ async function refreshComplianceAlerts() {
           reason: a.tier,
           timestamp: a.createdAt
         });
+      } else if (a.type === 'focus') {
+        pendingArbiterAlerts.set(`focus_${a.participantId}`, {
+          type: 'focus_violation',
+          participantId: a.participantId,
+          deskId: a.deskId,
+          name: a.name,
+          reason: a.tier || 'Focus / App switch violation',
+          timestamp: a.createdAt
+        });
       } else {
         pendingArbiterAlerts.set(`pro_${a.participantId}`, {
           type: 'pro_flag',
@@ -535,12 +567,23 @@ function initSignalR() {
 
     hubConn.on('FOCUS_VIOLATION', (participantId, deskId, name, reason, timestamp) => {
       logMessage(`🚨 [FOCUS TAMPER] Station ${deskId} (${name}) flagged for focus violation: ${reason}`);
+      pendingArbiterAlerts.set(`focus_${participantId}`, {
+        type: 'focus_violation',
+        participantId,
+        deskId,
+        name,
+        reason,
+        timestamp
+      });
+      renderArbiterAlerts();
       refreshCohorts();
       refreshKiosks();
     });
 
     hubConn.on('FOCUS_PARDONED', (participantId) => {
       logMessage(`🕊️ [PARDON] Station ${participantId} focus violation pardoned.`);
+      pendingArbiterAlerts.delete(`focus_${participantId}`);
+      renderArbiterAlerts();
       refreshCohorts();
       refreshKiosks();
     });
@@ -601,13 +644,15 @@ async function refreshKiosks() {
         : '<span class="badge success">AGY Active</span>';
 
       const deskTag = escapeHtml(k.deskId || k.kioskId || k.id);
+      const hasFocusTamper = k.focusViolation || pendingArbiterAlerts.has(`focus_${k.id}`);
 
       return `
-        <tr>
+        <tr class="${hasFocusTamper ? 'participant-card-tamper' : ''}">
           <td class="bold font-mono"><code class="tag">${deskTag}</code></td>
           <td class="bold">
             ${escapeHtml(k.name || k.id)}
             ${k.status === 'disqualified' ? ' <span class="badge danger">DISQUALIFIED</span>' : ''}
+            ${hasFocusTamper ? ' <span class="badge danger" style="animation:pulse 1.5s infinite">🚨 FOCUS LOCKED</span>' : ''}
           </td>
           <td class="font-mono text-muted">${escapeHtml(k.ipAddress || '127.0.0.1')}</td>
           <td>${activeHtml}</td>
@@ -618,6 +663,7 @@ async function refreshKiosks() {
             ${gitHtml}
           </td>
           <td class="actions-cell">
+            ${hasFocusTamper ? `<button class="btn sm warning" onclick="pardonParticipantFocus('${escapeHtml(k.id)}')">🕊️ Pardon</button>` : ''}
             <button class="btn sm primary" onclick="promptFireOnKiosk('${escapeHtml(k.id)}', '${escapeHtml(k.name || deskTag)}')">
               ⚡ Fire
             </button>

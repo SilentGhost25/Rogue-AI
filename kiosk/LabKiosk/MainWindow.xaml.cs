@@ -1549,7 +1549,7 @@ public partial class MainWindow : Window
             {
                 if (_hub != null)
                 {
-                    await _hub.ReportFocusViolationAsync(reason);
+                    await _hub.ReportFocusViolationAsync(reason, _pid);
                 }
             }
             catch { }

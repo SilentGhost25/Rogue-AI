@@ -135,9 +135,15 @@ public sealed class BreachHub(IConfiguration config, Database db) : Hub
     }
 
     /// <summary>Participant kiosk flags focus switch, alt-tab, or app change tamper attempt.</summary>
-    public async Task ReportFocusViolation(string reason)
+    public async Task ReportFocusViolation(string reason, string? explicitPid = null)
     {
-        if (Context.Items.TryGetValue("participantId", out var pidObj) && pidObj is string pid)
+        string? pid = explicitPid;
+        if (string.IsNullOrWhiteSpace(pid) && Context.Items.TryGetValue("participantId", out var pidObj) && pidObj is string ctxPid)
+        {
+            pid = ctxPid;
+        }
+
+        if (!string.IsNullOrWhiteSpace(pid))
         {
             var deskId = db.QueryScalar<string>("SELECT desk_id FROM desk_tokens WHERE participant_id = @p", ("@p", pid)) ?? pid;
             var participantName = db.QueryScalar<string>("SELECT name FROM participants WHERE id = @p", ("@p", pid)) ?? pid;
@@ -154,6 +160,8 @@ public sealed class BreachHub(IConfiguration config, Database db) : Hub
             }));
 
             await Clients.Group("admins").SendAsync(HubEvents.FocusViolation, pid, deskId, participantName, reason, timestamp);
+            await Clients.All.SendAsync(HubEvents.FocusViolation, pid, deskId, participantName, reason, timestamp);
+            await Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, pid);
         }
     }
 }

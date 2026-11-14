@@ -1143,6 +1143,18 @@ app.MapGet("/admin/kiosks", (HttpRequest r, Database db) =>
     if (authErr != null) return authErr;
     var list = new List<object>();
     using var c = db.Open();
+
+    var focusViolations = new Dictionary<string, string>();
+    using (var fCmd = c.CreateCommand())
+    {
+        fCmd.CommandText = "SELECT participant_id, email FROM compliance_alerts WHERE alert_type = 'focus' AND status = 'pending'";
+        using var fr = fCmd.ExecuteReader();
+        while (fr.Read())
+        {
+            focusViolations[fr.GetString(0)] = fr.GetString(1);
+        }
+    }
+
     using var cmd = c.CreateCommand();
     cmd.CommandText = """
         SELECT p.id, p.name, p.kiosk_id, COALESCE(NULLIF(p.desk_id, ''), p.kiosk_id) AS desk_id,
@@ -1165,9 +1177,13 @@ app.MapGet("/admin/kiosks", (HttpRequest r, Database db) =>
     using var rd = cmd.ExecuteReader();
     while (rd.Read())
     {
+        var pid = rd.GetString(0);
+        var hasFocusViolation = focusViolations.ContainsKey(pid);
+        var focusReason = hasFocusViolation ? focusViolations[pid] : null;
+
         list.Add(new
         {
-            id = rd.GetString(0),
+            id = pid,
             name = rd.GetString(1),
             kioskId = rd.GetString(2),
             deskId = rd.GetString(3),
@@ -1183,7 +1199,9 @@ app.MapGet("/admin/kiosks", (HttpRequest r, Database db) =>
             openCodePrompts = rd.GetInt32(13),
             activeAttacks = rd.IsDBNull(14) ? "" : rd.GetString(14),
             activeLandedAt = rd.IsDBNull(15) ? null : rd.GetString(15),
-            gitBranch = $"participant/{rd.GetString(0)}"
+            gitBranch = $"participant/{pid}",
+            focusViolation = hasFocusViolation,
+            focusReason = focusReason
         });
     }
     return Results.Ok(list);
@@ -1339,6 +1357,15 @@ app.MapGet("/admin/kiosks/{id}", (string id, HttpRequest r, Database db) =>
     if (authErr != null) return authErr;
     using var c = db.Open();
 
+    string? focusReason = null;
+    using (var fCmd = c.CreateCommand())
+    {
+        fCmd.CommandText = "SELECT email FROM compliance_alerts WHERE participant_id = $p AND alert_type = 'focus' AND status = 'pending' LIMIT 1";
+        fCmd.Parameters.AddWithValue("$p", id);
+        var obj = fCmd.ExecuteScalar();
+        if (obj != null && obj is not DBNull) focusReason = obj.ToString();
+    }
+
     // 1. Participant info
     using var pCmd = c.CreateCommand();
     pCmd.CommandText = "SELECT id, name, kiosk_id, status, created_at FROM participants WHERE id = $p";
@@ -1352,7 +1379,9 @@ app.MapGet("/admin/kiosks/{id}", (string id, HttpRequest r, Database db) =>
         kioskId = pRd.GetString(2),
         status = pRd.GetString(3),
         createdAt = pRd.GetString(4),
-        gitBranch = $"participant/{id}"
+        gitBranch = $"participant/{id}",
+        focusViolation = focusReason != null,
+        focusReason = focusReason
     };
     pRd.Close();
 
@@ -1548,7 +1577,10 @@ app.MapPost("/admin/kiosks/{id}/focus/pardon", async (string id, HttpRequest r, 
     db.ResolveComplianceAlert(id, "focus", "pardoned");
     db.Log("FOCUS_VIOLATION_PARDONED", id, payloadJson: System.Text.Json.JsonSerializer.Serialize(new { participantId = id, timestamp = DateTime.UtcNow.ToString("o") }));
     await hub.Clients.Group($"p:{id}").SendAsync(HubEvents.FocusPardoned, id);
+    await hub.Clients.All.SendAsync(HubEvents.FocusPardoned, id);
+    await hub.Clients.Group("admins").SendAsync(HubEvents.FocusPardoned, id);
     await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, id);
+    await hub.Clients.All.SendAsync(HubEvents.KioskUpdated, id);
     return Results.Ok(new { success = true, participantId = id });
 });
 
@@ -1559,7 +1591,10 @@ app.MapPost("/api/admin/participant/{id}/focus/pardon", async (string id, HttpRe
     db.ResolveComplianceAlert(id, "focus", "pardoned");
     db.Log("FOCUS_VIOLATION_PARDONED", id, payloadJson: System.Text.Json.JsonSerializer.Serialize(new { participantId = id, timestamp = DateTime.UtcNow.ToString("o") }));
     await hub.Clients.Group($"p:{id}").SendAsync(HubEvents.FocusPardoned, id);
+    await hub.Clients.All.SendAsync(HubEvents.FocusPardoned, id);
+    await hub.Clients.Group("admins").SendAsync(HubEvents.FocusPardoned, id);
     await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, id);
+    await hub.Clients.All.SendAsync(HubEvents.KioskUpdated, id);
     return Results.Ok(new { success = true, participantId = id });
 });
 
@@ -1575,8 +1610,10 @@ app.MapPost("/admin/kiosks/{id}/focus/disqualify", async (string id, HttpRequest
     db.ResolveComplianceAlert(id, "focus", "disqualified");
     db.Log("FOCUS_VIOLATION_DISQUALIFIED", id, payloadJson: System.Text.Json.JsonSerializer.Serialize(new { participantId = id, timestamp = DateTime.UtcNow.ToString("o") }));
     await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, id);
+    await hub.Clients.All.SendAsync(HubEvents.KioskUpdated, id);
     await hub.Clients.Group($"p:{id}").SendAsync("ELIMINATED", "Disqualified by competition arbiter for focus violation");
     await hub.Clients.Group($"p:{id}").SendAsync(HubEvents.Disqualified, id, "Disqualified by competition arbiter for focus violation");
+    await hub.Clients.All.SendAsync(HubEvents.Disqualified, id, "Disqualified by competition arbiter for focus violation");
     return Results.Ok(new { success = true, participantId = id });
 });
 
@@ -1592,8 +1629,10 @@ app.MapPost("/api/admin/participant/{id}/focus/disqualify", async (string id, Ht
     db.ResolveComplianceAlert(id, "focus", "disqualified");
     db.Log("FOCUS_VIOLATION_DISQUALIFIED", id, payloadJson: System.Text.Json.JsonSerializer.Serialize(new { participantId = id, timestamp = DateTime.UtcNow.ToString("o") }));
     await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, id);
+    await hub.Clients.All.SendAsync(HubEvents.KioskUpdated, id);
     await hub.Clients.Group($"p:{id}").SendAsync("ELIMINATED", "Disqualified by competition arbiter for focus violation");
     await hub.Clients.Group($"p:{id}").SendAsync(HubEvents.Disqualified, id, "Disqualified by competition arbiter for focus violation");
+    await hub.Clients.All.SendAsync(HubEvents.Disqualified, id, "Disqualified by competition arbiter for focus violation");
     return Results.Ok(new { success = true, participantId = id });
 });
 

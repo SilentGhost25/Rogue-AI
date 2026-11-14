@@ -573,7 +573,7 @@
         </Grid>
 
         <!-- Full-Screen Participant Focus Tamper Lockout Overlay -->
-        <Grid x:Name="FocusLockoutOverlay" Grid.Row="0" Grid.RowSpan="2"
+        <Grid x:Name="FocusLockoutOverlay" Grid.Row="0" Grid.RowSpan="3"
               Panel.ZIndex="9999" Visibility="Collapsed" Background="#F0070E13">
             <Border Width="680" Background="#0C171F" BorderBrush="#E5533D" BorderThickness="2" CornerRadius="8"
                     Padding="32" HorizontalAlignment="Center" VerticalAlignment="Center">

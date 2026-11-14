@@ -348,6 +348,15 @@ async function refreshComplianceAlerts() {
           reason: a.tier,
           timestamp: a.createdAt
         });
+      } else if (a.type === 'focus') {
+        pendingArbiterAlerts.set(`focus_${a.participantId}`, {
+          type: 'focus',
+          pid: a.participantId,
+          deskId: a.deskId,
+          name: a.name,
+          reason: a.tier || 'Focus / App switch violation',
+          timestamp: a.createdAt
+        });
       } else {
         pendingArbiterAlerts.set(`pro_${a.participantId}`, {
           type: 'pro',
@@ -434,12 +443,29 @@ async function refreshKiosks() {
   } else {
     $('kiosksGrid').innerHTML = kiosksCache.map(k => {
       let isDead = k.status === 'disqualified';
+      let hasFocus = pendingArbiterAlerts.has(`focus_${k.id}`) || k.focusViolation === true;
       let hasPro = pendingArbiterAlerts.has(`pro_${k.id}`);
       let hasSwitch = pendingArbiterAlerts.has(`switch_${k.id}`);
-      let complianceBadge = hasPro ? `<span style="background:var(--accent); color:#fff; font-size:10px; font-weight:800; padding:2px 6px; border-radius:3px; margin-left:6px">&#x26A0; PRO TIER</span>`
+
+      if (k.focusViolation && !pendingArbiterAlerts.has(`focus_${k.id}`)) {
+        pendingArbiterAlerts.set(`focus_${k.id}`, {
+          type: 'focus',
+          pid: k.id,
+          deskId: k.deskId || k.id,
+          name: k.name,
+          reason: k.focusReason || 'Focus switch / Alt+Tab detected',
+          timestamp: new Date().toISOString()
+        });
+        renderArbiterAlerts();
+      }
+
+      let complianceBadge = hasFocus ? `<span style="background:var(--accent); color:#fff; font-size:10px; font-weight:800; padding:2px 6px; border-radius:3px; margin-left:6px; animation:pulse 1.5s infinite">&#x26D4; FOCUS LOCKED</span>`
+                          : hasPro ? `<span style="background:var(--accent); color:#fff; font-size:10px; font-weight:800; padding:2px 6px; border-radius:3px; margin-left:6px">&#x26A0; PRO TIER</span>`
                           : hasSwitch ? `<span style="background:var(--warn); color:#000; font-size:10px; font-weight:800; padding:2px 6px; border-radius:3px; margin-left:6px">&#x21BB; SWITCH REQ</span>` : '';
-      let cardClass = isDead ? 'kiosk-card dead' : (hasPro ? 'kiosk-card dead' : (k.agyExhausted ? 'kiosk-card warn-quota' : 'kiosk-card'));
+      let cardClass = isDead ? 'kiosk-card dead' : (hasFocus || hasPro ? 'kiosk-card dead' : (k.agyExhausted ? 'kiosk-card warn-quota' : 'kiosk-card'));
       let activeBadge = k.activeAttacks ? `<span style="background:var(--accent); color:#fff; font-size:10px; font-weight:800; padding:2px 6px; border-radius:3px; margin-left:6px">&#x26A1; #${k.activeAttacks} ACTIVE</span>` : '';
+      let statusColor = isDead || hasFocus ? 'var(--accent)' : 'var(--ok)';
+      let statusText = hasFocus ? 'FOCUS LOCKED' : (isDead ? 'DISQUALIFIED' : k.status.toUpperCase());
       return `
         <div class="${cardClass}" onclick="openModal('${k.id}')">
           <div class="kc-head">
@@ -450,7 +476,7 @@ async function refreshKiosks() {
           <div class="kc-score">${k.totalScore.toFixed(1)} pts</div>
           <div class="kc-footer">
             <span>${k.agyExhausted ? 'OC mode' : 'agy'} &bull; ${k.ipAddress}</span>
-            <span style="font-weight:700; color:${isDead ? 'var(--accent)' : 'var(--ok)'}">${k.status.toUpperCase()}</span>
+            <span style="font-weight:700; color:${statusColor}">${statusText}</span>
           </div>
         </div>
       `;
@@ -527,7 +553,13 @@ async function openModal(id) {
                <span style="color:var(--accent); font-weight:800; border:1px solid var(--accent); padding:4px 8px; border-radius:4px">DISQUALIFIED</span>
                <button class="btn-ok" onclick="reinstateParticipant('${p.id}')">Reinstate</button>
              </div>`
-          : `<button class="btn-danger" onclick="disqualifyParticipant('${p.id}')">Disqualify</button>`}
+          : (pendingArbiterAlerts.has(`focus_${p.id}`) || p.focusViolation
+             ? `<div style="display:flex; gap:8px; align-items:center">
+                  <span style="color:var(--accent); font-weight:800; border:1px solid var(--accent); padding:4px 8px; border-radius:4px">&#x26D4; FOCUS LOCKED</span>
+                  <button class="btn-ok" style="background:#0d47a1; border-color:#29b6f6; color:#fff;" onclick="pardonFocusLockout('${p.id}', '${p.name}')">&#x1F54A; Pardon Station</button>
+                  <button class="btn-danger" onclick="disqualifyFocusLockout('${p.id}', '${p.name}')">&#x26D4; Disqualify</button>
+                </div>`
+             : `<button class="btn-danger" onclick="disqualifyParticipant('${p.id}')">Disqualify</button>`)}
       </div>
     </div>
 
@@ -616,6 +648,25 @@ function renderArbiterAlerts() {
           <div style="display:flex; gap:6px;">
             <button class="btn-ok" onclick="approveAccountSwitch('${escapeHtml(a.pid)}', '${escapeHtml(a.reqId)}')">&#x2713; Approve</button>
             <button class="btn-danger" onclick="denyAccountSwitch('${escapeHtml(a.pid)}', '${escapeHtml(a.reqId)}')">&#x2715; Deny</button>
+          </div>
+        </div>
+      `;
+    } else if (a.type === 'focus') {
+      return `
+        <div style="background:#220e12; border:2px solid var(--accent); border-radius:5px; padding:12px 16px; display:flex; justify-content:space-between; align-items:center; box-shadow:0 0 15px rgba(255,71,87,0.3);">
+          <div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span class="status-pill" style="border-color:var(--accent); background:rgba(255,71,87,0.25); color:var(--accent); font-weight:800; font-size:11px;">${escapeHtml(a.deskId || a.pid)}</span>
+              <strong style="color:var(--accent); font-size:13px;">🚨 DEFCON-1 FOCUS / APP SWITCH VIOLATION DETECTED</strong>
+              <span style="color:#fff; font-size:12px; font-weight:700;">— ${escapeHtml(a.name || a.pid)}</span>
+            </div>
+            <div style="font-size:12px; color:#ffb8b8; margin-top:4px;">
+              <strong>Violation:</strong> ${escapeHtml(a.reason || 'Application switch / Alt+Tab / Deactivation')} &bull; Station terminals frozen.
+            </div>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button class="btn-ok" style="background:#0d47a1; border-color:#29b6f6; color:#fff; font-weight:700; padding:6px 14px; cursor:pointer;" onclick="pardonFocusLockout('${escapeHtml(a.pid)}', '${escapeHtml(a.name)}')">&#x1F54A; Pardon Station</button>
+            <button class="btn-danger" style="background:#b71c1c; border-color:#ff1744; color:#fff; font-weight:700; padding:6px 14px; cursor:pointer;" onclick="disqualifyFocusLockout('${escapeHtml(a.pid)}', '${escapeHtml(a.name)}')">&#x26D4; Disqualify</button>
           </div>
         </div>
       `;
@@ -713,9 +764,78 @@ async function denyAccountSwitch(pid, reqId) {
   }
 }
 
+async function pardonFocusLockout(pid, name) {
+  try {
+    const res = await post(`/admin/kiosks/${encodeURIComponent(pid)}/focus/pardon`);
+    if (!res.ok) throw new Error(res.statusText);
+    pendingArbiterAlerts.delete(`focus_${pid}`);
+    renderArbiterAlerts();
+    refreshKiosks();
+    alert(`🕊️ Pardon granted to ${name || pid}. Station restored.`);
+  } catch (err) {
+    alert(`Failed to pardon station: ${err.message}`);
+  }
+}
+
+async function disqualifyFocusLockout(pid, name) {
+  if (!confirm(`Are you sure you want to DISQUALIFY ${name || pid} for focus tampering? Their session will be permanently eliminated.`)) return;
+  try {
+    const res = await post(`/admin/kiosks/${encodeURIComponent(pid)}/focus/disqualify`);
+    if (!res.ok) throw new Error(res.statusText);
+    pendingArbiterAlerts.delete(`focus_${pid}`);
+    renderArbiterAlerts();
+    refreshKiosks();
+  } catch (err) {
+    alert(`Failed to disqualify participant: ${err.message}`);
+  }
+}
+
+async function refreshComplianceAlerts() {
+  try {
+    const res = await fetch('/admin/compliance/alerts', { headers: getHeaders() });
+    if (!res.ok) return;
+    const alerts = await res.json();
+    if (!Array.isArray(alerts)) return;
+    for (const a of alerts) {
+      if (a.type === 'switch') {
+        pendingArbiterAlerts.set(`switch_${a.participantId}`, {
+          type: 'switch',
+          reqId: a.id.replace('switch_', ''),
+          pid: a.participantId,
+          deskId: a.deskId,
+          name: a.name,
+          email: a.email,
+          reason: a.tier,
+          timestamp: a.createdAt
+        });
+      } else if (a.type === 'focus') {
+        pendingArbiterAlerts.set(`focus_${a.participantId}`, {
+          type: 'focus',
+          pid: a.participantId,
+          deskId: a.deskId,
+          name: a.name,
+          reason: a.email || a.tier || 'Focus switch / Alt+Tab detected',
+          timestamp: a.createdAt
+        });
+      } else {
+        pendingArbiterAlerts.set(`pro_${a.participantId}`, {
+          type: 'pro',
+          pid: a.participantId,
+          deskId: a.deskId,
+          name: a.name,
+          email: a.email,
+          tier: a.tier,
+          timestamp: a.createdAt
+        });
+      }
+    }
+    renderArbiterAlerts();
+  } catch (_) {}
+}
+
 // SignalR Realtime connection
 const hubConn = new signalR.HubConnectionBuilder().withUrl('/hub').withAutomaticReconnect().build();
-hubConn.on('KIOSK_UPDATED', () => { refreshKiosks(); refreshLeaderboard(); });
+hubConn.on('KIOSK_UPDATED', () => { refreshKiosks(); refreshLeaderboard(); refreshComplianceAlerts(); });
 hubConn.on('VERDICT', () => { refreshKiosks(); refreshLeaderboard(); });
 hubConn.on('PAUSED', () => $('btnPause').textContent = '⏸ Paused (Active)');
 hubConn.on('RESUMED', () => $('btnPause').textContent = '⏸ Pause Event');
@@ -728,6 +848,17 @@ hubConn.on('PRO_ACCOUNT_FLAGGED', (pid, deskId, name, email, tier, timestamp) =>
 hubConn.on('ACCOUNT_SWITCH_REQUEST', (reqId, pid, deskId, name, email, reason, timestamp) => {
   playAlertSound();
   pendingArbiterAlerts.set(`switch_${pid}`, { type: 'switch', reqId, pid, deskId, name, email, reason, timestamp });
+  renderArbiterAlerts();
+  refreshKiosks();
+});
+hubConn.on('FOCUS_VIOLATION', (pid, deskId, name, reason, timestamp) => {
+  playAlertSound();
+  pendingArbiterAlerts.set(`focus_${pid}`, { type: 'focus', pid, deskId, name, reason, timestamp });
+  renderArbiterAlerts();
+  refreshKiosks();
+});
+hubConn.on('FOCUS_PARDONED', (pid) => {
+  pendingArbiterAlerts.delete(`focus_${pid}`);
   renderArbiterAlerts();
   refreshKiosks();
 });
@@ -769,12 +900,14 @@ hubConn.start().then(() => {
   refreshKiosks();
   refreshLeaderboard();
   refreshBackupStatus();
+  refreshComplianceAlerts();
 }).catch(e => {
   $('connStatus').textContent = 'Offline';
   refreshAttacks();
+  refreshComplianceAlerts();
 });
 
-setInterval(() => { refreshKiosks(); refreshLeaderboard(); }, 8000);
+setInterval(() => { refreshKiosks(); refreshLeaderboard(); refreshComplianceAlerts(); }, 5000);
 setInterval(refreshBackupStatus, 15000);
 </script>
 </body>
