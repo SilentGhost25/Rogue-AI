@@ -15,8 +15,12 @@
 param(
     [string]$SandboxRoot = "C:\BreachSandboxes",
     [string]$SecretsDir = "C:\BreachSecrets",
-    [string]$ProjectRoot = "C:\Users\Tarun J\Downloads\Rogue AI Round 2 v2"
+    [string]$ProjectRoot = ""
 )
+
+if (-not $ProjectRoot) {
+    $ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+}
 
 $ErrorActionPreference = "Stop"
 

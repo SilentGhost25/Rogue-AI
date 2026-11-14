@@ -44,9 +44,12 @@ try {
     if ($tcp) { $portActive = $true }
 } catch {}
 
+$localDotnet = "$env:LOCALAPPDATA\dotnet\dotnet.exe"
+$dotnetExe = if (Test-Path $localDotnet) { $localDotnet } else { (Get-Command dotnet -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Source) }
+
 if (-not $portActive) {
     Write-Host "Starting ControlPlane with test database on http://127.0.0.1:5080..." -ForegroundColor Gray
-    $cpProcess = Start-Process -FilePath "$env:LOCALAPPDATA\dotnet\dotnet.exe" `
+    $cpProcess = Start-Process -FilePath $dotnetExe `
         -ArgumentList "run --project `"$root\server\ControlPlane`" -c Release --no-build -- --Breach:DatabasePath data/test_breach.db" `
         -WorkingDirectory "$root" `
         -PassThru -NoNewWindow

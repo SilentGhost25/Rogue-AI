@@ -9,6 +9,17 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        DispatcherUnhandledException += (s, args) =>
+        {
+            try
+            {
+                args.Handled = true;
+                System.Diagnostics.Debug.WriteLine($"[LabKiosk Unhandled Exception] {args.Exception}");
+                MessageBox.Show($"Application Notice: {args.Exception.Message}", "LabKiosk Notice", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch { }
+        };
+
         var args = e.Args;
         var isHost = args.Any(a => a.Equals("--host", StringComparison.OrdinalIgnoreCase) ||
                                    a.Equals("--admin", StringComparison.OrdinalIgnoreCase) ||

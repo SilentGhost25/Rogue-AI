@@ -19,6 +19,7 @@ secrets/
 dist/
 vendor/opencode/
 vendor/agy/
+*.exe
 server/ControlPlane/wwwroot/*.exe
 *.log
 .vscode/

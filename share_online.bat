@@ -33,6 +33,17 @@ if not exist "vendor\cloudflared.exe" (
     exit /b 1
 )
 
+echo [!] SECURITY NOTICE:
+echo     Launching this tunnel exposes your local Control Plane to the public internet.
+echo     Do NOT run this during competitive scoring unless authorized.
+echo.
+set /p CONFIRM="Are you sure you want to open a public internet tunnel? (Y/N): "
+if /i not "!CONFIRM!"=="Y" (
+    echo [!] Public tunnel aborted. Keeping Control Plane on private local LAN.
+    pause
+    exit /b 0
+)
+
 echo [*] Launching secure public tunnel for port 5080...
 echo [*] Look for the "https://*.trycloudflare.com" link below:
 echo.

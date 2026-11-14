@@ -49,7 +49,6 @@ if ($env:OneDrive) { $targetDirs += (Join-Path $env:OneDrive "Desktop") }
 if ($env:OneDriveConsumer) { $targetDirs += (Join-Path $env:OneDriveConsumer "Desktop") }
 if ($env:OneDriveCommercial) { $targetDirs += (Join-Path $env:OneDriveCommercial "Desktop") }
 if ($env:USERNAME) { $targetDirs += "C:\Users\$($env:USERNAME)\OneDrive\Desktop" }
-$targetDirs += "C:\Users\dell\OneDrive\Desktop"
 
 # Scan all user profiles under C:\Users
 if (Test-Path "C:\Users") {

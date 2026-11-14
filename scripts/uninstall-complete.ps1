@@ -303,7 +303,6 @@ if ($env:OneDrive) { $allShortcutDirs += (Join-Path $env:OneDrive "Desktop") }
 if ($env:OneDriveConsumer) { $allShortcutDirs += (Join-Path $env:OneDriveConsumer "Desktop") }
 if ($env:OneDriveCommercial) { $allShortcutDirs += (Join-Path $env:OneDriveCommercial "Desktop") }
 if ($env:USERNAME) { $allShortcutDirs += "C:\Users\$($env:USERNAME)\OneDrive\Desktop" }
-$allShortcutDirs += "C:\Users\dell\OneDrive\Desktop"
 
 $uniqueShortcutDirs = $allShortcutDirs | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique
 

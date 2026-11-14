@@ -477,14 +477,20 @@ public partial class MainWindow : Window
             if (status?.Status is "eliminated" or "disqualified") { Eliminate(); return; }
 
             // 5. Live connection to the event server.
-            _hub = new HubClient(_s.ServerUrl, _pid, _s.DeskToken ?? "");
+            _hub = new HubClient(_s.ServerUrl, _pid, _api.Token ?? _s.DeskToken ?? "");
             _hub.Imminent += OnImminentAsync;
             _hub.Landed += HandleAttackAsync;
             _hub.Reset += OnAttackResetAsync;
             _hub.SessionReset += OnSessionReset;
             _hub.Message += Status;
-            _hub.Paused += () => Status("Event paused by the organizers.");
-            _hub.Resumed += () => Status("Event resumed.");
+            _hub.Paused += () => Dispatcher.InvokeAsync(() => {
+                SubmitButton.IsEnabled = false;
+                Status("⏸ EVENT PAUSED — Fix submissions are temporarily held by organizers.");
+            });
+            _hub.Resumed += () => Dispatcher.InvokeAsync(() => {
+                SubmitButton.IsEnabled = !_eliminated && !_isDisqualifiedBySwitch;
+                Status("▶️ EVENT RESUMED — Gameplay and submissions active.");
+            });
             _hub.Eliminated += () => Dispatcher.InvokeAsync(Eliminate);
             _hub.Verdict += OnVerdict;
             _hub.VerdictDetail += OnVerdictDetail;
@@ -1306,11 +1312,17 @@ public partial class MainWindow : Window
 
     private void OnProfileClick(object sender, RoutedEventArgs e)
     {
-        var onboard = new OnboardingWindow(_s);
-        if (onboard.ShowDialog() == true)
+        try
         {
-            BtnProfile.Content = $"👤 {_s.DisplayName}";
-            Status($"Identity updated to {_s.DisplayName}");
+            if (Controls.ProfilePrompt.Show(this, _s))
+            {
+                BtnProfile.Content = $"👤 {_s.DisplayName}";
+                Status($"Participant callsign updated to: {_s.DisplayName}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Status($"Profile notice: {ex.Message}");
         }
     }
 
@@ -1341,14 +1353,24 @@ public partial class MainWindow : Window
 
     private async void OnAdminConsole(object sender, RoutedEventArgs e)
     {
-        var key = KeyPrompt.Ask(this);
-        if (key is null) return;
+        var rawKey = KeyPrompt.Ask(this);
+        if (rawKey is null) return;
+        var key = rawKey.Trim();
+        if (string.IsNullOrWhiteSpace(key)) return;
         try
         {
             using var http = new HttpClient { BaseAddress = new Uri(_s.ServerUrl), Timeout = TimeSpan.FromSeconds(5) };
             http.DefaultRequestHeaders.Add("X-Admin-Key", key);
-            using var res = await http.GetAsync("/admin/attacks");
-            if (!res.IsSuccessStatusCode) { Status("That organizer key was not accepted."); return; }
+            using var res = await http.GetAsync("/api/admin/attacks");
+            if (!res.IsSuccessStatusCode)
+            {
+                using var res2 = await http.GetAsync("/admin/attacks");
+                if (!res2.IsSuccessStatusCode)
+                {
+                    Status("That organizer key was not accepted.");
+                    return;
+                }
+            }
             new AdminWindow(_s.ServerUrl, key).Show();
         }
         catch (Exception ex) { Status($"Could not reach the server: {ex.Message}"); }
@@ -1356,17 +1378,22 @@ public partial class MainWindow : Window
 
     private async void OnUnlockWithAdminKeyClick(object sender, RoutedEventArgs e)
     {
-        var key = KeyPrompt.Ask(this);
-        if (string.IsNullOrWhiteSpace(key)) return;
+        var rawKey = KeyPrompt.Ask(this);
+        if (string.IsNullOrWhiteSpace(rawKey)) return;
+        var key = rawKey.Trim();
         try
         {
             using var http = new HttpClient { BaseAddress = new Uri(_s.ServerUrl), Timeout = TimeSpan.FromSeconds(5) };
             http.DefaultRequestHeaders.Add("X-Admin-Key", key);
-            using var res = await http.GetAsync("/admin/attacks");
+            using var res = await http.GetAsync("/api/admin/attacks");
             if (!res.IsSuccessStatusCode)
             {
-                MessageBox.Show(this, "Invalid Admin Key. Access Denied.", "Unlock Rejected", MessageBoxButton.OK, MessageBoxImage.Error);
-                return;
+                using var res2 = await http.GetAsync("/admin/attacks");
+                if (!res2.IsSuccessStatusCode)
+                {
+                    MessageBox.Show(this, "Invalid Admin Key. Access Denied.", "Unlock Rejected", MessageBoxButton.OK, MessageBoxImage.Error);
+                    return;
+                }
             }
 
             // Valid Admin Key! Unlock the kiosk completely

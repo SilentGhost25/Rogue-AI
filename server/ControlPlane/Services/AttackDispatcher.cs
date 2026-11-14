@@ -57,6 +57,16 @@ public sealed class AttackDispatcher(
                 }
 
                 db.Log("ATTACK_LANDED", pid, attackId);
+
+                using (var conn = db.Open())
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText = "UPDATE attack_dispatch SET state = 'ArenaLanded', updated_at = @now WHERE attack_id = @id";
+                    cmd.Parameters.AddWithValue("@id", attackId);
+                    cmd.Parameters.AddWithValue("@now", DateTime.UtcNow.ToString("O"));
+                    cmd.ExecuteNonQuery();
+                }
+
                 await hub.Clients.Group($"p:{pid}").SendAsync(HubEvents.AttackLanded, attackId, token);
                 await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, pid, token);
             }

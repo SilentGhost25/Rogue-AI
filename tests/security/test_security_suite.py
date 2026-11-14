@@ -129,11 +129,13 @@ def run():
     assert s_eve == 403, f"Expected 403 for stolen token from different laptop, got {s_eve}"
     print("[PASS] Cross-laptop token reuse blocked with 403")
 
-    # 5. REST Hardening on /snapshot, /submit, /telemetry
+    # 5. REST Hardening on /snapshot, /submit, /telemetry, /files, /files/fetch
     for endpoint, method, payload in [
         (f"/api/kiosk/{pid}/snapshot", "POST", {"files": []}),
         (f"/api/kiosk/{pid}/submit", "POST", None),
-        (f"/api/kiosk/{pid}/telemetry", "POST", {"type": "PROMPT", "payload": {}})
+        (f"/api/kiosk/{pid}/telemetry", "POST", {"type": "PROMPT", "payload": {}}),
+        (f"/api/kiosk/{pid}/files", "GET", None),
+        (f"/api/kiosk/{pid}/files/fetch", "POST", {"paths": []})
     ]:
         # Missing token
         s_m, _ = request(endpoint, method=method, data=payload)

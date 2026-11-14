@@ -21,7 +21,7 @@ public sealed class GitMirrorService
         _db = db;
         _remoteUrl = config["Breach:GitMirrorUrl"]
                      ?? Environment.GetEnvironmentVariable("GIT_MIRROR_URL")
-                     ?? "https://github.com/Prince649294u83/Rogue-AI-competition.git";
+                     ?? "";
 
         _gitHubToken = config["Breach:GitHubToken"]
                        ?? Environment.GetEnvironmentVariable("GITHUB_TOKEN")

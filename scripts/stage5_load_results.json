@@ -1,0 +1,28 @@
+{
+  "duration_sec": 3.83,
+  "total_requests": 510,
+  "throughput_rps": 133.2,
+  "stats": {
+    "enroll_success": 50,
+    "enroll_failed": 0,
+    "snapshots_success": 150,
+    "snapshots_failed": 0,
+    "telemetry_success": 150,
+    "telemetry_failed": 0,
+    "submissions_success": 50,
+    "submissions_failed": 0,
+    "admin_success": 110,
+    "admin_failed": 0
+  },
+  "latencies_ms": {
+    "mean": 176.63,
+    "p50": 65.59,
+    "p95": 795.82,
+    "p99": 2331.8
+  },
+  "database": {
+    "update_blocked": true,
+    "delete_blocked": true,
+    "lock_conflicts": 0
+  }
+}

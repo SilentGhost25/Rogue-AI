@@ -18,10 +18,10 @@ public sealed class HubClient : IAsyncDisposable
     public event Action? Paused, Resumed, Eliminated, SessionReset;
     public event Func<Task>? Reconnected;
 
-    public HubClient(string serverUrl, string participantId, string token = "")
+    public HubClient(string serverUrl, string participantId, string? token = null)
     {
         _participantId = participantId;
-        _token = token;
+        _token = token ?? "";
         _conn = new HubConnectionBuilder().WithUrl($"{serverUrl.TrimEnd('/')}/hub").WithAutomaticReconnect().Build();
 
         _conn.On<int, int>("BREACH_IMMINENT", async (id, secs) => { if (Imminent is not null) await Imminent(id, secs); });
