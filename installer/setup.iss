@@ -246,10 +246,14 @@ begin
   // Terminate running processes so [InstallDelete] can cleanly wipe any previous workspace/DB state
   Exec(ExpandConstant('{cmd}'), '/c taskkill /F /IM LabKiosk.exe /IM ControlPlane.exe /IM opencode.exe /IM agy.exe /IM node.exe /IM python.exe /IM uvicorn.exe /T >nul 2>&1', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 
-  // Forcefully reset ACLs and purge any stale or locked attacks/site directories from previous builds
-  Exec(ExpandConstant('{cmd}'), '/c takeown /F "' + ExpandConstant('{app}\attacks') + '" /R /A /D Y >nul 2>&1', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  Exec(ExpandConstant('{cmd}'), '/c icacls "' + ExpandConstant('{app}\attacks') + '" /reset /T /C /Q >nul 2>&1', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  Exec(ExpandConstant('{cmd}'), '/c icacls "' + ExpandConstant('{app}\attacks') + '" /grant *S-1-5-32-544:(OI)(CI)F /grant *S-1-5-32-545:(OI)(CI)RX /T /C /Q >nul 2>&1', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  // Forcefully remove any legacy poison DENY ACEs across the entire {app} directory tree ({app}, {app}\server, {app}\engine, {app}\attacks)
+  Exec(ExpandConstant('{cmd}'), '/c takeown /F "' + ExpandConstant('{app}') + '" /R /A /D Y >nul 2>&1', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Exec(ExpandConstant('{cmd}'), '/c icacls "' + ExpandConstant('{app}') + '" /remove:d "Users" /T /C /Q >nul 2>&1', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Exec(ExpandConstant('{cmd}'), '/c icacls "' + ExpandConstant('{app}') + '" /remove:d "BUILTIN\Users" /T /C /Q >nul 2>&1', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Exec(ExpandConstant('{cmd}'), '/c icacls "' + ExpandConstant('{app}') + '" /reset /T /C /Q >nul 2>&1', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Exec(ExpandConstant('{cmd}'), '/c icacls "' + ExpandConstant('{app}') + '" /grant *S-1-5-32-544:(OI)(CI)F /grant *S-1-5-18:(OI)(CI)F /grant *S-1-5-32-545:(OI)(CI)RX /T /C /Q >nul 2>&1', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+
+  // Specifically clean up attacks folder so no stale or locked files block directory creation
   Exec(ExpandConstant('{cmd}'), '/c rmdir /s /q "' + ExpandConstant('{app}\attacks') + '" >nul 2>&1', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   DelTree(ExpandConstant('{app}\attacks'), True, True, True);
 
