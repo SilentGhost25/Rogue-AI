@@ -22,6 +22,19 @@ function createApp(dbFile) {
   app.get('/api/health', healthHandler);
   app.get('/health', healthHandler);
 
+  // Dynamic active attack / breach status endpoint for command center UI
+  app.get('/api/breach-status', (_req, res) => {
+    const fs = require('node:fs');
+    const p = path.join(__dirname, 'public', 'breach-status.json');
+    if (fs.existsSync(p)) {
+      try {
+        const data = JSON.parse(fs.readFileSync(p, 'utf8'));
+        return res.json(data);
+      } catch {}
+    }
+    res.json({ activeAttacks: [] });
+  });
+
   for (const name of ['overview', 'traffic', 'power', 'vault', 'security', 'auth', 'admin', 'settings']) {
     app.use(require(`./routes/${name}`)(db));
   }

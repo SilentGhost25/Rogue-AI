@@ -389,6 +389,20 @@ public partial class MainWindow : Window
                 var host = new Uri(e.Uri).Host;
                 if (host is not ("127.0.0.1" or "localhost")) e.Cancel = true;
             };
+            Site.CoreWebView2.NavigationCompleted += async (_, e) =>
+            {
+                if (e.IsSuccess)
+                {
+                    try
+                    {
+                        var attacksArr = string.Join(",", _activeAttacks.OrderBy(x => x));
+                        await Site.CoreWebView2.ExecuteScriptAsync(
+                            $"window.__AEGIS_ACTIVE_ATTACKS__ = [{attacksArr}]; if (window.updateAegisBreachState) window.updateAegisBreachState([{attacksArr}]);"
+                        );
+                    }
+                    catch { }
+                }
+            };
             Site.Source = new Uri(_s.SiteUrl);
 
             // 3. Register with the control plane (auto-discover LAN host if configured URL is unreachable).
@@ -486,6 +500,7 @@ public partial class MainWindow : Window
                 Status("Connected. All systems secure. No active attacks.");
 
             UpdateAttackBadges();
+            SyncBreachStatusToWorkspace();
             RefreshMeters();
 
             // 7. Background status polling timer (every 5 seconds) to keep attacks live
@@ -643,6 +658,7 @@ public partial class MainWindow : Window
             _attackFiles[attackId] = patchedPaths;
             _pulled.Add(attackId);
             _activeAttacks.Add(attackId);
+            SyncBreachStatusToWorkspace();
 
             // Anti-AI Leverage: Normalize timestamps and purge any git tracking so CLI cannot detect recent edits
             NormalizeWorkspaceTimestamps(_s.WorkspacePath);
@@ -702,7 +718,11 @@ public partial class MainWindow : Window
                     }
                 }
 
-                if (changed) UpdateAttackBadges();
+                if (changed)
+                {
+                    UpdateAttackBadges();
+                    SyncBreachStatusToWorkspace();
+                }
             });
         }
         catch { /* retry next interval */ }
@@ -861,7 +881,11 @@ public partial class MainWindow : Window
         {
             SubmitButton.IsEnabled = !_eliminated;
             UpdateAttackBadges();
-            if (anySolved) CelebrateSolve();
+            if (anySolved)
+            {
+                SyncBreachStatusToWorkspace();
+                CelebrateSolve();
+            }
             if (anyRejected) ShowSentinelResistance(summary);
             _site?.RequestReload();
         });
@@ -1209,6 +1233,7 @@ public partial class MainWindow : Window
             _activeAttacks.Remove(attackId);
             _pulled.Remove(attackId);
             _solvedAttacks.Remove(attackId);
+            SyncBreachStatusToWorkspace();
 
             // Pull clean state from server
             await _pull.PullAsync($"reset-{attackId}");
@@ -1262,6 +1287,7 @@ public partial class MainWindow : Window
             _activeIncidentWindow = null;
 
             UpdateAttackBadges();
+            SyncBreachStatusToWorkspace();
             Status("🛡️ Session reset by organizer. All breaches cleared and workspace restored.");
             _site?.RequestReload();
             Code.RefreshAll();
@@ -1418,6 +1444,35 @@ public partial class MainWindow : Window
             File.WriteAllText(path, json);
         }
         catch { /* best effort */ }
+    }
+
+    private void SyncBreachStatusToWorkspace()
+    {
+        try
+        {
+            var json = JsonSerializer.Serialize(new { activeAttacks = _activeAttacks.OrderBy(x => x).ToList() });
+            var targetFile = Path.Combine(_s.WorkspacePath, "public", "breach-status.json");
+            var dir = Path.GetDirectoryName(targetFile);
+            if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir))
+            {
+                File.WriteAllText(targetFile, json);
+            }
+            if (Site?.CoreWebView2 is not null)
+            {
+                _ = Dispatcher.InvokeAsync(async () =>
+                {
+                    try
+                    {
+                        var attacksArr = string.Join(",", _activeAttacks.OrderBy(x => x));
+                        await Site.CoreWebView2.ExecuteScriptAsync(
+                            $"window.__AEGIS_ACTIVE_ATTACKS__ = [{attacksArr}]; if (window.updateAegisBreachState) window.updateAegisBreachState([{attacksArr}]);"
+                        );
+                    }
+                    catch { }
+                });
+            }
+        }
+        catch { }
     }
 
     private static void NormalizeWorkspaceTimestamps(string workspacePath)
