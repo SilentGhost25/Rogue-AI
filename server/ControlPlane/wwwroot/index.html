@@ -367,6 +367,14 @@
 
     <!-- Tab 1: Kiosks Grid -->
     <section id="tabKiosks" class="card" style="flex:1">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid var(--line)">
+        <div style="font-size:12px; color:var(--purple-light); font-weight:800; letter-spacing:0.5px">DEFENDER TERMINALS &amp; SCREEN CONTROLS</div>
+        <div style="display:flex; gap:6px">
+          <button id="btnFilterAll" class="btn-purple" style="padding:3px 10px; font-size:11px" onclick="setKioskFilter('all', this)">All (<span id="filterAllCount">0</span>)</button>
+          <button id="btnFilterOnline" style="padding:3px 10px; font-size:11px" onclick="setKioskFilter('online', this)">Online (<span id="filterOnlineCount">0</span>)</button>
+          <button id="btnFilterOffline" style="padding:3px 10px; font-size:11px" onclick="setKioskFilter('offline', this)">Offline / Removed (<span id="filterOfflineCount">0</span>)</button>
+        </div>
+      </div>
       <div class="tiles-grid" id="kiosksGrid">
         <div style="color:var(--mute)">No kiosks connected yet.</div>
       </div>
@@ -717,41 +725,87 @@ async function refreshKiosks() {
     return;
   }
   kiosksCache = await res.json();
-  const activeKiosks = kiosksCache.filter(k => k.isConnected === true || k.status === 'disqualified');
-  $('countKiosks').textContent = `${activeKiosks.length} online (${kiosksCache.length} registered)`;
+  const onlineCount = kiosksCache.filter(k => k.isConnected === true).length;
+  const offlineCount = kiosksCache.filter(k => !k.isConnected).length;
+  
+  $('countKiosks').textContent = `${onlineCount} online (${kiosksCache.length} total)`;
+  if ($('filterAllCount')) $('filterAllCount').textContent = kiosksCache.length;
+  if ($('filterOnlineCount')) $('filterOnlineCount').textContent = onlineCount;
+  if ($('filterOfflineCount')) $('filterOfflineCount').textContent = offlineCount;
 
   // Update target selector dropdown
   const currentTarget = $('targetScope').value;
   let options = '<option value="">&bull; ALL ACTIVE PARTICIPANTS (ARENA-WIDE)</option>';
-  for (const k of activeKiosks) {
-    options += `<option value="${k.id}">${k.name} (${k.id})</option>`;
+  for (const k of kiosksCache) {
+    if (k.isConnected || k.status === 'active') {
+      options += `<option value="${k.id}">${k.name} (${k.id})</option>`;
+    }
   }
   $('targetScope').innerHTML = options;
   $('targetScope').value = currentTarget;
 
-  // Render Grid Tiles
-  if (activeKiosks.length === 0) {
-    $('kiosksGrid').innerHTML = `<div style="color:var(--mute); padding:1rem">No active kiosks connected right now. (${kiosksCache.length} registered in database)</div>`;
-  } else {
-    $('kiosksGrid').innerHTML = activeKiosks.map(k => {
-      let isDead = k.status === 'disqualified';
-      let cardClass = isDead ? 'kiosk-card dead' : (k.agyExhausted ? 'kiosk-card warn-quota' : 'kiosk-card');
-      return `
-        <div class="${cardClass}" onclick="openModal('${k.id}')">
-          <div class="kc-head">
-            <span style="color:var(--purple-light)">${k.id}</span>
-            <span>&#x2705; ${k.solvedCount}/7</span>
-          </div>
-          <div class="kc-name">${k.name}</div>
-          <div class="kc-score">${k.totalScore.toFixed(1)}</div>
-          <div class="kc-footer">
-            <span>${k.agyExhausted ? 'OC mode' : 'agy'}</span>
-            <span style="${k.isConnected ? 'color:var(--ok); font-weight:700' : 'color:var(--mute)'}">${k.isConnected ? '● online' : k.status}</span>
-          </div>
-        </div>
-      `;
-    }).join('');
+  renderKioskGrid();
+}
+
+let currentKioskFilter = 'all';
+
+function setKioskFilter(filter, btn) {
+  currentKioskFilter = filter;
+  document.querySelectorAll('#tabKiosks button[id^=btnFilter]').forEach(b => {
+    b.classList.remove('btn-purple');
+  });
+  if (btn) btn.classList.add('btn-purple');
+  renderKioskGrid();
+}
+
+function renderKioskGrid() {
+  if (!kiosksCache || kiosksCache.length === 0) {
+    $('kiosksGrid').innerHTML = `<div style="color:var(--mute); padding:1rem">No kiosks registered yet.</div>`;
+    return;
   }
+
+  let list = kiosksCache;
+  if (currentKioskFilter === 'online') {
+    list = kiosksCache.filter(k => k.isConnected === true);
+  } else if (currentKioskFilter === 'offline') {
+    list = kiosksCache.filter(k => !k.isConnected);
+  }
+
+  if (list.length === 0) {
+    $('kiosksGrid').innerHTML = `<div style="color:var(--mute); padding:1rem">No kiosks match the filter "${currentKioskFilter}".</div>`;
+    return;
+  }
+
+  $('kiosksGrid').innerHTML = list.map(k => {
+    let isDead = k.status === 'disqualified' || k.status === 'eliminated';
+    let isOff = !k.isConnected;
+    let cardClass = isDead ? 'kiosk-card dead' : (k.agyExhausted ? 'kiosk-card warn-quota' : (isOff ? 'kiosk-card' : 'kiosk-card'));
+    let statusText = k.isConnected ? '● online' : (k.status === 'disqualified' ? '⛔ disqualified' : (k.status === 'offline' ? '○ offline' : (k.status || 'offline')));
+    let statusColor = k.isConnected ? 'color:var(--ok); font-weight:700' : (isDead ? 'color:var(--accent); font-weight:700' : 'color:var(--mute)');
+
+    return `
+      <div class="${cardClass}">
+        <div class="kc-head">
+          <span style="color:var(--purple-light); font-weight:800">${k.id}</span>
+          <span>&#x2705; ${k.solvedCount}/7</span>
+        </div>
+        <div class="kc-name" style="cursor:pointer" onclick="openModal('${k.id}')" title="Click to open full remote control panel">${k.name}</div>
+        <div class="kc-score" style="cursor:pointer" onclick="openModal('${k.id}')">${k.totalScore.toFixed(1)} pts</div>
+        <div class="kc-footer">
+          <span>${k.agyExhausted ? 'OC mode' : 'agy'}</span>
+          <span style="${statusColor}">${statusText}</span>
+        </div>
+        <div style="display:flex; gap:4px; margin-top:8px; border-top:1px solid rgba(255,255,255,0.08); padding-top:6px">
+          <button class="btn-cyan" style="flex:1; padding:3px 6px; font-size:10.5px" onclick="openModal('${k.id}')">🔍 Controls</button>
+          ${k.isConnected
+            ? `<button class="btn-warn" style="padding:3px 6px; font-size:10.5px" title="Restart Node.js server on port 3000" onclick="remoteKioskAction('${k.id}', 'restart-node')">🔄 Node</button>
+               <button style="padding:3px 6px; font-size:10.5px" title="Reload WebView Screen" onclick="remoteKioskAction('${k.id}', 'reload-screen')">🌐</button>`
+            : `<button class="btn-ok" style="padding:3px 8px; font-size:10.5px; font-weight:700" title="Re-admit / Add back to active session" onclick="reinstateParticipant('${k.id}')">🛡️ Add Back</button>`
+          }
+        </div>
+      </div>
+    `;
+  }).join('');
 }
 
 async function refreshLeaderboard() {
@@ -785,8 +839,8 @@ async function refreshEvents() {
 
 async function openModal(id) {
   $('modal').style.display = 'grid';
-  $('mTitle').textContent = `Participant Scorecard: ${id}`;
-  $('mBody').innerHTML = '<div style="padding:1rem; color:var(--mute)">Loading detailed audit trail...</div>';
+  $('mTitle').textContent = `Participant Terminal Control Matrix: ${id}`;
+  $('mBody').innerHTML = '<div style="padding:1rem; color:var(--mute)">Loading detailed controls & audit trail...</div>';
 
   const res = await fetch(`/admin/kiosks/${id}`, { headers: getHeaders() });
   if (!res.ok) {
@@ -819,6 +873,7 @@ async function openModal(id) {
   `).join('') : '<tr><td colspan="5" style="color:var(--mute)">No score ledger transactions.</td></tr>';
 
   $('mBody').innerHTML = `
+    <!-- Participant Identity Header -->
     <div style="display:flex; justify-content:space-between; align-items:center; background:var(--panel-sub); padding:1rem; border-radius:8px; border:1px solid var(--line)">
       <div>
         <div style="font-size:1.15rem; font-weight:800; color:#fff">${p.name} <span style="color:var(--purple-light)">(${p.id})</span></div>
@@ -829,10 +884,24 @@ async function openModal(id) {
         <div style="margin-top:4px; font-size:12px">Git Branch: <code style="color:var(--cyan)">${p.gitBranch}</code></div>
       </div>
       <div style="display:flex; gap:8px">
-        <button class="btn-warn" style="padding:6px 12px; font-size:12px" onclick="removeParticipantSession('${p.id}')">&#x1F50C; Remove Session</button>
-        ${p.status === 'disqualified' || p.status === 'eliminated'
-          ? `<span style="color:var(--accent); font-weight:800; border:1px solid var(--accent); padding:6px 10px; border-radius:6px">DISQUALIFIED</span>`
+        ${p.status === 'disqualified' || p.status === 'eliminated' || p.status === 'offline'
+          ? `<button class="btn-ok" style="padding:6px 14px; font-size:12px; font-weight:700" onclick="reinstateParticipant('${p.id}')">🛡️ Re-admit / Add Back</button>`
           : `<button class="btn-danger" style="padding:6px 12px; font-size:12px" onclick="disqualifyParticipant('${p.id}')">&#x26A0; Disqualify</button>`}
+        <button class="btn-warn" style="padding:6px 12px; font-size:12px" onclick="removeParticipantSession('${p.id}')">&#x1F50C; Remove Session</button>
+      </div>
+    </div>
+
+    <!-- Remote Terminal Live Control Matrix -->
+    <div style="background:var(--panel-sub); padding:1rem; border-radius:8px; border:1px solid var(--line); display:flex; flex-direction:column; gap:8px">
+      <div style="font-size:12px; font-weight:800; color:var(--purple-light); text-transform:uppercase; letter-spacing:0.5px">
+        ⚡ Remote Screen &amp; Kiosk Controls (Real-Time Rectification)
+      </div>
+      <div style="display:flex; flex-wrap:wrap; gap:8px">
+        <button class="btn-warn" style="font-size:12px; padding:6px 12px" onclick="remoteKioskAction('${p.id}', 'restart-node')">🔄 Restart Node Server</button>
+        <button class="btn-cyan" style="font-size:12px; padding:6px 12px; background:rgba(6,182,212,0.15); border-color:var(--cyan); color:var(--cyan)" onclick="remoteKioskAction('${p.id}', 'reload-screen')">🌐 Reload Screen</button>
+        <button class="btn-warn" style="font-size:12px; padding:6px 12px" onclick="remoteKioskAction('${p.id}', 'reset-workspace')">↺ Reset Attacks &amp; Workspace</button>
+        <button class="btn-warn" style="font-size:12px; padding:6px 12px" onclick="remoteKioskAction('${p.id}', 'clear-credentials')">🔑 Clear Google Credentials</button>
+        <button class="btn-ok" style="font-size:12px; padding:6px 12px" onclick="sendDeskMessage('${p.id}')">💬 Send Message to Desk</button>
       </div>
     </div>
 
@@ -860,6 +929,60 @@ async function openModal(id) {
       </div>
     </div>
   `;
+}
+
+async function remoteKioskAction(participantId, command) {
+  const titles = {
+    'restart-node': 'Restart Participant Node Server (port 3000)',
+    'reload-screen': 'Reload Participant WebView Screen',
+    'reset-workspace': 'Reset All Attacks & Restore Clean Baseline',
+    'clear-credentials': 'Clear Antigravity Google OAuth Credentials'
+  };
+  const label = titles[command] || command;
+  if (!confirm(`Execute remote action on ${participantId}?\n\n${label}`)) return;
+  try {
+    const res = await post(`/admin/kiosks/${participantId}/remote/${command}`);
+    if (res.ok) {
+      const data = await res.json();
+      alert(`✔ Success: ${data.message || 'Signal dispatched in real time.'}`);
+      openModal(participantId);
+    } else {
+      alert(`Failed to execute remote command (HTTP ${res.status}).`);
+    }
+  } catch(e) {
+    alert(`Error dispatching command: ${e.message}`);
+  }
+}
+
+async function reinstateParticipant(participantId) {
+  if (!confirm(`REINSTATE PARTICIPANT\n\nRe-admit participant ${participantId} to active event play?\n\nTheir kiosk will be unlocked and able to submit fixes immediately.`)) return;
+  try {
+    const res = await post(`/admin/kiosks/${participantId}/reinstate`);
+    if (res.ok) {
+      alert(`✔ Participant ${participantId} has been successfully reinstated!`);
+      openModal(participantId);
+      refreshKiosks();
+    } else {
+      alert(`Failed to reinstate participant (HTTP ${res.status}).`);
+    }
+  } catch(e) {
+    alert(`Error contacting server: ${e.message}`);
+  }
+}
+
+async function sendDeskMessage(participantId) {
+  const msg = prompt(`Enter message to broadcast directly to desk ${participantId}:`, "Please check your code; an organizer has assisted you.");
+  if (!msg || !msg.trim()) return;
+  try {
+    const res = await post(`/admin/kiosks/${participantId}/message`, { message: msg.trim() });
+    if (res.ok) {
+      alert(`✔ Direct message sent to ${participantId}!`);
+    } else {
+      alert(`Failed to send message (HTTP ${res.status}).`);
+    }
+  } catch(e) {
+    alert(`Error: ${e.message}`);
+  }
 }
 
 async function fireAttackToDesk(participantId) {

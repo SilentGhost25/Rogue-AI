@@ -1238,6 +1238,72 @@ app.MapPost("/api/admin/participants/{id}/remove", async (string id, HttpRequest
     return Results.Ok(new { success = true, participantId = id, status = "offline" });
 });
 
+app.MapPost("/admin/kiosks/{id}/reinstate", async (string id, HttpRequest r, Database db, IHubContext<BreachHub> hub) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+
+    using (var c = db.Open())
+    using (var cmd = c.CreateCommand())
+    {
+        cmd.CommandText = "UPDATE participants SET status = 'active', disqualified = 0 WHERE id = $id";
+        cmd.Parameters.AddWithValue("$id", id);
+        cmd.ExecuteNonQuery();
+    }
+
+    db.Log("PARTICIPANT_REINSTATED", id, payloadJson: JsonSerializer.Serialize(new { participantId = id, action = "Reinstated to active participation" }));
+    await hub.Clients.Group($"p:{id}").SendAsync("REINSTATED");
+    await hub.Clients.Group("admins").SendAsync(HubEvents.KioskUpdated, id);
+    return Results.Ok(new { success = true, participantId = id, status = "active", message = "Participant reinstated successfully." });
+});
+
+app.MapPost("/admin/kiosks/{id}/remote/{cmd}", async (string id, string cmd, HttpRequest r, Database db, IHubContext<BreachHub> hub, AttackDispatcher dispatcher, WorkspaceStore store) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+
+    switch (cmd.ToLowerInvariant())
+    {
+        case "restart-node":
+            await hub.Clients.Group($"p:{id}").SendAsync("REMOTE_RESTART_NODE");
+            db.Log("REMOTE_COMMAND", id, payloadJson: JsonSerializer.Serialize(new { command = "restart-node" }));
+            return Results.Ok(new { success = true, message = "Remote Node.js server restart signal dispatched to kiosk." });
+
+        case "reload-screen":
+            await hub.Clients.Group($"p:{id}").SendAsync("REMOTE_RELOAD_SCREEN");
+            db.Log("REMOTE_COMMAND", id, payloadJson: JsonSerializer.Serialize(new { command = "reload-screen" }));
+            return Results.Ok(new { success = true, message = "Remote screen reload signal dispatched to kiosk." });
+
+        case "reset-workspace":
+            await dispatcher.ResetAllAsync(id, store);
+            await hub.Clients.Group($"p:{id}").SendAsync("REMOTE_RESET_WORKSPACE");
+            db.Log("REMOTE_COMMAND", id, payloadJson: JsonSerializer.Serialize(new { command = "reset-workspace" }));
+            return Results.Ok(new { success = true, message = "Remote workspace reset & clean baseline restoration dispatched." });
+
+        case "clear-credentials":
+            await hub.Clients.Group($"p:{id}").SendAsync("REMOTE_CLEAR_CREDENTIALS");
+            db.Log("REMOTE_COMMAND", id, payloadJson: JsonSerializer.Serialize(new { command = "clear-credentials" }));
+            return Results.Ok(new { success = true, message = "Remote session credentials cleared on kiosk." });
+
+        default:
+            return Results.BadRequest(new { error = $"Unknown remote command '{cmd}'" });
+    }
+});
+
+app.MapPost("/admin/kiosks/{id}/message", async (string id, HttpRequest r, Database db, IHubContext<BreachHub> hub) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+
+    var body = await r.ReadFromJsonAsync<BroadcastRequest>();
+    var msg = body?.Message?.Trim();
+    if (string.IsNullOrWhiteSpace(msg)) return Results.BadRequest(new { error = "Message cannot be empty." });
+
+    await hub.Clients.Group($"p:{id}").SendAsync("DIRECT_MESSAGE", msg);
+    db.Log("DIRECT_MESSAGE_SENT", id, payloadJson: JsonSerializer.Serialize(new { message = msg }));
+    return Results.Ok(new { success = true, message = "Direct desk message transmitted." });
+});
+
 app.MapGet("/admin/events", (HttpRequest r, Database db) =>
 {
     var authErr = AuthorizeAdmin(r, db);

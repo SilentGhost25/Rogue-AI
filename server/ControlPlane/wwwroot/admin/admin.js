@@ -528,15 +528,63 @@ async function refreshKiosks() {
             ${aiStatus} <small class="muted font-mono">(${k.openCodePrompts} OC)</small>
             ${gitHtml}
           </td>
-          <td>
+          <td style="display:flex; gap:4px; flex-wrap:wrap;">
             <button class="btn sm primary" onclick="promptFireOnKiosk('${escapeHtml(k.id)}', '${escapeHtml(k.name || deskTag)}')">
               ⚡ Fire
             </button>
+            <button class="btn sm warning" onclick="adminRemoteKiosk('${escapeHtml(k.id)}', 'restart-node')" title="Restart Node on port 3000">
+              🔄 Node
+            </button>
+            <button class="btn sm secondary" onclick="adminRemoteKiosk('${escapeHtml(k.id)}', 'reload-screen')" title="Reload Screen">
+              🌐
+            </button>
+            <button class="btn sm warning" onclick="adminRemoteKiosk('${escapeHtml(k.id)}', 'reset-workspace')" title="Reset Workspace & Code">
+              ↺ Reset
+            </button>
+            ${k.status === 'disqualified' || k.status === 'offline'
+              ? `<button class="btn sm success" onclick="adminReinstateKiosk('${escapeHtml(k.id)}')" title="Re-admit / Add Back">🛡️ Add Back</button>`
+              : `<button class="btn sm danger" onclick="adminRemoveKiosk('${escapeHtml(k.id)}')" title="Remove Session">🚪 Remove</button>`}
           </td>
         </tr>`;
     }).join('');
   } catch (err) {
     logMessage(`[ERROR] Loading kiosks failed: ${err.message}`);
+  }
+}
+
+async function adminRemoteKiosk(participantId, command) {
+  if (!confirm(`Dispatch remote "${command}" signal to desk ${participantId}?`)) return;
+  try {
+    const res = await api(`/admin/kiosks/${participantId}/remote/${command}`, { method: 'POST' });
+    logMessage(`✔ Remote command [${command}] executed on ${participantId}: ${res.message || 'Dispatched'}`);
+    alert(`Success: ${res.message || 'Signal dispatched in real time.'}`);
+    refreshKiosks();
+  } catch(e) {
+    alert(`Remote command failed: ${e.message || e}`);
+  }
+}
+
+async function adminReinstateKiosk(participantId) {
+  if (!confirm(`Re-admit participant ${participantId} to active event play?`)) return;
+  try {
+    const res = await api(`/admin/kiosks/${participantId}/reinstate`, { method: 'POST' });
+    logMessage(`🛡️ Participant ${participantId} reinstated by administrator.`);
+    alert(res.message || 'Participant reinstated successfully.');
+    refreshKiosks();
+  } catch(e) {
+    alert(`Reinstatement failed: ${e.message || e}`);
+  }
+}
+
+async function adminRemoveKiosk(participantId) {
+  if (!confirm(`Remove active session for participant ${participantId}?\n(Scores and history are preserved; desk will be marked offline)`)) return;
+  try {
+    const res = await api(`/admin/kiosks/${participantId}/remove`, { method: 'POST' });
+    logMessage(`🚪 Participant ${participantId} session removed.`);
+    alert(res.message || 'Participant session removed.');
+    refreshKiosks();
+  } catch(e) {
+    alert(`Removal failed: ${e.message || e}`);
   }
 }
 

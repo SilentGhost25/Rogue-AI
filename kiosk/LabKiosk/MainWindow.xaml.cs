@@ -495,6 +495,41 @@ public partial class MainWindow : Window
             _hub.Verdict += OnVerdict;
             _hub.VerdictDetail += OnVerdictDetail;
             _hub.Reconnected += ResyncAsync;
+
+            _hub.RemoteRestartNode += () => Dispatcher.InvokeAsync(async () =>
+            {
+                Status("⚡ Organizer dispatched remote Node server restart...");
+                await Task.Run(() => CreateAndStartSiteHost());
+                var healthy = _site is not null && await _site.WaitHealthyAsync(15);
+                if (healthy) NavigateSiteToRoute("/");
+                Status("✔ Remote Node server restart completed.");
+            });
+
+            _hub.RemoteReloadScreen += () => Dispatcher.InvokeAsync(() =>
+            {
+                Status("🔄 Organizer commanded screen reload.");
+                NavigateSiteToRoute("/");
+                Code.RefreshAll();
+            });
+
+            _hub.RemoteResetWorkspace += () => Dispatcher.InvokeAsync(OnSessionReset);
+
+            _hub.RemoteClearCredentials += () => Dispatcher.InvokeAsync(() =>
+            {
+                CredentialManager.ClearAntigravityGoogleCredential();
+                Status("🔑 Organizer reset session credentials. Ready for account switch.");
+                MessageBox.Show("Organizer has reset your session credentials. You can now authenticate with a new account.", "Credentials Cleared", MessageBoxButton.OK, MessageBoxImage.Information);
+            });
+
+            _hub.RemoteReinstated += () => Dispatcher.InvokeAsync(() =>
+            {
+                _eliminated = false;
+                _isDisqualifiedBySwitch = false;
+                SentinelBanner.Visibility = Visibility.Collapsed;
+                SubmitButton.IsEnabled = true;
+                Status("🛡️ Participant reinstated by Organizer. Terminal unlocked.");
+            });
+
             await _hub.StartAsync();
 
             // 6. Real terminals on the same workspace.

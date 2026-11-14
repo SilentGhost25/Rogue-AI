@@ -16,6 +16,7 @@ public sealed class HubClient : IAsyncDisposable
     public event Action<string, JsonElement, string>? Verdict;
     public event Action<VerdictDetailPayload>? VerdictDetail;
     public event Action? Paused, Resumed, Eliminated, SessionReset;
+    public event Action? RemoteRestartNode, RemoteReloadScreen, RemoteResetWorkspace, RemoteClearCredentials, RemoteReinstated;
     public event Func<Task>? Reconnected;
 
     public HubClient(string serverUrl, string participantId, string? token = null)
@@ -34,6 +35,13 @@ public sealed class HubClient : IAsyncDisposable
         _conn.On<int>("ATTACK_RESET", async id => { if (Reset is not null) await Reset(id); });
         _conn.On("SESSION_RESET", () => SessionReset?.Invoke());
         _conn.On<string>("BROADCAST", text => Message?.Invoke(text));
+        _conn.On<string>("DIRECT_MESSAGE", text => Message?.Invoke(text));
+
+        _conn.On("REMOTE_RESTART_NODE", () => RemoteRestartNode?.Invoke());
+        _conn.On("REMOTE_RELOAD_SCREEN", () => RemoteReloadScreen?.Invoke());
+        _conn.On("REMOTE_RESET_WORKSPACE", () => RemoteResetWorkspace?.Invoke());
+        _conn.On("REMOTE_CLEAR_CREDENTIALS", () => RemoteClearCredentials?.Invoke());
+        _conn.On("REINSTATED", () => RemoteReinstated?.Invoke());
 
         _conn.On<string, JsonElement, string>("VERDICT", (sid, verdicts, note) => Verdict?.Invoke(sid, verdicts, note));
         _conn.On<int, string, string, double>("VERDICT", (id, status, reason, score) =>
