@@ -45,7 +45,7 @@ Name: "host"; Description: "Organizer Host Mode (Control Plane + Attack Engine +
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
 [Dirs]
-Name: "{app}\attacks"; Permissions: admins-full; Components: host
+Name: "{app}\attacks"; Permissions: users-readexec; Components: host
 Name: "{app}\server"; Permissions: users-readexec; Components: host
 Name: "{app}\engine"; Permissions: users-readexec; Components: host
 Name: "{app}\site"; Permissions: users-readexec
@@ -245,6 +245,13 @@ var
 begin
   // Terminate running processes so [InstallDelete] can cleanly wipe any previous workspace/DB state
   Exec(ExpandConstant('{cmd}'), '/c taskkill /F /IM LabKiosk.exe /IM ControlPlane.exe /IM opencode.exe /IM agy.exe /IM node.exe /IM python.exe /IM uvicorn.exe /T >nul 2>&1', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+
+  // Forcefully reset ACLs and purge any stale or locked attacks/site directories from previous builds
+  Exec(ExpandConstant('{cmd}'), '/c takeown /F "' + ExpandConstant('{app}\attacks') + '" /R /A /D Y >nul 2>&1', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Exec(ExpandConstant('{cmd}'), '/c icacls "' + ExpandConstant('{app}\attacks') + '" /reset /T /C /Q >nul 2>&1', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Exec(ExpandConstant('{cmd}'), '/c icacls "' + ExpandConstant('{app}\attacks') + '" /grant *S-1-5-32-544:(OI)(CI)F /grant *S-1-5-32-545:(OI)(CI)RX /T /C /Q >nul 2>&1', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Exec(ExpandConstant('{cmd}'), '/c rmdir /s /q "' + ExpandConstant('{app}\attacks') + '" >nul 2>&1', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  DelTree(ExpandConstant('{app}\attacks'), True, True, True);
 
   // Purge legacy installation registry entries (e.g. from Nov 6 build)
   RegDeleteKeyIncludingSubkeys(HKEY_LOCAL_MACHINE, 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{6F2D1C9A-3B7E-4C58-9A41-0D5E7B8C1F23}_is1');
