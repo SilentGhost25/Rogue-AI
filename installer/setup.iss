@@ -157,6 +157,8 @@ procedure CurStepChanged(CurStep: TSetupStep);
 var
   JsonContent: string;
   ServerUrlVal, DeskIdVal: string;
+  UserKioskDir, UserKioskJson: string;
+  ResultCode: Integer;
 begin
   if CurStep = ssPostInstall then
   begin
@@ -186,7 +188,29 @@ begin
       '  "DeskId": "' + DeskIdVal + '",' + #13#10 +
       '  "DeskToken": ""' + #13#10 +
       '}';
+
+    // Save base config in installation directory
     SaveStringToFile(ExpandConstant('{app}\kiosk.json'), JsonContent, False);
+
+    // Also populate %LOCALAPPDATA%\BreachKiosk\kiosk.json user overlay
+    UserKioskDir := ExpandConstant('{localappdata}\BreachKiosk');
+    ForceDirectories(UserKioskDir);
+    UserKioskJson := UserKioskDir + '\kiosk.json';
+    SaveStringToFile(UserKioskJson, JsonContent, False);
+
+    // Configure Windows Firewall allow rules for LabKiosk
+    Exec('netsh.exe', 'advfirewall firewall add rule name="RogueAI-LabKiosk-LAN" dir=in action=allow program="' + ExpandConstant('{app}\{#MyAppExeName}') + '" enable=yes', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    Exec('netsh.exe', 'advfirewall firewall add rule name="RogueAI-LabKiosk-LAN-Out" dir=out action=allow program="' + ExpandConstant('{app}\{#MyAppExeName}') + '" enable=yes', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+
+    // If Host component selected, configure Host server firewall ports and lock down attacks directory ACLs
+    if WizardIsComponentSelected('host') then
+    begin
+      Exec('netsh.exe', 'advfirewall firewall add rule name="RogueAI-ControlPlane-5080" dir=in action=allow protocol=TCP localport=5080 enable=yes', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+      Exec('netsh.exe', 'advfirewall firewall add rule name="RogueAI-Engine-8000" dir=in action=allow protocol=TCP localport=8000 enable=yes', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+      Exec('netsh.exe', 'advfirewall firewall add rule name="RogueAI-Discovery-5081" dir=in action=allow protocol=UDP localport=5081 enable=yes', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+      // Restrict attacks directory strictly to Administrator & SYSTEM to prevent AI crawling
+      Exec('icacls.exe', '"' + ExpandConstant('{app}\attacks') + '" /inheritance:r /grant:r "Administrators:(OI)(CI)F" "SYSTEM:(OI)(CI)F"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    end;
   end;
 end;
 
@@ -195,7 +219,23 @@ var
   ResultCode: Integer;
 begin
   // Terminate running processes so [InstallDelete] can cleanly wipe any previous workspace/DB state
-  Exec(ExpandConstant('{cmd}'), '/c taskkill /F /IM LabKiosk.exe /IM ControlPlane.exe /IM opencode.exe /IM agy.exe /IM node.exe /T >nul 2>&1', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Exec(ExpandConstant('{cmd}'), '/c taskkill /F /IM LabKiosk.exe /IM ControlPlane.exe /IM opencode.exe /IM agy.exe /IM node.exe /IM python.exe /IM uvicorn.exe /T >nul 2>&1', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+
+  // Purge legacy installation registry entries
+  RegDeleteKeyIncludingSubkeys(HKEY_LOCAL_MACHINE, 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{6F2D1C9A-3B7E-4C58-9A41-0D5E7B8C1F23}_is1');
+  RegDeleteKeyIncludingSubkeys(HKEY_LOCAL_MACHINE, 'SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\{6F2D1C9A-3B7E-4C58-9A41-0D5E7B8C1F23}_is1');
+  RegDeleteKeyIncludingSubkeys(HKEY_CURRENT_USER, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{6F2D1C9A-3B7E-4C58-9A41-0D5E7B8C1F23}_is1');
+
+  // Purge legacy desktop shortcuts
+  DeleteFile(ExpandConstant('{commondesktop}\Breach Protocol Kiosk.lnk'));
+  DeleteFile(ExpandConstant('{commondesktop}\Breach Protocol Organizer (Admin).lnk'));
+  DeleteFile(ExpandConstant('{userdesktop}\Breach Protocol Kiosk.lnk'));
+  DeleteFile(ExpandConstant('{userdesktop}\Breach Protocol Organizer (Admin).lnk'));
+
+  // Purge legacy Start Menu folders
+  DelTree(ExpandConstant('{commonprograms}\ROGUE AI - The Breach Protocol'), True, True, True);
+  DelTree(ExpandConstant('{userprograms}\ROGUE AI - The Breach Protocol'), True, True, True);
+
   Result := '';
 end;
 

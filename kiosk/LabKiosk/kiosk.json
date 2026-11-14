@@ -7,5 +7,6 @@
   "OpenCodePath": "opencode",
   "OpenCodeModel": "",
   "OpenCodePort": 4096,
-  "OpenCodeCap": 200
+  "OpenCodeCap": 200,
+  "LockoutEnabled": true
 }

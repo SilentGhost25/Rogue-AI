@@ -283,7 +283,7 @@ public partial class MainWindow : Window
     private DispatcherTimer? _statusTimer;
     private CancellationTokenSource? _submitTimeoutCts;
     private bool _cleanedOnClose;
-    private static readonly bool AppLockoutEnabled = false;
+    private readonly bool _appLockoutEnabled;
     private readonly KeyboardHook? _keyboardHook;
     private bool _isHostUnlocked;
     private bool _isDisqualifiedBySwitch;
@@ -302,10 +302,11 @@ public partial class MainWindow : Window
     public MainWindow(KioskSettings? settings = null)
     {
         _s = settings ?? KioskSettings.Load();
+        _appLockoutEnabled = _s.LockoutEnabled;
         InitializeComponent();
         _api = new ApiClient(_s.ServerUrl);
         _budget.OpenCodeCap = _s.OpenCodeCap;
-        if (AppLockoutEnabled)
+        if (_appLockoutEnabled)
         {
             _keyboardHook = new KeyboardHook();
             _keyboardHook.OnHostComboPressed += () => Dispatcher.BeginInvoke(ToggleHostMode);
@@ -377,6 +378,7 @@ public partial class MainWindow : Window
 
             // Autoconfigure AI context by ensuring GEMINI.md and AGENTS.md are in the workspace
             EnsureAiContextFiles();
+            WorkspaceBackup.InitializeLocalGitRepo(_s.WorkspacePath, _s.DeskId ?? _s.DisplayName ?? "Player");
 
             Code.Initialize(_s.WorkspacePath);
 
@@ -475,7 +477,7 @@ public partial class MainWindow : Window
             if (status?.Status is "eliminated" or "disqualified") { Eliminate(); return; }
 
             // 5. Live connection to the event server.
-            _hub = new HubClient(_s.ServerUrl, _pid);
+            _hub = new HubClient(_s.ServerUrl, _pid, _s.DeskToken ?? "");
             _hub.Imminent += OnImminentAsync;
             _hub.Landed += HandleAttackAsync;
             _hub.Reset += OnAttackResetAsync;
@@ -558,7 +560,17 @@ public partial class MainWindow : Window
         }
         TermAgy.OutputText += _quota.Feed;
         _quota.Exhausted += () => Dispatcher.InvokeAsync(OnAgyExhausted);
-        _quota.OtherSignal += kind => _ = _api.SendTelemetryAsync(_pid!, "QUOTA_SIGNAL", new { kind });
+        _quota.OtherSignal += kind =>
+        {
+            _ = _api.SendTelemetryAsync(_pid!, "MODEL_COMPLIANCE_SIGNAL", new { kind });
+            if (kind.StartsWith("unapproved_model", StringComparison.OrdinalIgnoreCase) || kind == "api_key_mode")
+            {
+                Dispatcher.InvokeAsync(() =>
+                {
+                    Status($"⚠ MODEL COMPLIANCE: {kind} detected. Only approved event models are authorized.");
+                });
+            }
+        };
 
         // OpenCode: `opencode serve` runs hidden; visible terminal attaches to it, prompts counted from server
         _oc = new OpenCodeHost(_s.OpenCodePath, _s.WorkspacePath, _s.OpenCodePort, _s.OpenCodeModel, _s.DataPath);
@@ -660,11 +672,8 @@ public partial class MainWindow : Window
             _activeAttacks.Add(attackId);
             SyncBreachStatusToWorkspace();
 
-            // Anti-AI Leverage: Normalize timestamps and purge any git tracking so CLI cannot detect recent edits
-            NormalizeWorkspaceTimestamps(_s.WorkspacePath);
-            RemoveGitMetadata(_s.WorkspacePath);
-
             var name = AttackNames.TryGetValue(attackId, out var nm) ? nm : $"Attack #{attackId}";
+            WorkspaceBackup.CommitWorkspaceChanges(_s.WorkspacePath, $"ATTACK #{attackId} ({name}) landed");
             Status($"🚨 ATTACK #{attackId} ({name}) LANDED! ({n} files changed). Fix the code, then submit.");
             var healthy = _site is not null && await _site.WaitRestartHealthyAsync();
             Code.RefreshAll();
@@ -867,6 +876,7 @@ public partial class MainWindow : Window
                 _activeAttacks.Remove(id);
                 _solvedAttacks.Add(id);
                 parts.Add($"#{id} SOLVED +{v.GetProperty("points").GetDouble():0.#} pts");
+                WorkspaceBackup.CommitWorkspaceChanges(_s.WorkspacePath, $"SOLVED: Attack #{id} verified and resolved");
                 _pull?.ClearBaseline(); // penalty window closed — attack is done
             }
             else
@@ -992,12 +1002,12 @@ public partial class MainWindow : Window
 
     private async void MainWindow_Deactivated(object? sender, EventArgs e)
     {
-        if (!AppLockoutEnabled || _isHostUnlocked || _isDisqualifiedBySwitch) return;
+        if (!_appLockoutEnabled || _isHostUnlocked || _isDisqualifiedBySwitch) return;
 
         // Debounce to allow internal WPF modals (IncidentWindow, OnboardingWindow, MessageBox) to become active
         await Task.Delay(150);
 
-        if (!AppLockoutEnabled || _isHostUnlocked || _isDisqualifiedBySwitch || IsActive) return;
+        if (!_appLockoutEnabled || _isHostUnlocked || _isDisqualifiedBySwitch || IsActive) return;
 
         // Ignore deactivation when focus moved to an owned/in-process LabKiosk window
         foreach (Window win in Application.Current.Windows)
@@ -1020,7 +1030,7 @@ public partial class MainWindow : Window
 
     private void TriggerLockoutViolation()
     {
-        if (!AppLockoutEnabled || _isHostUnlocked || _isDisqualifiedBySwitch) return;
+        if (!_appLockoutEnabled || _isHostUnlocked || _isDisqualifiedBySwitch) return;
         _isDisqualifiedBySwitch = true;
 
         try { _activeIncidentWindow?.Close(); } catch { }
@@ -1239,6 +1249,7 @@ public partial class MainWindow : Window
             await _pull.PullAsync($"reset-{attackId}");
 
             var name = AttackNames.TryGetValue(attackId, out var nm) ? nm : $"Attack #{attackId}";
+            WorkspaceBackup.CommitWorkspaceChanges(_s.WorkspacePath, $"RESET: Attack #{attackId} ({name}) restored to baseline");
             Status($"↺ Attack #{attackId} ({name}) reset by organizer. Workspace restored.");
 
             _site?.RequestReload();
@@ -1277,8 +1288,7 @@ public partial class MainWindow : Window
                 if (Directory.Exists(_s.SiteTemplatePath))
                 {
                     WorkspaceBackup.CopyCleanTemplate(_s.SiteTemplatePath, _s.WorkspacePath);
-                    NormalizeWorkspaceTimestamps(_s.WorkspacePath);
-                    RemoveGitMetadata(_s.WorkspacePath);
+                    WorkspaceBackup.InitializeLocalGitRepo(_s.WorkspacePath, _s.DeskId ?? _s.DisplayName ?? "Player");
                 }
             }
             catch { }

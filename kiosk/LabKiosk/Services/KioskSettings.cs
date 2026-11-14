@@ -25,6 +25,7 @@ public sealed class KioskSettings
     public string OpenCodeModel { get; set; } = "";
     public int OpenCodePort { get; set; } = 4096;
     public int OpenCodeCap { get; set; } = 30;
+    public bool LockoutEnabled { get; set; } = true;
 
     public static KioskSettings Load()
     {
@@ -60,6 +61,7 @@ public sealed class KioskSettings
                     if (!string.IsNullOrWhiteSpace(userS.ServerUrl) && userS.ServerUrl != "http://127.0.0.1:5080" && !userS.ServerUrl.Equals("AUTO", StringComparison.OrdinalIgnoreCase)) s.ServerUrl = userS.ServerUrl;
                     if (!string.IsNullOrWhiteSpace(userS.WorkspacePath)) s.WorkspacePath = userS.WorkspacePath;
                     if (userS.OpenCodeCap > 0) s.OpenCodeCap = userS.OpenCodeCap;
+                    s.LockoutEnabled = userS.LockoutEnabled;
                 }
             }
             catch { }

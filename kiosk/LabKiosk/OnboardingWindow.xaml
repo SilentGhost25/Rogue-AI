@@ -223,7 +223,7 @@
             <!-- Bottom Action Row -->
             <DockPanel Grid.Row="3" Margin="0,0,0,0">
                 <TextBlock x:Name="TxtWarning" Text="" Foreground="{StaticResource Alert}" FontSize="12" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="420"/>
-                <Button x:Name="BtnLaunch" Content="🚀 Launch Breach Protocol" Click="OnLaunchClick" Style="{StaticResource SuccessBtn}" Padding="22,10" HorizontalAlignment="Right" IsEnabled="True"/>
+                <Button x:Name="BtnLaunch" Content="🚀 Launch Breach Protocol" Click="OnLaunchClick" Style="{StaticResource SuccessBtn}" Padding="22,10" HorizontalAlignment="Right" IsEnabled="False"/>
             </DockPanel>
         </Grid>
     </Border>

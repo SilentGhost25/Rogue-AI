@@ -1,31 +1,45 @@
 @echo off
-setlocal
+setlocal EnableDelayedExpansion
 cd /d "%~dp0"
 
+:: Check for Administrator elevation and self-elevate if needed
+net session >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [*] Requesting Administrator privileges for complete uninstallation...
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Start-Process cmd.exe -ArgumentList '/c `\"%~f0`\"' -Verb RunAs"
+    exit /b
+)
+
 echo ==========================================================
-echo       ROGUE AI -- LOCAL DEV CLEANUP & UNINSTALLER
+echo       ROGUE AI -- COMPLETE UNINSTALLER ^& RESET UTILITY
 echo ==========================================================
 echo.
-echo [*] Terminating all active event background processes...
-taskkill /F /IM LabKiosk.exe 2>nul
-taskkill /F /IM node.exe 2>nul
-taskkill /F /IM ControlPlane.exe 2>nul
-taskkill /F /IM python.exe 2>nul
-echo [+] Processes stopped.
+echo [*] Terminating active Rogue AI processes...
+taskkill /F /IM LabKiosk.exe /T 2>nul
+taskkill /F /IM opencode.exe /T 2>nul
+taskkill /F /IM agy.exe /T 2>nul
+taskkill /F /IM node.exe /T 2>nul
+taskkill /F /IM ControlPlane.exe /T 2>nul
+taskkill /F /IM python.exe /T 2>nul
+echo [+] Active processes cleared.
 echo.
 
-set /p CLEAN_WS="Do you want to wipe local test workspace (C:\BreachWorkspace)? (y/N): "
-if /i "%CLEAN_WS%"=="y" (
-    if exist "C:\BreachWorkspace" (
-        echo [*] Deleting C:\BreachWorkspace...
-        rd /s /q "C:\BreachWorkspace"
-        echo [+] Workspace directory deleted.
-    )
+set SCRIPT_PATH=%~dp0scripts\uninstall-complete.ps1
+if exist "!SCRIPT_PATH!" (
+    echo [*] Running deep forensic cleanup script...
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "!SCRIPT_PATH!"
+) else (
+    echo [*] Running fallback cleanup...
+    if exist "%LOCALAPPDATA%\BreachKiosk" rd /s /q "%LOCALAPPDATA%\BreachKiosk" 2>nul
+    if exist "%LOCALAPPDATA%\agy" rd /s /q "%LOCALAPPDATA%\agy" 2>nul
+    if exist "C:\BreachSandboxes" rd /s /q "C:\BreachSandboxes" 2>nul
+    if exist "C:\BreachSecrets" rd /s /q "C:\BreachSecrets" 2>nul
+    if exist "C:\BreachWorkspace" rd /s /q "C:\BreachWorkspace" 2>nul
 )
 
 echo.
 echo ==========================================================
-echo               CLEANUP COMPLETED
+echo           ROGUE AI UNINSTALLATION COMPLETE
 echo ==========================================================
+echo.
 pause
-

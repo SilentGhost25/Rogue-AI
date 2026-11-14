@@ -66,6 +66,84 @@ public static class WorkspaceBackup
     }
 
     /// <summary>
+    /// Initializes a local git repository in the participant workspace so that AI tools (agy, opencode)
+    /// and participants can natively use `git status`, `git diff`, and `git checkout`.
+    /// </summary>
+    public static void InitializeLocalGitRepo(string workspacePath, string deskId)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(workspacePath) || !Directory.Exists(workspacePath)) return;
+            var gitDir = Path.Combine(workspacePath, ".git");
+            if (Directory.Exists(gitDir)) return;
+
+            var gitignorePath = Path.Combine(workspacePath, ".gitignore");
+            if (!File.Exists(gitignorePath))
+            {
+                File.WriteAllText(gitignorePath, "node_modules/\n.breach-backup/\n*.db\n*.db-wal\n*.db-shm\n*.sqlite*\n*.log\neval_*.db\n");
+            }
+
+            RunGit(workspacePath, "init");
+            var safeDesk = (deskId ?? "Player").Replace("\"", "");
+            RunGit(workspacePath, $"config user.name \"Participant ({safeDesk})\"");
+            RunGit(workspacePath, "config user.email \"participant@rogue.internal\"");
+            RunGit(workspacePath, "add -A");
+            RunGit(workspacePath, "commit -m \"Baseline: AEGIS Municipal Core\"");
+        }
+        catch { /* git is optional on kiosk, never crashes startup */ }
+    }
+
+    /// <summary>
+    /// Commits workspace changes into the local git repository (e.g. after an attack lands or resets).
+    /// </summary>
+    public static void CommitWorkspaceChanges(string workspacePath, string message)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(workspacePath) || !Directory.Exists(workspacePath)) return;
+            var gitDir = Path.Combine(workspacePath, ".git");
+            if (!Directory.Exists(gitDir)) return;
+
+            var gitignorePath = Path.Combine(workspacePath, ".gitignore");
+            if (!File.Exists(gitignorePath))
+            {
+                File.WriteAllText(gitignorePath, "node_modules/\n.breach-backup/\n*.db\n*.db-wal\n*.db-shm\n*.sqlite*\n*.log\neval_*.db\n");
+            }
+
+            RunGit(workspacePath, "add -A");
+            var safeMsg = message.Replace("\"", "'");
+            RunGit(workspacePath, $"commit -m \"{safeMsg}\" --allow-empty");
+        }
+        catch { /* best-effort commit */ }
+    }
+
+    private static void RunGit(string workingDir, string arguments)
+    {
+        try
+        {
+            using var proc = new System.Diagnostics.Process
+            {
+                StartInfo = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "git",
+                    Arguments = arguments,
+                    WorkingDirectory = workingDir,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                }
+            };
+            proc.Start();
+            if (!proc.WaitForExit(5000))
+            {
+                try { proc.Kill(); } catch { }
+            }
+        }
+        catch { /* git binary might not be on system PATH */ }
+    }
+
+    /// <summary>
     /// Strict workspace reset on close: removes all files and folders inside the workspace.
     /// Individual failures on locked handles are caught gracefully so cleanup never crashes shutdown.
     /// </summary>
