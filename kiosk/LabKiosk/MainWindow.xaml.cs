@@ -830,9 +830,19 @@ public partial class MainWindow : Window
                 NavigateSiteToRoute("/");
             Code.RefreshAll();
         });
-        _site.SiteDown += err => Dispatcher.InvokeAsync(() => ShowSiteDownInWebView(err));
+        _site.SiteDown += err => Dispatcher.InvokeAsync(() =>
+        {
+            ShowSiteDownInWebView(err);
+            if (!string.IsNullOrWhiteSpace(_pid))
+                _ = _api?.ReportProblemAsync(_pid, "site_down", err ?? "Local AEGIS website is down (port 3000).");
+        });
         _site.SiteRestored += () => Dispatcher.InvokeAsync(() => NavigateSiteToRoute("/"));
-        _site.Problem += Status;
+        _site.Problem += msg =>
+        {
+            Status(msg);
+            if (!string.IsNullOrWhiteSpace(_pid))
+                _ = _api?.ReportProblemAsync(_pid, "server_warning", msg);
+        };
         _site.Start();
     }
 

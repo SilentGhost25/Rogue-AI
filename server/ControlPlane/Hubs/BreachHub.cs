@@ -39,8 +39,11 @@ public sealed class BreachHub(IConfiguration config, Database db) : Hub
         }
     }
 
-    public Task JoinAdmin(string adminKey)
+    public async Task JoinAdmin(string? adminKey)
     {
+        var httpContext = Context.GetHttpContext();
+        var isSessionAuth = httpContext?.User.Identity?.IsAuthenticated == true && httpContext.User.IsInRole("admin");
+
         var expected = Environment.GetEnvironmentVariable("BREACH_ADMIN_KEY")
                     ?? Environment.GetEnvironmentVariable("ROGUE_ADMIN_KEY")
                     ?? config["Breach:AdminKey"];
@@ -57,38 +60,32 @@ public sealed class BreachHub(IConfiguration config, Database db) : Hub
             catch { }
         }
         expected = expected?.Trim() ?? "";
-        adminKey = adminKey?.Trim() ?? "";
+        var providedKey = adminKey?.Trim() ?? "";
 
-        var match = !string.IsNullOrEmpty(adminKey) && !string.IsNullOrEmpty(expected) &&
-                    System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(
-                        System.Text.Encoding.UTF8.GetBytes(adminKey),
-                        System.Text.Encoding.UTF8.GetBytes(expected));
+        var keyMatch = !string.IsNullOrEmpty(providedKey) && !string.IsNullOrEmpty(expected) &&
+                       (providedKey.Equals(expected, StringComparison.Ordinal) ||
+                        (providedKey.Length == expected.Length &&
+                         System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(
+                             System.Text.Encoding.UTF8.GetBytes(providedKey),
+                             System.Text.Encoding.UTF8.GetBytes(expected))));
 
-        if (!match)
+        var remoteIp = httpContext?.Connection.RemoteIpAddress;
+        var ipStr = remoteIp?.ToString();
+        var allowedIps = config.GetSection("Breach:AdminAllowedIps").Get<string[]>() ?? Array.Empty<string>();
+        var isLoopbackOrAllowed = remoteIp is null ||
+                           System.Net.IPAddress.IsLoopback(remoteIp) ||
+                           (remoteIp.IsIPv4MappedToIPv6 && System.Net.IPAddress.IsLoopback(remoteIp.MapToIPv4())) ||
+                           ipStr == "::1" || ipStr == "127.0.0.1" || ipStr == "::ffff:127.0.0.1" ||
+                           (ipStr != null && allowedIps.Contains(ipStr));
+
+        if (isSessionAuth || keyMatch || isLoopbackOrAllowed)
         {
-            var httpContext = Context.GetHttpContext();
-            var remoteIp = httpContext?.Connection.RemoteIpAddress;
-            var ipStr = remoteIp?.ToString();
-            var allowedIps = config.GetSection("Breach:AdminAllowedIps").Get<string[]>() ?? Array.Empty<string>();
-            var isAuthorized = remoteIp is null ||
-                               System.Net.IPAddress.IsLoopback(remoteIp) ||
-                               (remoteIp.IsIPv4MappedToIPv6 && System.Net.IPAddress.IsLoopback(remoteIp.MapToIPv4())) ||
-                               ipStr == "::1" || ipStr == "127.0.0.1" || ipStr == "::ffff:127.0.0.1" ||
-                               (ipStr != null && allowedIps.Contains(ipStr));
-
-            var loopbackOnly = config.GetValue<bool>("Breach:AdminLoopbackOnly", true);
-            if (loopbackOnly && !isAuthorized)
-            {
-                db.Log("HUB_ADMIN_DENIED_LAN", payloadJson: $"{{\"connectionId\":\"{Context.ConnectionId}\",\"ip\":\"{remoteIp}\"}}");
-            }
-            else
-            {
-                db.Log("HUB_ADMIN_AUTH_FAILED", payloadJson: $"{{\"connectionId\":\"{Context.ConnectionId}\"}}");
-            }
-            return Task.CompletedTask;
+            await Groups.AddToGroupAsync(Context.ConnectionId, "admins");
+            db.Log("HUB_ADMIN_JOINED", payloadJson: $"{{\"connectionId\":\"{Context.ConnectionId}\",\"ip\":\"{remoteIp}\",\"sessionAuth\":{isSessionAuth.ToString().ToLowerInvariant()}}}");
+            return;
         }
 
-        return Groups.AddToGroupAsync(Context.ConnectionId, "admins");
+        db.Log("HUB_ADMIN_AUTH_FAILED", payloadJson: $"{{\"connectionId\":\"{Context.ConnectionId}\",\"ip\":\"{remoteIp}\"}}");
     }
 
     public async Task JoinProjector()
@@ -122,4 +119,7 @@ public static class HubEvents
     public const string EventFrozen = "EVENT_FROZEN";
     public const string EventUnfrozen = "EVENT_UNFROZEN";
     public const string KioskUpdated = "KIOSK_UPDATED";
+    public const string ParticipantRequest = "PARTICIPANT_REQUEST";
+    public const string ParticipantAlert = "PARTICIPANT_ALERT";
+    public const string RequestResolved = "REQUEST_RESOLVED";
 }

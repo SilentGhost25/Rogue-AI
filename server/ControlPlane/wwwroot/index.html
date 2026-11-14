@@ -918,6 +918,128 @@ hubConn.on('PAUSED', () => updateEventState(true, isSubmissionsFrozen));
 hubConn.on('RESUMED', () => updateEventState(false, isSubmissionsFrozen));
 hubConn.on('SCOREBOARD_FROZEN', () => updateEventState(isEventPaused, true));
 hubConn.on('SCOREBOARD_UNFROZEN', () => updateEventState(isEventPaused, false));
+hubConn.on('PARTICIPANT_REQUEST', req => handleParticipantRequestAlert(req));
+hubConn.on('PARTICIPANT_ALERT', alertData => handleParticipantProblemAlert(alertData));
+hubConn.on('REQUEST_RESOLVED', res => removeParticipantRequestAlert(res.requestId));
+hubConn.onreconnected(() => {
+  try { hubConn.invoke('JoinAdmin', ($('adminKey').value || '').trim()); } catch(_) {}
+  refreshPendingRequests();
+});
+
+function playAlertChime() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(587.33, ctx.currentTime);
+    osc.frequency.setValueAtTime(880, ctx.currentTime + 0.15);
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.45);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.45);
+  } catch (_) {}
+}
+
+function getAlertContainer() {
+  let c = $('participantAlertContainer');
+  if (!c) {
+    c = document.createElement('div');
+    c.id = 'participantAlertContainer';
+    c.style = "position:fixed; top:20px; right:20px; z-index:999999; display:flex; flex-direction:column; gap:12px; max-width:440px; pointer-events:auto;";
+    document.body.appendChild(c);
+  }
+  return c;
+}
+
+function handleParticipantRequestAlert(req) {
+  playAlertChime();
+  const c = getAlertContainer();
+  const existing = document.getElementById(`alert-req-${req.requestId}`);
+  if (existing) return;
+
+  const card = document.createElement('div');
+  card.id = `alert-req-${req.requestId}`;
+  card.style = "background:#0f172a; border:2px solid #38bdf8; border-radius:8px; padding:16px; box-shadow:0 10px 25px -5px rgba(0,0,0,0.6), 0 0 15px rgba(56,189,248,0.4); color:#f8fafc; font-family:sans-serif; animation:slideIn 0.3s ease-out;";
+  card.innerHTML = `
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+      <span style="font-weight:700; color:#38bdf8; font-size:13px; text-transform:uppercase; letter-spacing:0.5px;">🔔 Participant Request</span>
+      <span style="font-size:11px; color:#94a3b8;">${new Date().toLocaleTimeString()}</span>
+    </div>
+    <div style="font-size:14px; font-weight:600; margin-bottom:4px;">
+      Desk: <span style="color:#f59e0b;">${req.deskId}</span> (${req.displayName})
+    </div>
+    <div style="font-size:12px; color:#cbd5e1; margin-bottom:12px; line-height:1.4;">
+      ${req.details}
+    </div>
+    <div style="display:flex; gap:8px;">
+      <button onclick="resolveParticipantRequest('${req.requestId}', true)" style="flex:1; background:#10b981; color:#fff; border:none; padding:8px 12px; border-radius:4px; font-weight:600; font-size:12px; cursor:pointer;">✔ Approve</button>
+      <button onclick="resolveParticipantRequest('${req.requestId}', false)" style="flex:1; background:#ef4444; color:#fff; border:none; padding:8px 12px; border-radius:4px; font-weight:600; font-size:12px; cursor:pointer;">✖ Deny</button>
+    </div>
+  `;
+  c.prepend(card);
+}
+
+function handleParticipantProblemAlert(alertData) {
+  playAlertChime();
+  const c = getAlertContainer();
+  const card = document.createElement('div');
+  card.id = `alert-prob-${alertData.id || Date.now()}`;
+  card.style = "background:#1e1b4b; border:2px solid #ef4444; border-radius:8px; padding:16px; box-shadow:0 10px 25px -5px rgba(0,0,0,0.6), 0 0 15px rgba(239,68,68,0.4); color:#f8fafc; font-family:sans-serif;";
+  card.innerHTML = `
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+      <span style="font-weight:700; color:#ef4444; font-size:13px; text-transform:uppercase; letter-spacing:0.5px;">⚠️ Participant Problem Alert</span>
+      <span style="font-size:11px; color:#94a3b8;">${new Date().toLocaleTimeString()}</span>
+    </div>
+    <div style="font-size:14px; font-weight:600; margin-bottom:4px;">
+      Desk: <span style="color:#f59e0b;">${alertData.deskId}</span> (${alertData.displayName})
+    </div>
+    <div style="font-size:12px; color:#cbd5e1; margin-bottom:12px; line-height:1.4;">
+      <strong>${(alertData.problemType || '').toUpperCase()}:</strong> ${alertData.details}
+    </div>
+    <div style="display:flex; justify-content:flex-end;">
+      <button onclick="this.closest('div[id^=alert-prob-]').remove()" style="background:#334155; color:#94a3b8; border:none; padding:4px 10px; border-radius:4px; font-size:11px; cursor:pointer;">Dismiss</button>
+    </div>
+  `;
+  c.prepend(card);
+}
+
+async function resolveParticipantRequest(requestId, approve) {
+  const url = approve ? `/api/admin/requests/${requestId}/approve` : `/api/admin/requests/${requestId}/deny`;
+  try {
+    const res = await post(url);
+    if (res.ok) {
+      removeParticipantRequestAlert(requestId);
+    } else {
+      alert('Failed to resolve request. Verify Admin Key.');
+    }
+  } catch(_) {
+    alert('Failed to connect to server.');
+  }
+}
+
+function removeParticipantRequestAlert(requestId) {
+  const card = document.getElementById(`alert-req-${requestId}`);
+  if (card) {
+    card.style.opacity = '0';
+    card.style.transition = 'opacity 0.3s ease';
+    setTimeout(() => card.remove(), 300);
+  }
+}
+
+async function refreshPendingRequests() {
+  try {
+    const res = await fetch('/api/admin/requests', { headers: getHeaders() });
+    if (res.ok) {
+      const list = await res.json();
+      for (const req of list) {
+        if (req.status === 'pending') handleParticipantRequestAlert(req);
+      }
+    }
+  } catch(_) {}
+}
 
 async function refreshBackupStatus() {
   try {
@@ -957,6 +1079,7 @@ hubConn.start().then(() => {
   refreshLeaderboard();
   refreshBackupStatus();
   syncEventStatus();
+  refreshPendingRequests();
 }).catch(e => {
   $('connStatus').textContent = 'Offline';
   refreshAttacks();
@@ -966,6 +1089,7 @@ hubConn.start().then(() => {
 setInterval(() => { refreshKiosks(); refreshLeaderboard(); }, 8000);
 setInterval(refreshBackupStatus, 15000);
 setInterval(syncEventStatus, 10000);
+setInterval(refreshPendingRequests, 10000);
 </script>
 </body>
 </html>

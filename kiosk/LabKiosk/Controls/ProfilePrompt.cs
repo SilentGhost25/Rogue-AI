@@ -52,9 +52,22 @@ public static class ProfilePrompt
             Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0xFF, 0xFF)),
             BorderBrush = new SolidColorBrush(Color.FromRgb(0x2B, 0x4D, 0x61)),
             FontSize = 13,
-            Margin = new Thickness(0, 0, 0, 16)
+            Margin = new Thickness(0, 0, 0, 12)
         };
         panel.Children.Add(txtName);
+
+        var btnReqAccount = new Button
+        {
+            Content = "🔄 Request Account Switch / Proctor Help",
+            Padding = new Thickness(12, 6, 12, 6),
+            Margin = new Thickness(0, 0, 0, 16),
+            Background = new SolidColorBrush(Color.FromRgb(0x1E, 0x29, 0x3B)),
+            Foreground = new SolidColorBrush(Color.FromRgb(0x38, 0xBD, 0xF8)),
+            BorderBrush = new SolidColorBrush(Color.FromRgb(0x02, 0x84, 0xC7)),
+            FontSize = 11,
+            Cursor = System.Windows.Input.Cursors.Hand
+        };
+        panel.Children.Add(btnReqAccount);
 
         var btnRow = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
 
@@ -110,6 +123,55 @@ public static class ProfilePrompt
                 saved = true;
             }
             win.Close();
+        };
+
+        btnReqAccount.Click += async (_, _) =>
+        {
+            btnReqAccount.IsEnabled = false;
+            btnReqAccount.Content = "⏳ Sending request to Organizer...";
+            try
+            {
+                var api = new ApiClient(settings.ServerUrl);
+                var desk = !string.IsNullOrWhiteSpace(settings.DeskId) ? settings.DeskId : settings.KioskId;
+                var participantId = !string.IsNullOrWhiteSpace(settings.KioskId) ? settings.KioskId : Environment.MachineName;
+                var reqId = await api.RequestAccountChangeAsync(participantId, "proctor_assistance", $"Participant at {desk} ({settings.DisplayName}) requests Account Switch / Proctor Assistance.");
+                
+                if (string.IsNullOrEmpty(reqId))
+                {
+                    MessageBox.Show("Could not contact Command Center. Please signal your desk proctor in person.", "Notice", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                btnReqAccount.Content = "⏳ Awaiting Organizer Approval...";
+                var approved = false;
+                for (var i = 0; i < 45; i++)
+                {
+                    await Task.Delay(2000);
+                    var status = await api.GetRequestStatusAsync(participantId, reqId);
+                    if (status == "approved") { approved = true; break; }
+                    if (status == "denied") { break; }
+                }
+
+                if (approved)
+                {
+                    CredentialManager.ClearAntigravityGoogleCredential();
+                    MessageBox.Show("Organizer has APPROVED your account switch request!\n\nYour session credential has been reset so you can sign in with your new account.", "Request Approved", MessageBoxButton.OK, MessageBoxImage.Information);
+                    win.Close();
+                }
+                else
+                {
+                    MessageBox.Show("The Organizer has denied or dismissed the request.", "Notice", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error: {ex.Message}", "Notice", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            finally
+            {
+                btnReqAccount.IsEnabled = true;
+                btnReqAccount.Content = "🔄 Request Account Switch / Proctor Help";
+            }
         };
 
         win.Loaded += (_, _) => { txtName.Focus(); txtName.SelectAll(); };

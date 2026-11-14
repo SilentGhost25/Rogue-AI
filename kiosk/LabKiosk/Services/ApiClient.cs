@@ -89,6 +89,43 @@ public sealed class ApiClient
         catch (HttpRequestException) { /* lockout is already active locally */ }
     }
 
+    public async Task<string> RequestAccountChangeAsync(string participantId, string accountType, string reason = "")
+    {
+        try
+        {
+            var res = await _http.PostAsJsonAsync($"/api/kiosk/{participantId}/request-account-change", new { accountType, reason });
+            res.EnsureSuccessStatusCode();
+            var body = await res.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+            return body.TryGetProperty("requestId", out var rid) ? rid.GetString() ?? "" : "";
+        }
+        catch
+        {
+            return "";
+        }
+    }
+
+    public async Task<string> GetRequestStatusAsync(string participantId, string requestId)
+    {
+        try
+        {
+            var res = await _http.GetFromJsonAsync<System.Text.Json.JsonElement>($"/api/kiosk/{participantId}/request-status/{requestId}");
+            return res.TryGetProperty("status", out var st) ? st.GetString() ?? "pending" : "pending";
+        }
+        catch
+        {
+            return "pending";
+        }
+    }
+
+    public async Task ReportProblemAsync(string participantId, string problemType, string details)
+    {
+        try
+        {
+            await _http.PostAsJsonAsync($"/api/kiosk/{participantId}/report-problem", new { problemType, details });
+        }
+        catch { }
+    }
+
     private sealed record RegisterResponse(string ParticipantId, string? Token = null);
     private sealed record PayloadResponse(int AttackId, List<SnapshotFileDto> Files);
     private sealed record FetchResponse(List<SnapshotFileDto> Files);

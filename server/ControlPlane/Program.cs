@@ -1648,7 +1648,113 @@ app.MapPost("/api/kiosk/{id}/hint/{attackId:int}/{level:int}", (string id, int a
     return Results.Ok(new { text, cost, level, attackId });
 });
 
+var pendingRequests = new ConcurrentDictionary<string, ParticipantRequestItem>();
+
+app.MapPost("/api/kiosk/{id}/request-account-change", async (string id, AccountChangeDto dto, HttpRequest httpReq, Database db, IHubContext<BreachHub> hub) =>
+{
+    var deskId = db.QueryScalar<string>("SELECT desk_id FROM desk_tokens WHERE participant_id = @p", ("@p", id)) ?? id;
+    var name = db.QueryScalar<string>("SELECT name FROM participants WHERE id = @p", ("@p", id)) ?? id;
+    var reqId = Guid.NewGuid().ToString("N")[..8];
+    var item = new ParticipantRequestItem(
+        reqId,
+        id,
+        deskId,
+        name,
+        "ACCOUNT_CHANGE",
+        dto.Reason ?? $"Participant requested to switch {dto.AccountType ?? "Google"} account.",
+        "pending",
+        DateTime.UtcNow
+    );
+    pendingRequests[reqId] = item;
+    db.Log("PARTICIPANT_REQUEST", id, payloadJson: JsonSerializer.Serialize(item));
+    await hub.Clients.Group("admins").SendAsync(HubEvents.ParticipantRequest, item);
+    return Results.Ok(new { requestId = reqId, status = "pending" });
+});
+
+app.MapPost("/api/kiosk/{id}/report-problem", async (string id, ProblemReportDto dto, HttpRequest httpReq, Database db, IHubContext<BreachHub> hub) =>
+{
+    var deskId = db.QueryScalar<string>("SELECT desk_id FROM desk_tokens WHERE participant_id = @p", ("@p", id)) ?? id;
+    var name = db.QueryScalar<string>("SELECT name FROM participants WHERE id = @p", ("@p", id)) ?? id;
+    var alertObj = new
+    {
+        id = Guid.NewGuid().ToString("N")[..8],
+        participantId = id,
+        deskId,
+        displayName = name,
+        problemType = dto.ProblemType ?? "general",
+        details = dto.Details ?? "Participant reported an issue.",
+        timestamp = DateTime.UtcNow.ToString("O")
+    };
+    db.Log("PARTICIPANT_ALERT", id, payloadJson: JsonSerializer.Serialize(alertObj));
+    await hub.Clients.Group("admins").SendAsync(HubEvents.ParticipantAlert, alertObj);
+    return Results.Ok(new { ok = true });
+});
+
+app.MapGet("/api/kiosk/{id}/request-status/{requestId}", (string id, string requestId) =>
+{
+    if (pendingRequests.TryGetValue(requestId, out var req))
+    {
+        return Results.Ok(new { requestId, status = req.Status });
+    }
+    return Results.Ok(new { requestId, status = "unknown" });
+});
+
+app.MapGet("/api/admin/requests", (HttpRequest r, Database db) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+    var list = pendingRequests.Values.OrderByDescending(x => x.CreatedAtUtc).ToList();
+    return Results.Ok(list);
+});
+
+app.MapPost("/api/admin/requests/{requestId}/approve", async (string requestId, HttpRequest r, Database db, IHubContext<BreachHub> hub) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+
+    if (pendingRequests.TryGetValue(requestId, out var req))
+    {
+        var updated = req with { Status = "approved" };
+        pendingRequests[requestId] = updated;
+        db.Log("REQUEST_APPROVED", req.ParticipantId, payloadJson: JsonSerializer.Serialize(updated));
+        await hub.Clients.Group($"p:{req.ParticipantId}").SendAsync(HubEvents.RequestResolved, updated);
+        await hub.Clients.Group("admins").SendAsync(HubEvents.RequestResolved, updated);
+        return Results.Ok(new { ok = true, status = "approved" });
+    }
+    return Results.NotFound(new { error = "Request not found" });
+});
+
+app.MapPost("/api/admin/requests/{requestId}/deny", async (string requestId, HttpRequest r, Database db, IHubContext<BreachHub> hub) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+
+    if (pendingRequests.TryGetValue(requestId, out var req))
+    {
+        var updated = req with { Status = "denied" };
+        pendingRequests[requestId] = updated;
+        db.Log("REQUEST_DENIED", req.ParticipantId, payloadJson: JsonSerializer.Serialize(updated));
+        await hub.Clients.Group($"p:{req.ParticipantId}").SendAsync(HubEvents.RequestResolved, updated);
+        await hub.Clients.Group("admins").SendAsync(HubEvents.RequestResolved, updated);
+        return Results.Ok(new { ok = true, status = "denied" });
+    }
+    return Results.NotFound(new { error = "Request not found" });
+});
+
 app.Run();
+
+public sealed record ParticipantRequestItem(
+    string RequestId,
+    string ParticipantId,
+    string DeskId,
+    string DisplayName,
+    string Type,
+    string Details,
+    string Status,
+    DateTime CreatedAtUtc
+);
+public sealed record AccountChangeDto(string? AccountType = null, string? Reason = null);
+public sealed record ProblemReportDto(string? ProblemType = null, string? Details = null);
 
 public sealed record RegisterRequest(string Name, string KioskId, string? DeskId = null, string? Password = null, string? GitHubHandle = null, string? GoogleAccount = null);
 public sealed record EnrollRequest(string Token, string KioskId, string Name);

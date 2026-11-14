@@ -174,52 +174,83 @@ public partial class OnboardingWindow : Window
 
 
 
-    private void OnGoogleLoginClick(object sender, RoutedEventArgs e)
+    private async void OnGoogleLoginClick(object sender, RoutedEventArgs e)
 
     {
 
         try
-
         {
-
             if (_googleConnected)
-
             {
-
-                var res = MessageBox.Show(
-
-                    "Antigravity is currently authenticated with Google:\n" + TxtGoogleEmail.Text +
-
-                    "\n\nDo you want to switch accounts? This will clear the current session so you can log in with a different Google account.",
-
-                    "Switch Google Account",
-
+                var prompt = MessageBox.Show(
+                    "Participant Account Switch:\n\n" +
+                    "Currently authenticated Google account:\n" + TxtGoogleEmail.Text +
+                    "\n\nSwitching accounts requires approval from the Event Organizer.\n\n" +
+                    "Send an account switch request to the Organizer Command Center now?",
+                    "Request Account Switch",
                     MessageBoxButton.YesNo,
-
                     MessageBoxImage.Question);
 
+                if (prompt != MessageBoxResult.Yes) return;
 
+                TxtGoogleStatus.Text = "⏳ Request sent to Organizer. Awaiting approval...";
+                TxtGoogleStatus.Foreground = (Brush)FindResource("Accent");
+                BtnGoogleLogin.IsEnabled = false;
 
-                if (res != MessageBoxResult.Yes) return;
+                try
+                {
+                    var api = new ApiClient(_settings.ServerUrl);
+                    var desk = !string.IsNullOrWhiteSpace(_settings.DeskId) ? _settings.DeskId : _settings.KioskId;
+                    var participantId = !string.IsNullOrWhiteSpace(_settings.KioskId) ? _settings.KioskId : Environment.MachineName;
+                    var reqId = await api.RequestAccountChangeAsync(participantId, "google", $"Participant at {desk} requested to switch Google account from {TxtGoogleEmail.Text}.");
 
+                    if (string.IsNullOrEmpty(reqId))
+                    {
+                        var allowLocal = MessageBox.Show("Could not connect to Organizer Command Center. Proceed locally?", "Offline Fallback", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                        if (allowLocal != MessageBoxResult.Yes) return;
+                        reqId = "offline";
+                    }
 
+                    var approved = reqId == "offline";
+                    if (!approved)
+                    {
+                        for (var i = 0; i < 60; i++)
+                        {
+                            await Task.Delay(2000);
+                            var status = await api.GetRequestStatusAsync(participantId, reqId);
+                            if (status == "approved") { approved = true; break; }
+                            if (status == "denied") { break; }
+                        }
+                    }
 
-                CredentialManager.ClearAntigravityGoogleCredential();
-
-                _googleConnected = false;
-
-                TxtGoogleEmail.Text = "";
-
-                TxtGoogleStatus.Text = "⏳ Awaiting sign-in...";
-
-                TxtGoogleStatus.Foreground = (Brush)FindResource("Mute");
-
-                BadgeGoogle.BorderBrush = (Brush)FindResource("Mute");
-
-                BadgeGoogle.Background = new SolidColorBrush(Color.FromArgb(20, 27, 42, 31));
-
-                BtnGoogleLogin.Content = "🌐 Sign In with Google";
-
+                    if (approved)
+                    {
+                        CredentialManager.ClearAntigravityGoogleCredential();
+                        _googleConnected = false;
+                        TxtGoogleEmail.Text = "";
+                        TxtGoogleStatus.Text = "✔ Approved by Organizer. Please sign in below.";
+                        TxtGoogleStatus.Foreground = (Brush)FindResource("Ok");
+                        BadgeGoogle.BorderBrush = (Brush)FindResource("Mute");
+                        BadgeGoogle.Background = new SolidColorBrush(Color.FromArgb(20, 27, 42, 31));
+                        BtnGoogleLogin.Content = "🌐 Sign In with Google";
+                        MessageBox.Show("Organizer has approved your request to switch accounts.\n\nPlease proceed to sign in with your new Google account.", "Request Approved", MessageBoxButton.OK, MessageBoxImage.Information);
+                    }
+                    else
+                    {
+                        TxtGoogleStatus.Text = "❌ Account switch denied by Organizer.";
+                        TxtGoogleStatus.Foreground = (Brush)FindResource("Warn");
+                        MessageBox.Show("The Organizer denied your request to switch Google accounts.\n\nIf you need assistance, please speak directly with an event proctor.", "Request Denied", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    TxtGoogleStatus.Text = $"⚠ Request error: {ex.Message}";
+                }
+                finally
+                {
+                    BtnGoogleLogin.IsEnabled = true;
+                }
+                return;
             }
 
 

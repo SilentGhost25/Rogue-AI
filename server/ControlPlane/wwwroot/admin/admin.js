@@ -326,14 +326,145 @@ function initSignalR() {
       refreshEvaluations();
     });
 
+    hubConn.on('PARTICIPANT_REQUEST', req => {
+      logMessage(`🔔 [REQUEST] Desk ${req.deskId} (${req.displayName}): ${req.details}`);
+      handleAdminParticipantRequest(req);
+    });
+
+    hubConn.on('PARTICIPANT_ALERT', alertData => {
+      logMessage(`⚠️ [ALERT] Desk ${alertData.deskId} (${alertData.displayName}): ${alertData.details}`);
+      handleAdminParticipantAlert(alertData);
+    });
+
+    hubConn.on('REQUEST_RESOLVED', res => {
+      removeAdminRequestAlert(res.requestId);
+    });
+
+    hubConn.onreconnected(() => {
+      try { hubConn.invoke('JoinAdmin', window.__ADMIN_KEY || localStorage.getItem('breachAdminKey') || ''); } catch(_) {}
+      refreshAdminPendingRequests();
+    });
+
     hubConn.start().then(() => {
       logMessage('[SIGNALR] Live control plane hub connected.');
+      try { hubConn.invoke('JoinAdmin', window.__ADMIN_KEY || localStorage.getItem('breachAdminKey') || ''); } catch(_) {}
+      refreshAdminPendingRequests();
     }).catch(err => {
       console.warn('SignalR init failed:', err);
     });
   } catch (ex) {
     console.warn('SignalR setup exception:', ex);
   }
+}
+
+function playAdminAlertChime() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(587.33, ctx.currentTime);
+    osc.frequency.setValueAtTime(880, ctx.currentTime + 0.15);
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.45);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.45);
+  } catch (_) {}
+}
+
+function getAdminAlertContainer() {
+  let c = document.getElementById('adminAlertContainer');
+  if (!c) {
+    c = document.createElement('div');
+    c.id = 'adminAlertContainer';
+    c.style = "position:fixed; top:20px; right:20px; z-index:999999; display:flex; flex-direction:column; gap:12px; max-width:440px; pointer-events:auto;";
+    document.body.appendChild(c);
+  }
+  return c;
+}
+
+function handleAdminParticipantRequest(req) {
+  playAdminAlertChime();
+  const c = getAdminAlertContainer();
+  const existing = document.getElementById(`alert-req-${req.requestId}`);
+  if (existing) return;
+
+  const card = document.createElement('div');
+  card.id = `alert-req-${req.requestId}`;
+  card.style = "background:#0f172a; border:2px solid #38bdf8; border-radius:8px; padding:16px; box-shadow:0 10px 25px -5px rgba(0,0,0,0.6), 0 0 15px rgba(56,189,248,0.4); color:#f8fafc; font-family:sans-serif;";
+  card.innerHTML = `
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+      <span style="font-weight:700; color:#38bdf8; font-size:13px; text-transform:uppercase; letter-spacing:0.5px;">🔔 Participant Request</span>
+      <span style="font-size:11px; color:#94a3b8;">${new Date().toLocaleTimeString()}</span>
+    </div>
+    <div style="font-size:14px; font-weight:600; margin-bottom:4px;">
+      Desk: <span style="color:#f59e0b;">${req.deskId}</span> (${req.displayName})
+    </div>
+    <div style="font-size:12px; color:#cbd5e1; margin-bottom:12px; line-height:1.4;">
+      ${req.details}
+    </div>
+    <div style="display:flex; gap:8px;">
+      <button onclick="resolveAdminRequest('${req.requestId}', true)" style="flex:1; background:#10b981; color:#fff; border:none; padding:8px 12px; border-radius:4px; font-weight:600; font-size:12px; cursor:pointer;">✔ Approve</button>
+      <button onclick="resolveAdminRequest('${req.requestId}', false)" style="flex:1; background:#ef4444; color:#fff; border:none; padding:8px 12px; border-radius:4px; font-weight:600; font-size:12px; cursor:pointer;">✖ Deny</button>
+    </div>
+  `;
+  c.prepend(card);
+}
+
+function handleAdminParticipantAlert(alertData) {
+  playAdminAlertChime();
+  const c = getAdminAlertContainer();
+  const card = document.createElement('div');
+  card.id = `alert-prob-${alertData.id || Date.now()}`;
+  card.style = "background:#1e1b4b; border:2px solid #ef4444; border-radius:8px; padding:16px; box-shadow:0 10px 25px -5px rgba(0,0,0,0.6), 0 0 15px rgba(239,68,68,0.4); color:#f8fafc; font-family:sans-serif;";
+  card.innerHTML = `
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+      <span style="font-weight:700; color:#ef4444; font-size:13px; text-transform:uppercase; letter-spacing:0.5px;">⚠️ Participant Problem Alert</span>
+      <span style="font-size:11px; color:#94a3b8;">${new Date().toLocaleTimeString()}</span>
+    </div>
+    <div style="font-size:14px; font-weight:600; margin-bottom:4px;">
+      Desk: <span style="color:#f59e0b;">${alertData.deskId}</span> (${alertData.displayName})
+    </div>
+    <div style="font-size:12px; color:#cbd5e1; margin-bottom:12px; line-height:1.4;">
+      <strong>${(alertData.problemType || '').toUpperCase()}:</strong> ${alertData.details}
+    </div>
+    <div style="display:flex; justify-content:flex-end;">
+      <button onclick="this.closest('div[id^=alert-prob-]').remove()" style="background:#334155; color:#94a3b8; border:none; padding:4px 10px; border-radius:4px; font-size:11px; cursor:pointer;">Dismiss</button>
+    </div>
+  `;
+  c.prepend(card);
+}
+
+async function resolveAdminRequest(requestId, approve) {
+  const url = approve ? `/api/admin/requests/${requestId}/approve` : `/api/admin/requests/${requestId}/deny`;
+  try {
+    const res = await api(url, { method: 'POST' });
+    removeAdminRequestAlert(requestId);
+  } catch(e) {
+    alert('Failed to resolve request: ' + (e.message || e));
+  }
+}
+
+function removeAdminRequestAlert(requestId) {
+  const card = document.getElementById(`alert-req-${requestId}`);
+  if (card) {
+    card.style.opacity = '0';
+    card.style.transition = 'opacity 0.3s ease';
+    setTimeout(() => card.remove(), 300);
+  }
+}
+
+async function refreshAdminPendingRequests() {
+  try {
+    const list = await api('/api/admin/requests');
+    if (Array.isArray(list)) {
+      for (const req of list) {
+        if (req.status === 'pending') handleAdminParticipantRequest(req);
+      }
+    }
+  } catch(_) {}
 }
 
 async function refreshKiosks() {
