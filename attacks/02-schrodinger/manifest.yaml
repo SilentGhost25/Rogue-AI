@@ -9,7 +9,7 @@ window_minutes: 30
 anti_revert: true
 touches:
   - routes/overview.js
-fix_requires: "Eliminate module-scoped activeOverviewSession state leak across concurrent async requests and expose localized clearance telemetry"
+fix_requires: "Diagnose system logs and telemetry to remediate incident invariants."
 weights:
   speed: 30
   performance: 25
@@ -46,7 +46,6 @@ benchmark_sla:
   probe_route: "/"
   probe_count: 20
   floor: 0.60
-hints: { path: "hints.yaml" }
 narrative:
   landed: "Module-scoped closure leakage in overview dashboard cross-contaminates concurrent operator identities."
   broadcast_title: "INCIDENT #02: SESSION ENTROPY & KEY DERIVATION DRIFT"

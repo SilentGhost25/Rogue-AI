@@ -8,7 +8,7 @@ fires_at: "09:05"
 anti_revert: true
 touches:
   - lib/html.js
-fix_requires: "Fix AEGIS header masthead banner spelling and harden template with CSP meta containment"
+fix_requires: "Diagnose system logs and telemetry to remediate incident invariants."
 weights:
   speed: 30
   performance: 25
@@ -42,8 +42,6 @@ tests:
     - { id: tier8_operational_health, weight: 10 }
     - { id: tier9_benchmark_sla, weight: 10 }
     - { id: tier10_clean_architecture, weight: 10 }
-hints:
-  path: "hints.yaml"
 narrative:
   landed: "Telemetry corruption: The AEGIS command masthead title contains an anomalous string and lacks Content-Security-Policy containment. Restore operational status."
   broadcast_title: "ATTACK 0: WARM-UP"

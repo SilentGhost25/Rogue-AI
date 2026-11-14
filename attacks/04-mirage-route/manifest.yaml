@@ -9,7 +9,7 @@ window_minutes: 30
 anti_revert: true
 touches:
   - lib/diagnostics.js
-fix_requires: "Remove deceptive route quarantine in lib/diagnostics.js and emit X-AEGIS-Diagnostic telemetry header"
+fix_requires: "Diagnose system logs and telemetry to remediate incident invariants."
 weights:
   speed: 30
   performance: 25
@@ -46,7 +46,6 @@ benchmark_sla:
   probe_route: "/power"
   probe_count: 20
   floor: 0.60
-hints: { path: "hints.yaml" }
 narrative:
   landed: "Early diagnostic probe middleware is intercepting and quarantining PowerCore grid subsystem routes."
   broadcast_title: "INCIDENT #04: EJS TEMPLATE ENGINE COMPILATION CORRUPTION"

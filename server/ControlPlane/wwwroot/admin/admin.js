@@ -939,7 +939,10 @@ function renderCohortMatrix(data) {
           </div>
           <div class="cohort-card-attack">
             ${activeAttackBadge}
-            <button class="btn sm" style="padding:2px 6px; font-size:10px;" onclick="promptFireOnKiosk('${escapeHtml(p.id)}', '${escapeHtml(p.deskId || p.name)}')">⚡ Fire</button>
+            <div style="display:flex; gap:4px;">
+              <button class="btn sm" style="padding:2px 6px; font-size:10px;" onclick="messageParticipant('${escapeHtml(p.id)}', '${escapeHtml(p.deskId || p.name)}')">✉</button>
+              <button class="btn sm" style="padding:2px 6px; font-size:10px;" onclick="promptFireOnKiosk('${escapeHtml(p.id)}', '${escapeHtml(p.deskId || p.name)}')">⚡ Fire</button>
+            </div>
           </div>
         </div>
       `;
@@ -962,7 +965,10 @@ function renderCohortMatrix(data) {
               ${attackOptionsHtml}
             </select>
             <button class="cohort-launch-btn" onclick="fireCohortAttack(${col.columnIndex}, '${escapeHtml(col.title)}')">
-              ⚡ Launch
+              ⚡ Fire
+            </button>
+            <button class="btn secondary sm" style="padding:4px 8px; font-size:11px;" onclick="messageCohort(${col.columnIndex}, '${escapeHtml(col.title)}')">
+              📢 Msg
             </button>
           </div>
         </div>
@@ -1014,6 +1020,44 @@ async function fireCohortAttack(columnIndex, colTitle) {
   } catch (err) {
     alert(`Failed to launch attack on ${colTitle}: ${err.message}`);
     logMessage(`[ERROR] Cohort launch on ${colTitle}: ${err.message}`);
+  }
+}
+
+async function messageCohort(columnIndex, colTitle) {
+  const colData = currentCohortsData?.columns?.find(c => c.columnIndex === columnIndex);
+  const targetCount = colData?.participants?.length || 0;
+  if (targetCount === 0) {
+    alert(`No active stations currently assigned to ${colTitle}.`);
+    return;
+  }
+  const msg = prompt(`Enter broadcast message to send to all ${targetCount} stations in ${colTitle}:`);
+  if (!msg || !msg.trim()) return;
+
+  try {
+    await api(`/api/admin/cohorts/${columnIndex}/message`, {
+      method: 'POST',
+      body: JSON.stringify({ message: msg.trim() })
+    });
+    logMessage(`📢 [COHORT MSG] Sent to ${colTitle}: "${msg.trim()}"`);
+    alert(`Message broadcast to all ${targetCount} stations in ${colTitle}.`);
+  } catch (err) {
+    alert(`Failed to send message: ${err.message}`);
+  }
+}
+
+async function messageParticipant(participantId, name) {
+  const msg = prompt(`Enter direct message for ${name}:`);
+  if (!msg || !msg.trim()) return;
+
+  try {
+    await api(`/api/admin/participant/${participantId}/message`, {
+      method: 'POST',
+      body: JSON.stringify({ message: msg.trim() })
+    });
+    logMessage(`✉ [DIRECT MSG] Sent to ${name}: "${msg.trim()}"`);
+    alert(`Message delivered to ${name}.`);
+  } catch (err) {
+    alert(`Failed to send direct message: ${err.message}`);
   }
 }
 

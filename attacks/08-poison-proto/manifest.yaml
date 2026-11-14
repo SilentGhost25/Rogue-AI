@@ -10,7 +10,7 @@ anti_revert: true
 touches:
   - lib/config.js
   - routes/settings.js
-fix_requires: "Guard recursive object merge in lib/config.js against __proto__, constructor, and prototype key pollution, enforce recursion depth limits, and set X-Config-Guard header in routes/settings.js"
+fix_requires: "Diagnose system logs and telemetry to remediate incident invariants."
 weights:
   speed: 30
   performance: 25
@@ -48,7 +48,6 @@ benchmark_sla:
   probe_route: "/api/health"
   probe_count: 20
   floor: 0.60
-hints: { path: "hints.yaml" }
 narrative:
   landed: "Unsanitized configuration merge allows remote callers to inject global properties onto Object.prototype, altering application authorization semantics."
   broadcast_title: "INCIDENT #08: CSRF TOKEN NONCE ENCRYPTION EXPIRY"

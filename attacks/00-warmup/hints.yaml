@@ -1,7 +1,0 @@
-hints:
-  - tier: 1
-    cost: 50
-    text: "Examine lib/html.js around the brand header. Correct the brand title spelling to 'AEGIS // OPERATIONAL'."
-  - tier: 2
-    cost: 100
-    text: "The security specification requires a <meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self';\"> tag inside the <head> of lib/html.js."

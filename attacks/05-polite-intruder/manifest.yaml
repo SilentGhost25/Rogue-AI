@@ -10,7 +10,7 @@ anti_revert: true
 touches:
   - routes/auth.js
   - routes/vault.js
-fix_requires: "Enforce strict property whitelist on POST /api/profile and re-enable CitizenVault clearance guards in routes/vault.js"
+fix_requires: "Diagnose system logs and telemetry to remediate incident invariants."
 weights:
   speed: 30
   performance: 25
@@ -48,7 +48,6 @@ benchmark_sla:
   probe_route: "/api/health"
   probe_count: 20
   floor: 0.60
-hints: { path: "hints.yaml" }
 narrative:
   landed: "Unrestricted property merge in user profile service allows unprivileged operators to elevate clearance to Level 5 and bypass CitizenVault security boundaries."
   broadcast_title: "INCIDENT #05: PRIVILEGE ESCALATION & CLEARANCE DRIFT"

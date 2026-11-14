@@ -10,7 +10,7 @@ anti_revert: true
 touches:
   - routes/traffic.js
   - lib/telemetry.js
-fix_requires: "Parameterize SQL queries in routes/traffic.js and synchronize telemetry HMAC parameter hashing in lib/telemetry.js"
+fix_requires: "Diagnose system logs and telemetry to remediate incident invariants."
 weights:
   speed: 30
   performance: 25
@@ -48,7 +48,6 @@ benchmark_sla:
   probe_route: "/api/traffic/search?q=Main"
   probe_count: 20
   floor: 0.60
-hints: { path: "hints.yaml" }
 narrative:
   landed: "TrafficGrid database layer is rejecting parameterized telemetry audit vectors and leaking query strings."
   broadcast_title: "INCIDENT #03: REPLAY ATTACK & TELEMETRY INVARIANT BREACH"

@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 import yaml
 
-REQUIRED = ("id", "name", "fires_at", "touches", "fix_requires", "weights")
+REQUIRED = ("id", "name", "fires_at", "touches", "weights")
 WEIGHT_KEYS = ("speed", "performance", "prompt_efficiency", "quality", "resource")
 
 
@@ -18,8 +18,8 @@ class Attack:
     name: str
     fires_at: str
     touches: list[str]
-    fix_requires: str
     weights: dict[str, int]
+    fix_requires: str = "Diagnose system logs and telemetry to remediate incident invariants."
     replay_checks: list[str] = field(default_factory=list)
     hidden_variant_checks: list[str] = field(default_factory=list)
     reference_prompts: int = 0
@@ -39,7 +39,9 @@ def load_manifest(directory: str | Path) -> Attack:
         raise ManifestError(f"{directory.name}: weights must sum to 100")
     return Attack(
         id=int(data["id"]), name=data["name"], fires_at=str(data["fires_at"]),
-        touches=list(data["touches"]), fix_requires=data["fix_requires"], weights=dict(weights),
+        touches=list(data["touches"]),
+        weights=dict(weights),
+        fix_requires=str(data.get("fix_requires", "Diagnose system logs and telemetry to remediate incident invariants.")),
         replay_checks=list(data.get("replay_checks", [])),
         hidden_variant_checks=list(data.get("hidden_variant_checks", [])),
         reference_prompts=int(data.get("reference_prompts", 0)), directory=directory,

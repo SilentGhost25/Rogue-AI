@@ -50,6 +50,9 @@ const post = (m) => window.chrome.webview.postMessage(m);
       const el = document.getElementById('term');
       if (el && el.clientWidth > 20 && el.clientHeight > 20) {
         fit.fit();
+        if (term.cols > 0 && term.rows > 0) {
+          post({ type: 'resize', cols: term.cols, rows: term.rows });
+        }
       }
     } catch {}
   };
@@ -59,10 +62,7 @@ const post = (m) => window.chrome.webview.postMessage(m);
 
   ensureFitted();
   requestAnimationFrame(ensureFitted);
-  setTimeout(ensureFitted, 50);
-  setTimeout(ensureFitted, 150);
-  setTimeout(ensureFitted, 300);
-  setTimeout(ensureFitted, 600);
+  [50, 150, 300, 600, 1000, 1500, 2500].forEach(ms => setTimeout(ensureFitted, ms));
 
   let locked = false, ended = false;
   term.onData((d) => {

@@ -11,7 +11,7 @@ touches:
   - routes/overview.js
   - lib/auth.js
   - lib/db.js
-fix_requires: "Resolve 3-layer cascade: restore dashboard and set X-Janus-Restored in routes/overview.js, fix session revocation in lib/auth.js, and eliminate destructive crash timer in lib/db.js"
+fix_requires: "Diagnose system logs and telemetry to remediate incident invariants."
 weights:
   speed: 30
   performance: 25
@@ -50,7 +50,6 @@ benchmark_sla:
   probe_route: "/api/health"
   probe_count: 20
   floor: 0.60
-hints: { path: "hints.yaml" }
 narrative:
   landed: "Cascading multi-tier compromise across overview UI, session lifecycle, and database checkpoint subsystem."
   broadcast_title: "INCIDENT #10: CASCADING GRID FAILURE & ROOT KEY REVOCATION"

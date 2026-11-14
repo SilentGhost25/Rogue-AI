@@ -32,22 +32,22 @@ ArchitecturesAllowed=x64compatible
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Types]
-Name: "full"; Description: "Full Suite (Recommended - Organizer Host + Participant Kiosk)"
-Name: "participant"; Description: "Participant Kiosk (Defend site & connect to Organizer Host)"
-Name: "host"; Description: "Host Mode (Organizer Control Plane + Evaluation Engine)"
+Name: "participant"; Description: "Participant Defense Studio (Recommended for Participant Laptops)"
+Name: "full"; Description: "Full Suite (Organizer Host + Participant Kiosk - Single-Machine Arena)"
+Name: "host"; Description: "Organizer Server Only (Control Plane + Evaluation Engine)"
 Name: "custom"; Description: "Custom installation"; Flags: iscustom
 
 [Components]
-Name: "participant"; Description: "Participant Defense Studio (LabKiosk + AEGIS Site)"; Types: full participant custom
+Name: "participant"; Description: "Participant Defense Studio (LabKiosk + AEGIS Site)"; Types: participant full custom
 Name: "host"; Description: "Organizer Host Mode (Control Plane + Attack Engine + Command Center)"; Types: full host custom
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
 [Dirs]
-Name: "{app}\attacks"; Permissions: users-readexec; Components: host
-Name: "{app}\server"; Permissions: users-readexec; Components: host
-Name: "{app}\engine"; Permissions: users-readexec; Components: host
+Name: "{app}\attacks"; Components: host
+Name: "{app}\server"; Components: host
+Name: "{app}\engine"; Components: host
 Name: "{app}\site"; Permissions: users-readexec
 Name: "{localappdata}\BreachKiosk"; Permissions: users-full
 Name: "{localappdata}\BreachKiosk\host"; Permissions: users-full
@@ -73,8 +73,8 @@ Source: "..\site\*"; DestDir: "{app}\site"; Flags: ignoreversion recursesubdirs 
 ; Control Plane Server (Host Mode - Self-Contained .NET 9)
 Source: "..\server\ControlPlane\bin\SelfContained\*"; DestDir: "{app}\server"; Components: host; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "wwwroot\*.exe,Data\*,data\*,secrets\*"
 ; Engine and Attack Packs (Host Mode - all 11 attacks, references and test suites strictly purged for security)
-Source: "..\engine\*"; DestDir: "{app}\engine"; Components: host; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "__pycache__\*,*.pyc,*.db,tests\*"
-Source: "..\attacks\*"; DestDir: "{app}\attacks"; Components: host; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "__pycache__\*,*.pyc,reference\*,*.git*"
+Source: "..\engine\*"; DestDir: "{app}\engine"; Components: host; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "__pycache__\*,*.pyc,*.db,tests\*,*\tests\*,*\tests\*.*"
+Source: "..\attacks\*"; DestDir: "{app}\attacks"; Components: host; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "__pycache__\*,*.pyc,*\reference\*,*\reference\*.*,*\reference,reference\*,*\hints.yaml,hints.yaml,*\tests\test_*.py,*.git*"
 ; Uninstaller Helper Script
 Source: "uninstall.bat"; DestDir: "{app}"; Flags: ignoreversion
 
@@ -232,6 +232,12 @@ begin
       Exec('netsh.exe', 'advfirewall firewall add rule name="RogueAI-ControlPlane-5080" dir=in action=allow protocol=TCP localport=5080 enable=yes', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
       Exec('netsh.exe', 'advfirewall firewall add rule name="RogueAI-Engine-8000" dir=in action=allow protocol=TCP localport=8000 enable=yes', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
       Exec('netsh.exe', 'advfirewall firewall add rule name="RogueAI-Discovery-5081" dir=in action=allow protocol=UDP localport=5081 enable=yes', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+
+      // Hermetic Anti-Cheat: Lock down attacks, engine, and server ACLs so standard unprivileged users cannot read grading logic
+      Exec('icacls.exe', '"' + ExpandConstant('{app}\attacks') + '" /inheritance:r /grant:r "SYSTEM":(OI)(CI)F /grant:r "Administrators":(OI)(CI)F /deny "Users":(OI)(CI)F', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+      Exec('icacls.exe', '"' + ExpandConstant('{app}\engine') + '" /inheritance:r /grant:r "SYSTEM":(OI)(CI)F /grant:r "Administrators":(OI)(CI)F /deny "Users":(OI)(CI)F', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+      Exec('icacls.exe', '"' + ExpandConstant('{app}\server') + '" /inheritance:r /grant:r "SYSTEM":(OI)(CI)F /grant:r "Administrators":(OI)(CI)F /deny "Users":(OI)(CI)F', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+      Exec('icacls.exe', '"' + ExpandConstant('{app}\kiosk.json') + '" /inheritance:r /grant:r "SYSTEM":F /grant:r "Administrators":F /deny "Users":F', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
     end;
   end;
 end;

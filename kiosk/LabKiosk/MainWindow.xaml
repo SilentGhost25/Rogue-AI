@@ -326,15 +326,44 @@
 
         </Style>
 
+        <Style x:Key="CyberTabRadio" TargetType="RadioButton">
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="#8FA3B0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="bd" Background="Transparent" BorderBrush="Transparent" BorderThickness="0,0,0,2" Padding="14,8" Margin="0,0,8,0">
+                            <ContentPresenter VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#10202B"/>
+                                <Setter Property="Foreground" Value="#D6E6F0"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#132635"/>
+                                <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource Cyan}"/>
+                                <Setter Property="Foreground" Value="{StaticResource Cyan}"/>
+                                <Setter Property="FontWeight" Value="Bold"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
     </Window.Resources>
 
     <Grid>
 
         <Grid.RowDefinitions>
 
-            <RowDefinition Height="56"/>   <!-- Top Control Strip -->
+            <RowDefinition Height="52"/>   <!-- Top Command Strip -->
 
-            <RowDefinition Height="38"/>   <!-- Live Attacks & Objectives Strip -->
+            <RowDefinition Height="34"/>   <!-- Live Attacks & Objectives Strip -->
 
             <RowDefinition Height="*"/>    <!-- Multi-pane Workspace -->
 
@@ -344,25 +373,25 @@
 
         <!-- Top Header Strip -->
 
-        <Border Grid.Row="0" Background="{StaticResource Panel}" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1">
+        <Border Grid.Row="0" Background="#09131B" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1">
 
             <DockPanel Margin="14,0">
 
                 <!-- Right Side Actions & Meters -->
 
-                <Button x:Name="SubmitButton" DockPanel.Dock="Right" Content="Submit Fix (F5)" Padding="20,7" Margin="10,9"
+                <Button x:Name="SubmitButton" DockPanel.Dock="Right" Content="⚡ Submit Fix (F5)" Padding="18,7" Margin="8,8"
 
                         Style="{StaticResource SubmitBtn}" Click="OnSubmitFix" AutomationProperties.Name="Submit fix"/>
 
-                <Button x:Name="BtnProfile" DockPanel.Dock="Right" Content="👤 Profile" Padding="10,6" Margin="6,10"
+                <Button x:Name="BtnProfile" DockPanel.Dock="Right" Content="👤 Profile" Padding="10,6" Margin="4,9"
 
                         Style="{StaticResource ActionBtn}" Click="OnProfileClick" ToolTip="Review participant identity &amp; accounts"/>
 
-                <Button x:Name="AdminButton" DockPanel.Dock="Right" Content="&#x2699; Admin Console" Padding="12,6" Margin="6,10"
+                <Button x:Name="AdminButton" DockPanel.Dock="Right" Content="⚙ Admin Console" Padding="10,6" Margin="4,9"
 
                         Style="{StaticResource ActionBtn}" Click="OnAdminConsole" AutomationProperties.Name="Open organizer console"/>
 
-                <Border x:Name="DefenseLedBadge" DockPanel.Dock="Right" Visibility="Collapsed" Margin="6,10,6,10" Padding="10,4"
+                <Border x:Name="DefenseLedBadge" DockPanel.Dock="Right" Visibility="Collapsed" Margin="6,9" Padding="10,4"
                         Background="#0D1F2D" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="4">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <TextBlock x:Name="DefenseLedTitle" Text="DEFENSE: " Foreground="{StaticResource Cyan}" FontSize="11" FontWeight="Bold" Margin="0,0,6,0"/>
@@ -371,47 +400,46 @@
                     </StackPanel>
                 </Border>
 
-                <Border x:Name="SolvedBadge" DockPanel.Dock="Right" Visibility="Collapsed" Margin="6,10,6,10" Padding="14,2"
+                <Border x:Name="SolvedBadge" DockPanel.Dock="Right" Visibility="Collapsed" Margin="6,9" Padding="14,2"
 
                         Background="#143D31" BorderBrush="{StaticResource Ok}" BorderThickness="1" CornerRadius="4">
 
                     <Border.Effect><DropShadowEffect Color="#3FB68B" ShadowDepth="0" BlurRadius="10"/></Border.Effect>
 
-                    <TextBlock Text="&#x2714; SOLVED" Foreground="{StaticResource Ok}" FontWeight="Bold" VerticalAlignment="Center"/>
+                    <TextBlock Text="✔ SOLVED" Foreground="{StaticResource Ok}" FontWeight="Bold" VerticalAlignment="Center"/>
 
                 </Border>
 
-                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0">
-
-                    <TextBlock x:Name="AgyMeter" Text="agy: ready" Foreground="{StaticResource Cyan}" FontWeight="SemiBold" Margin="0,0,14,0"/>
-
-                    <TextBlock x:Name="OcMeter" Text="OpenCode: 0 / 30" Foreground="{StaticResource Ink}"/>
-
-                </StackPanel>
+                <Border DockPanel.Dock="Right" Background="#0C1822" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="4" Padding="10,5" Margin="6,9">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock x:Name="AgyMeter" Text="✦ agy: ready" Foreground="{StaticResource Cyan}" FontWeight="SemiBold" Margin="0,0,12,0"/>
+                        <TextBlock x:Name="OcMeter" Text="◈ OpenCode: 0 / 30" Foreground="{StaticResource Ink}"/>
+                    </StackPanel>
+                </Border>
 
 
 
                 <!-- Center View Switcher: Compact Dropdown -->
 
-                <ComboBox x:Name="ViewSelector" DockPanel.Dock="Right" Width="155" Margin="10,11" VerticalAlignment="Center"
+                <ComboBox x:Name="ViewSelector" DockPanel.Dock="Right" Width="145" Margin="6,9" VerticalAlignment="Center"
 
                           Style="{StaticResource DarkViewCombo}" SelectedIndex="0" SelectionChanged="OnViewSelectionChanged"
 
                           ToolTip="Switch visible workspace panes">
 
-                    <ComboBoxItem Content="&#x229E; All 3 Panes" Tag="All"/>
+                    <ComboBoxItem Content="⊞ All 3 Panes" Tag="All"/>
 
-                    <ComboBoxItem Content="&#x25EB; Code + AI" Tag="CodeAi"/>
+                    <ComboBoxItem Content="◫ Code + AI" Tag="CodeAi"/>
 
-                    <ComboBoxItem Content="&#x25EB; Web + AI" Tag="WebAi"/>
+                    <ComboBoxItem Content="◫ Web + AI" Tag="WebAi"/>
 
-                    <ComboBoxItem Content="&#x25EB; Web + Code" Tag="WebCode"/>
+                    <ComboBoxItem Content="◫ Web + Code" Tag="WebCode"/>
 
-                    <ComboBoxItem Content="&#x1F310; Web Only" Tag="Site"/>
+                    <ComboBoxItem Content="🌐 Web Only" Tag="Site"/>
 
-                    <ComboBoxItem Content="&#x1F4DD; Code Only" Tag="Code"/>
+                    <ComboBoxItem Content="💻 Code Only" Tag="Code"/>
 
-                    <ComboBoxItem Content="&#x1F916; AI Only" Tag="Ai"/>
+                    <ComboBoxItem Content="🤖 AI Only" Tag="Ai"/>
 
                 </ComboBox>
 
@@ -421,11 +449,14 @@
 
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
 
-                    <TextBlock Text="ROGUE AI" Foreground="{StaticResource Cyan}" FontWeight="Bold" FontSize="16" Margin="0,0,10,0"/>
+                    <TextBlock Text="ROGUE AI" Foreground="{StaticResource Cyan}" FontWeight="Bold" FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center"/>
 
-                    <TextBlock Text="|" Foreground="{StaticResource Line}" Margin="0,0,10,0"/>
-
-                    <TextBlock x:Name="StatusText" Text="Starting..." Foreground="{StaticResource Ink}" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Cursor="Hand" ToolTip="Click to change Organizer Server URL" MouseLeftButtonUp="OnStatusClick"/>
+                    <Border Background="#0C1822" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="4" Padding="10,5">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Ellipse Width="8" Height="8" Fill="{StaticResource Ok}" Margin="0,0,8,0"/>
+                            <TextBlock x:Name="StatusText" Text="Starting..." Foreground="{StaticResource Ink}" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Cursor="Hand" ToolTip="Click to change Organizer Server URL" MouseLeftButtonUp="OnStatusClick"/>
+                        </StackPanel>
+                    </Border>
 
                 </StackPanel>
 
@@ -509,19 +540,21 @@
 
                 </Grid.RowDefinitions>
 
-                <Border Grid.Row="0" Background="#0E1B24" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1">
+                <Border Grid.Row="0" Background="#0C1822" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1">
 
                     <DockPanel Margin="10,0">
 
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
 
-                            <RadioButton x:Name="TabAgy" Content="agy (Antigravity AI)" GroupName="agent" IsChecked="True" Margin="0,0,18,0" Foreground="{StaticResource Ink}" FontWeight="SemiBold" Focusable="False" Checked="OnTabChanged"/>
+                            <RadioButton x:Name="TabAgy" Style="{StaticResource CyberTabRadio}" Content="✦ Antigravity AI" GroupName="agent" IsChecked="True" Checked="OnTabChanged"/>
 
-                            <RadioButton x:Name="TabOc" Content="OpenCode AI" GroupName="agent" Foreground="{StaticResource Ink}" FontWeight="SemiBold" Focusable="False" Checked="OnTabChanged"/>
+                            <RadioButton x:Name="TabOc" Style="{StaticResource CyberTabRadio}" Content="◈ OpenCode AI" GroupName="agent" Checked="OnTabChanged"/>
 
                         </StackPanel>
 
-                        <Button x:Name="BtnGoogleAccount" Content="&#x1F464; Profile &amp; Accounts" DockPanel.Dock="Right" Padding="8,3" FontSize="11" Click="OnProfileClick" Style="{StaticResource ViewBtn}" ToolTip="Review participant identity and linked accounts"/>
+                        <Border DockPanel.Dock="Right" Background="#07121A" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="3" Padding="8,3" VerticalAlignment="Center">
+                            <TextBlock Text="● CONPTY ISOLATED WORKSPACE" Foreground="{StaticResource Cyan}" FontSize="10" FontWeight="Bold"/>
+                        </Border>
 
                     </DockPanel>
 

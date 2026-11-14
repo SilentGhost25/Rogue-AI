@@ -9,7 +9,7 @@ window_minutes: 30
 anti_revert: true
 touches:
   - routes/traffic.js
-fix_requires: "Remove persistent closure leak on signalEmitter in routes/traffic.js using .once() or unregistering listeners, set X-Listener-Pool header, and return bounded telemetry"
+fix_requires: "Diagnose system logs and telemetry to remediate incident invariants."
 weights:
   speed: 30
   performance: 25
@@ -46,7 +46,6 @@ benchmark_sla:
   probe_route: "/api/health"
   probe_count: 20
   floor: 0.60
-hints: { path: "hints.yaml" }
 narrative:
   landed: "Node.js EventEmitter on signal telemetry is accumulating unbound closures on every request, degrading event loop throughput and leaking heap space."
   broadcast_title: "INCIDENT #07: EVENT LOOP TASK SKEW & WORKER STARVATION"

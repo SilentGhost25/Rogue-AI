@@ -83,6 +83,25 @@ public partial class TerminalTab : UserControl, IDisposable
         finally { _isFocusing = false; }
     }
 
+    public void ForceFitAndRedraw()
+    {
+        if (Web.CoreWebView2 is null) return;
+        _ = Web.CoreWebView2.ExecuteScriptAsync(
+            "if (window.ensureFitted) window.ensureFitted(); " +
+            "if (window.fit) try { window.fit.fit(); } catch {} " +
+            "if (window.term) { window.term.focus(); if (window.term.textarea) window.term.textarea.focus(); }"
+        );
+        if (_session is not null)
+        {
+            try
+            {
+                _session.Resize((short)(_cols + 1), _rows);
+                _session.Resize(_cols, _rows);
+            }
+            catch { }
+        }
+    }
+
     public void Launch(LaunchSpec spec)
     {
         _spec = spec;

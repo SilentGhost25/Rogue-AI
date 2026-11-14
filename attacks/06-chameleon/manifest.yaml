@@ -10,7 +10,7 @@ anti_revert: true
 touches:
   - lib/reports.js
   - routes/security.js
-fix_requires: "Enforce strict directory boundary containment and extension validation in lib/reports.js against double-encoded path traversal attacks, and enable X-Report-Boundary header in routes/security.js"
+fix_requires: "Diagnose system logs and telemetry to remediate incident invariants."
 weights:
   speed: 30
   performance: 25
@@ -48,7 +48,6 @@ benchmark_sla:
   probe_route: "/api/health"
   probe_count: 20
   floor: 0.60
-hints: { path: "hints.yaml" }
 narrative:
   landed: "Report extraction gateway is vulnerable to nested URL-encoding escapes, allowing unauthorized file system reads across system boundaries."
   broadcast_title: "INCIDENT #06: WEBPACK CHUNK INTEGRITY HASH FAILURE"

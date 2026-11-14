@@ -422,6 +422,34 @@ app.MapPost("/api/kiosk/register", async (RegisterRequest req, HttpRequest httpR
         insTok.ExecuteNonQuery();
     }
 
+    // Ensure assigned to an arena cohort column (0-4)
+    try
+    {
+        var assignments = db.GetCohortAssignments();
+        var assignedPids = new HashSet<string>(assignments.Values.SelectMany(x => x));
+        if (!assignedPids.Contains(id))
+        {
+            var targetCol = 0;
+            var minCount = int.MaxValue;
+            for (int col = 0; col < 5; col++)
+            {
+                var cnt = assignments.ContainsKey(col) ? assignments[col].Count : 0;
+                if (cnt < minCount)
+                {
+                    minCount = cnt;
+                    targetCol = col;
+                }
+            }
+            using var insCol = c.CreateCommand();
+            insCol.CommandText = "INSERT OR REPLACE INTO cohort_assignments (participant_id, column_index, assigned_at) VALUES ($p, $col, $t)";
+            insCol.Parameters.AddWithValue("$p", id);
+            insCol.Parameters.AddWithValue("$col", targetCol);
+            insCol.Parameters.AddWithValue("$t", DateTime.UtcNow.ToString("O"));
+            insCol.ExecuteNonQuery();
+        }
+    }
+    catch { /* best effort */ }
+
     return Results.Ok(new { participantId = id, token = token, deskId = desk });
 });
 
@@ -1748,6 +1776,50 @@ app.MapPost("/api/admin/cohorts/{columnIndex:int}/fire", async (int columnIndex,
     }
     db.Log("COHORT_ATTACK_FIRED", attackId: attackId, payloadJson: JsonSerializer.Serialize(new { columnIndex, targetCount = pids.Count, participants = pids }));
     return Results.Ok(new { success = true, columnIndex, attackId, targetCount = pids.Count, participants = pids });
+});
+
+app.MapPost("/api/admin/cohorts/{columnIndex:int}/message", async (int columnIndex, HttpRequest r, Database db, IHubContext<BreachHub> hub) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+
+    string message = "";
+    try
+    {
+        var doc = await r.ReadFromJsonAsync<JsonElement>();
+        if (doc.TryGetProperty("message", out var pMsg)) message = pMsg.GetString() ?? "";
+    }
+    catch { }
+
+    if (string.IsNullOrWhiteSpace(message)) return Results.BadRequest("Message text is required.");
+
+    var pids = db.GetParticipantIdsInCohort(columnIndex);
+    foreach (var pid in pids)
+    {
+        await hub.Clients.Group($"p:{pid}").SendAsync(HubEvents.Broadcast, $"[COLUMN {columnIndex + 1}] {message}");
+    }
+    db.Log("COHORT_MESSAGE_SENT", payloadJson: JsonSerializer.Serialize(new { columnIndex, message, targetCount = pids.Count }));
+    return Results.Ok(new { success = true, columnIndex, message, targetCount = pids.Count });
+});
+
+app.MapPost("/api/admin/participant/{id}/message", async (string id, HttpRequest r, Database db, IHubContext<BreachHub> hub) =>
+{
+    var authErr = AuthorizeAdmin(r, db);
+    if (authErr != null) return authErr;
+
+    string message = "";
+    try
+    {
+        var doc = await r.ReadFromJsonAsync<JsonElement>();
+        if (doc.TryGetProperty("message", out var pMsg)) message = pMsg.GetString() ?? "";
+    }
+    catch { }
+
+    if (string.IsNullOrWhiteSpace(message)) return Results.BadRequest("Message text is required.");
+
+    await hub.Clients.Group($"p:{id}").SendAsync(HubEvents.Broadcast, $"[DIRECT] {message}");
+    db.Log("PARTICIPANT_MESSAGE_SENT", id, payloadJson: JsonSerializer.Serialize(new { participantId = id, message }));
+    return Results.Ok(new { success = true, participantId = id, message });
 });
 
 app.MapGet("/api/admin/attacks", (HttpRequest r, Database db, RogueAgentOrchestrator orch) =>

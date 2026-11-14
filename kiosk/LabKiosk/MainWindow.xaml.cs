@@ -167,7 +167,19 @@ public partial class MainWindow : Window
         try { WorkspaceBackup.WipeSiteDb(_s.DataPath); } catch { }
     }
 
-    private void Status(string text) => Dispatcher.InvokeAsync(() => StatusText.Text = text);
+    private void Status(string text) => Dispatcher.InvokeAsync(() =>
+    {
+        StatusText.Text = text;
+        if (text.StartsWith("[COLUMN") || text.StartsWith("[DIRECT") || text.StartsWith("🚨") || text.StartsWith("🔥"))
+        {
+            StatusText.Foreground = (Brush)FindResource("Cyan");
+            try { Sfx.Alert(); } catch { }
+        }
+        else
+        {
+            StatusText.Foreground = (Brush)FindResource("Ink");
+        }
+    });
 
     private async Task StartAsync()
     {
@@ -498,7 +510,16 @@ public partial class MainWindow : Window
             var (exe, args) = ExeResolver.ForLaunch(ocPath, $"attach {_oc.Url}");
             TermOc.Launch(new LaunchSpec(exe, args, _s.WorkspacePath, _oc.Environment, _oc.StartAsync));
         }
-        _ = Dispatcher.InvokeAsync(TermAgy.FocusTerminal);
+        _ = Dispatcher.InvokeAsync(async () =>
+        {
+            TermAgy.FocusTerminal();
+            TermAgy.ForceFitAndRedraw();
+            await Task.Delay(200);
+            TermAgy.FocusTerminal();
+            TermAgy.ForceFitAndRedraw();
+            await Task.Delay(500);
+            TermAgy.ForceFitAndRedraw();
+        });
     }
 
     /// <summary>
@@ -1433,8 +1454,16 @@ public partial class MainWindow : Window
         Dispatcher.InvokeAsync(async () =>
         {
             await Task.Delay(50);
-            if (agy) TermAgy.FocusTerminal();
-            else TermOc.FocusTerminal();
+            if (agy)
+            {
+                TermAgy.FocusTerminal();
+                TermAgy.ForceFitAndRedraw();
+            }
+            else
+            {
+                TermOc.FocusTerminal();
+                TermOc.ForceFitAndRedraw();
+            }
         });
     }
 

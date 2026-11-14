@@ -9,7 +9,7 @@ window_minutes: 30
 anti_revert: true
 touches:
   - lib/rate-limiter.js
-fix_requires: "Prevent client-controlled X-Forwarded-For IP spoofing from bypassing rate limiter in lib/rate-limiter.js and enforce direct-socket policy headers"
+fix_requires: "Diagnose system logs and telemetry to remediate incident invariants."
 weights:
   speed: 30
   performance: 25
@@ -46,7 +46,6 @@ benchmark_sla:
   probe_route: "/api/health"
   probe_count: 20
   floor: 0.60
-hints: { path: "hints.yaml" }
 narrative:
   landed: "Border gateway rate limit enforcement is vulnerable to forged header spoofing, enabling brute-force password spraying and credential credential stuffing."
   broadcast_title: "INCIDENT #09: SYN FLOOD & L4 RATE LIMIT EXHAUSTION"

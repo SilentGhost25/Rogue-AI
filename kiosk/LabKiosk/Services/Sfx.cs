@@ -6,10 +6,11 @@ namespace LabKiosk.Services;
 /// <summary>Small synthesized sounds (no asset files): a fanfare for a solve, a siren for a breach.</summary>
 public static class Sfx
 {
-    private static SoundPlayer? _fanfare, _siren;
+    private static SoundPlayer? _fanfare, _siren, _alert;
 
     public static void Fanfare() => Play(ref _fanfare, new[] { (523.25, 140), (659.25, 140), (783.99, 140), (1046.5, 380) }, 0.35);
     public static void Siren() => Play(ref _siren, new[] { (880.0, 220), (660.0, 220), (880.0, 220), (660.0, 220), (880.0, 220), (660.0, 220) }, 0.25);
+    public static void Alert() => Play(ref _alert, new[] { (750.0, 80), (1000.0, 120) }, 0.25);
 
     private static void Play(ref SoundPlayer? cache, (double Hz, int Ms)[] notes, double volume)
     {
